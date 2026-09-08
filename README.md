@@ -2,7 +2,7 @@
 
 An early foundation for a single-owner, self-hosted iMessage web interface on macOS.
 
-**P0a only. There is no Web UI, HTTP server, authentication, sending, or service installer yet. Do not deploy this as a chat application.** It currently provides a bounded read-only `imsg rpc` client and a privacy-preserving diagnostic command. SIP is never changed. SIP-enabled and bridge-enabled environments are tested separately.
+**P0b internal read-only slice.** Owner authentication, read-only HTTP and a responsive Web UI are implemented. **No sending, read-state changes, service installer or production deployment yet.** Do not treat this as the complete chat application. SIP is never changed; SIP-enabled and bridge-enabled environments are tested separately.
 
 ## 開発と診断
 
@@ -24,7 +24,7 @@ Do not store actual RPC responses, chat databases, attachments, secrets, or pers
 
 ## Next milestones
 
-1. P0b: authentication/configuration/store boundaries, read-only HTTP/UI, dedicated runtime and LaunchAgent verification, Tailscale Serve setup review, performance baselines.
+1. Remaining P0b/deployment gates: dedicated production runtime and LaunchAgent verification, Tailscale Serve setup review, clean install/recovery rehearsal, performance baselines.
 2. P1a: existing conversation UI, invalidation-based refresh, operation ledger and text sending. Uncertain-send recovery policy must be resolved first.
 3. P1b: search, new recipients, attachments, clean-install and recovery documentation; candidate v0.1.
 4. Later: capability-gated advanced operations and opt-in notifications.
@@ -32,5 +32,13 @@ Do not store actual RPC responses, chat databases, attachments, secrets, or pers
 No messages are mirrored into a second archive. No multi-Mac aggregation, automatic resend, SIP/TCC changes, AI replies, or public Internet exposure is planned. Each owner hosts a separate instance. Tailscale access will still require application authentication.
 
 See [architecture](docs/architecture.md), [acceptance evidence](docs/acceptance.md), and [review record](docs/reviews.md).
+
+## 認証付き閲覧の内部版
+
+所有者ログイン、会話/本文の閲覧、15秒更新、セッション失効、所有者キー変更を実装しています。画面は閲覧専用です。imsgが拡張機能を利用可能と報告しても、この版から既読変更・typingなどは実行しません。
+
+[P0b操作と制限](docs/p0b-operations.md)、[P0b受入記録](docs/p0b-acceptance.md)、[独立レビュー依頼](docs/p0b-review-packet.md)を参照してください。localhostのHTTP URLをブラウザーで直接開く構成ではなく、設定したHTTPS originとSecure Cookieを必要とします。Tailscale/LaunchAgent設定はこのrepoや試験で自動変更していません。
+
+ブラウザー受入試験は`npm run build && npm run test:browser`。Linux上のChromiumを既定で使い、別の実行ファイルは`CHROMIUM_PATH`で指定できます。合成データだけの一時HTTPSサーバーを起動し、自己署名証明書はテストcontextだけで許容します。本番のTLS検証を無効にしないでください。
 
 The repository is local and unpublished. The release name and license will be confirmed before publication; no open-source license grant is made by this draft.

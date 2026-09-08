@@ -7,14 +7,26 @@
     "node": "24.20.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json && vite build --config vite.config.ts",
+    "typecheck": "tsc --noEmit && tsc -p web/tsconfig.json",
     "test": "vitest run",
-    "doctor": "node dist/doctor.js"
+    "doctor": "node dist/doctor.js",
+    "start": "node dist/main.js serve",
+    "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
     "typescript": "5.9.3",
+    "vite": "8.2.2",
     "vitest": "5.0.0"
+  },
+  "dependencies": {
+    "@fastify/cookie": "11.1.2",
+    "fastify": "5.12.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }

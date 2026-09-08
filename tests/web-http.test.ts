@@ -1,0 +1,289 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { request as httpRequest } from 'node:http';
+import type { FastifyInstance } from 'fastify';
+import { Auth, hashKey } from '../src/server/auth.js';
+import { checkedOrigin, createApp } from '../src/server/http.js';
+import type { ChatSnapshot, HistorySnapshot, ReadSource } from '../src/shared/web-types.js';
+
+const ORIGIN = 'https://imsg.synthetic.test';
+const HOST = 'imsg.synthetic.test';
+const KEY = 'A'.repeat(43);
+const ID = 'C'.repeat(43);
+const BODY = 'SYNTHETIC_PRIVATE_BODY';
+const CHAT: ChatSnapshot = { epoch: 'epoch-a', limit: 50, chats: [{ id: ID, name: 'Synthetic conversation', service: 'iMessage', isGroup: false, unreadCount: null, lastMessageAt: null, trimmed: false }] };
+const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id: 'D'.repeat(43), text: BODY, isFromMe: false, createdAt: null, trimmed: false }] };
+const apps: FastifyInstance[] = [];
+afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
+
+async function fixture() {
+  let now = 1_000_000;
+  const auth = new Auth(hashKey(KEY), () => now);
+  const source = {
+    chats: vi.fn<ReadSource['chats']>(async limit => ({ ...CHAT, limit })),
+    history: vi.fn<ReadSource['history']>(async (_id, limit) => ({ ...HISTORY, limit })),
+    capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' } } })),
+    close: vi.fn<ReadSource['close']>(async () => {}),
+  };
+  const app = await createApp({ origin: ORIGIN, auth, source });
+  apps.push(app);
+  const login = async () => {
+    const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
+    expect(response.statusCode).toBe(200);
+    const setCookie = response.headers['set-cookie'] as string;
+    return { response, setCookie, cookie: setCookie.split(';')[0]!, csrf: response.json<{ csrfToken: string }>().csrfToken };
+  };
+  return { app, auth, source, login, advance: (ms: number) => { now += ms; } };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(r => { resolve = r; });
+  return { promise, resolve };
+}
+
+describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
+  it.each(['http://imsg.synthetic.test', `${ORIGIN}/`, `${ORIGIN}/path`, `${ORIGIN}?x=1`, `${ORIGIN}#fragment`, 'https://user:password@imsg.synthetic.test'])('rejects noncanonical APP_ORIGIN %s', value => {
+    expect(() => checkedOrigin(value)).toThrow();
+  });
+
+  it('exposes only alive health and applies safety headers on success and rejection', async () => {
+    const { app } = await fixture();
+    const health = await app.inject({ url: '/health', headers: { host: HOST } });
+    expect(health.json()).toEqual({ alive: true });
+    const rejected = await app.inject({ url: '/api/chats', headers: { host: HOST } });
+    expect(rejected.statusCode).toBe(401);
+    for (const response of [health, rejected]) {
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.headers['x-content-type-options']).toBe('nosniff');
+      expect(response.headers['referrer-policy']).toBe('no-referrer');
+      for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"]) expect(response.headers['content-security-policy']).toContain(directive);
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
+    }
+  });
+
+  it('does not dispatch unauthenticated reads or trust forwarded authentication', async () => {
+    const { app, source } = await fixture();
+    for (const url of ['/api/session', '/api/chats', `/api/chats/${ID}/messages`, '/api/capabilities']) {
+      const response = await app.inject({ url, headers: { host: HOST, authorization: `Bearer ${KEY}`, 'tailscale-user-login': 'owner@synthetic.test', 'x-forwarded-user': 'owner' } });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ code: 'UNAUTHORIZED' });
+      expect(response.body).not.toContain(BODY);
+    }
+    expect(source.chats).not.toHaveBeenCalled();
+    expect(source.history).not.toHaveBeenCalled();
+    expect(source.capabilities).not.toHaveBeenCalled();
+  });
+
+  it('requires exact Host/Origin and rejects cross-site API calls even with a valid session', async () => {
+    const { app, login, source } = await fixture();
+    const { cookie } = await login();
+    for (const extra of [
+      { host: 'evil.synthetic.test', 'x-forwarded-host': HOST },
+      { host: `${HOST}:443` },
+      { origin: 'https://evil.synthetic.test' },
+      { origin: 'null' },
+      { 'sec-fetch-site': 'cross-site' },
+    ]) {
+      const response = await app.inject({ url: '/api/chats', headers: { host: HOST, cookie, ...extra } });
+      expect(response.statusCode).toBe(403);
+      expect(response.body).not.toContain(BODY);
+    }
+    expect(source.chats).not.toHaveBeenCalled();
+  });
+
+  it('requires JSON and Origin for login, rejects extra fields and invalid body shapes', async () => {
+    const { app } = await fixture();
+    const missingOrigin = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST }, payload: { key: KEY } });
+    expect(missingOrigin.statusCode).toBe(403);
+    const text = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'text/plain' }, payload: KEY });
+    expect(text.statusCode).toBe(415);
+    for (const payload of [{ key: KEY, extra: true }, { key: 42 }, {}, { key: 'short' }, [KEY], '{']) {
+      const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ code: 'INVALID_REQUEST' });
+    }
+    const invalid = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: 'B'.repeat(43) } });
+    expect(invalid.statusCode).toBe(401);
+    expect(invalid.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('sets and clears a host-only secure HttpOnly Strict cookie and bootstraps CSRF', async () => {
+    const { app, login } = await fixture();
+    const { response, setCookie, cookie, csrf } = await login();
+    expect(setCookie).toMatch(/^__Host-imsg_session=[A-Za-z0-9_-]{43};/);
+    for (const attribute of ['Path=/', 'Secure', 'HttpOnly', 'SameSite=Strict']) expect(setCookie).toContain(attribute);
+    expect(setCookie).not.toMatch(/domain=/i);
+    expect(response.json()).toEqual({ csrfToken: csrf, mode: 'readonly' });
+    const status = await app.inject({ url: '/api/session', headers: { host: HOST, cookie } });
+    expect(status.json()).toEqual({ csrfToken: csrf, mode: 'readonly' });
+    const logout = await app.inject({ method: 'DELETE', url: '/api/session', headers: { host: HOST, cookie, origin: ORIGIN, 'x-csrf-token': csrf }, payload: {} });
+    expect(logout.statusCode).toBe(200);
+    expect(logout.headers['set-cookie']).toContain('__Host-imsg_session=;');
+    const denied = await app.inject({ url: '/api/chats', headers: { host: HOST, cookie } });
+    expect(denied.statusCode).toBe(401);
+  });
+
+  it('requires logout Origin, JSON, and this session’s CSRF token without revoking on rejected attempts', async () => {
+    const { app, login } = await fixture();
+    const a = await login();
+    const b = await login();
+    for (const token of [undefined, 'short', 'Z'.repeat(43), b.csrf]) {
+      const response = await app.inject({ method: 'DELETE', url: '/api/session', headers: { host: HOST, cookie: a.cookie, origin: ORIGIN, ...(token ? { 'x-csrf-token': token } : {}) }, payload: {} });
+      expect(response.statusCode).toBe(403);
+    }
+    const noOrigin = await app.inject({ method: 'DELETE', url: '/api/session', headers: { host: HOST, cookie: a.cookie, 'x-csrf-token': a.csrf }, payload: {} });
+    expect(noOrigin.statusCode).toBe(403);
+    const noJson = await app.inject({ method: 'DELETE', url: '/api/session', headers: { host: HOST, cookie: a.cookie, origin: ORIGIN, 'x-csrf-token': a.csrf } });
+    expect(noJson.statusCode).toBe(415);
+    expect((await app.inject({ url: '/api/session', headers: { host: HOST, cookie: a.cookie } })).statusCode).toBe(200);
+  });
+
+  it('rejects bodies larger than 2 KiB with a closed error', async () => {
+    const { app } = await fixture();
+    const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: KEY, padding: 'X'.repeat(2048) } });
+    expect(response.statusCode).toBe(413);
+    expect(response.json()).toEqual({ code: 'INVALID_REQUEST' });
+  });
+
+  it('validates history identifiers and every limit before dispatch', async () => {
+    const { app, login, source } = await fixture();
+    const { cookie } = await login();
+    for (const value of ['0', '49', '51', '1001', '-50', '050', '50.0', '1e2', '', '50&limit=100']) {
+      for (const path of ['/api/chats', `/api/chats/${ID}/messages`]) {
+        const response = await app.inject({ url: `${path}?limit=${value}`, headers: { host: HOST, cookie } });
+        expect(response.statusCode).toBe(400);
+      }
+    }
+    const rawId = await app.inject({ url: '/api/chats/123/messages', headers: { host: HOST, cookie } });
+    expect(rawId.statusCode).toBe(409);
+    expect(source.chats).not.toHaveBeenCalled();
+    expect(source.history).not.toHaveBeenCalled();
+    for (const limit of [50, 100, 1000]) {
+      const response = await app.inject({ url: `/api/chats/${ID}/messages?limit=${limit}`, headers: { host: HOST, cookie } });
+      expect(response.statusCode).toBe(200);
+      expect(source.history).toHaveBeenLastCalledWith(ID, limit);
+      expect(response.json()).toEqual({ ...HISTORY, limit });
+    }
+  });
+
+  it.each(['revoke', 'rotation', 'idle expiry', 'logout'] as const)('discards a successful pending history after %s', async kind => {
+    const { app, login, source, auth, advance } = await fixture();
+    const { cookie, csrf } = await login();
+    const entered = deferred<void>();
+    const result = deferred<HistorySnapshot>();
+    source.history.mockImplementationOnce(async () => { entered.resolve(); return result.promise; });
+    const pending = app.inject({ url: `/api/chats/${ID}/messages`, headers: { host: HOST, cookie } }).then(response => response);
+    await entered.promise;
+    if (kind === 'revoke') auth.revokeAll();
+    if (kind === 'rotation') { auth.block(); auth.activate(hashKey('B'.repeat(43))); }
+    if (kind === 'idle expiry') advance(86_400_000);
+    if (kind === 'logout') expect((await app.inject({ method: 'DELETE', url: '/api/session', headers: { host: HOST, cookie, origin: ORIGIN, 'x-csrf-token': csrf }, payload: {} })).statusCode).toBe(200);
+    result.resolve(HISTORY);
+    const response = await pending;
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ code: 'UNAUTHORIZED' });
+    expect(response.body).not.toContain(BODY);
+  });
+
+  it('rejects over-4-MiB responses instead of returning a partial snapshot', async () => {
+    const { app, login, source } = await fixture();
+    const { cookie } = await login();
+    source.history.mockResolvedValueOnce({ ...HISTORY, limit: 1000, messages: Array.from({ length: 1000 }, (_, i) => ({ ...HISTORY.messages[0]!, id: `synthetic-${i}`, text: '文'.repeat(16384) })) });
+    const response = await app.inject({ url: `/api/chats/${ID}/messages?limit=1000`, headers: { host: HOST, cookie } });
+    expect(response.statusCode).toBe(413);
+    expect(response.json()).toEqual({ code: 'RESPONSE_TOO_LARGE' });
+  });
+
+  it('returns a closed error without raw upstream account, path, or body details', async () => {
+    const { app, login, source } = await fixture();
+    const { cookie } = await login();
+    source.history.mockRejectedValueOnce(new Error(`/Users/synthetic/Library/Messages/chat.db owner@synthetic.test ${BODY}`));
+    const response = await app.inject({ url: `/api/chats/${ID}/messages`, headers: { host: HOST, cookie } });
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ code: 'READ_UNAVAILABLE' });
+  });
+
+  it('provides no send, read-receipt, generic RPC, attachment, or private-file endpoints', async () => {
+    const { app, login, source } = await fixture();
+    const { cookie, csrf } = await login();
+    for (const url of ['/api/send', '/api/read', '/api/rpc']) {
+      const response = await app.inject({ method: 'POST', url, headers: { host: HOST, cookie, origin: ORIGIN, 'x-csrf-token': csrf }, payload: {} });
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({ code: 'NOT_FOUND' });
+    }
+    for (const url of ['/api/attachments/1', '/owner.json', '/src/server/auth.ts', '/.env']) expect((await app.inject({ url, headers: { host: HOST, cookie } })).statusCode).toBe(404);
+    expect(source.chats).not.toHaveBeenCalled();
+    expect(source.history).not.toHaveBeenCalled();
+  });
+
+  it('enforces global 32 in-flight requests and releases slots after responses', async () => {
+    const { app, login, source } = await fixture();
+    const { cookie } = await login();
+    const full = deferred<void>();
+    const release = deferred<ChatSnapshot>();
+    let count = 0;
+    source.chats.mockImplementation(async () => { if (++count === 32) full.resolve(); return release.promise; });
+    const pending = Array.from({ length: 32 }, () => app.inject({ url: '/api/chats', headers: { host: HOST, cookie } }).then(response => response));
+    await full.promise;
+    const excess = await app.inject({ url: '/api/chats', headers: { host: HOST, cookie } });
+    expect(excess.statusCode).toBe(429);
+    expect(excess.json()).toEqual({ code: 'BUSY' });
+    release.resolve(CHAT);
+    expect((await Promise.all(pending)).every(response => response.statusCode === 200)).toBe(true);
+    expect((await app.inject({ url: '/health', headers: { host: HOST } })).statusCode).toBe(200);
+    expect(app.server.maxConnections).toBe(64);
+  });
+
+  it('applies per-session API rates through HTTP and resets after a minute', async () => {
+    const { app, login, advance } = await fixture();
+    const { cookie } = await login();
+    for (let i = 0; i < 120; i++) expect((await app.inject({ url: '/api/session', headers: { host: HOST, cookie } })).statusCode).toBe(200);
+    const excess = await app.inject({ url: '/api/session', headers: { host: HOST, cookie } });
+    expect(excess.statusCode).toBe(429);
+    advance(60_000);
+    expect((await app.inject({ url: '/api/session', headers: { host: HOST, cookie } })).statusCode).toBe(200);
+  });
+
+  it('limits failed login attempts through HTTP to 20 per minute', async () => {
+    const { app, advance } = await fixture();
+    for (let i = 0; i < 20; i++) {
+      const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: 'B'.repeat(43) } });
+      expect(response.statusCode).toBe(401);
+    }
+    const excess = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: KEY } });
+    expect(excess.statusCode).toBe(429);
+    expect(excess.headers['set-cookie']).toBeUndefined();
+    advance(60_000);
+    expect((await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: KEY } })).statusCode).toBe(200);
+  });
+
+  it('enforces authentication and Host on real loopback HTTP without exposing synthetic body to rejected requests', async () => {
+    const { app, login } = await fixture();
+    const { cookie } = await login();
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === 'string') throw new Error('Expected a TCP listener');
+    // This deliberately supplies the cookie as an integration client; Secure-cookie
+    // browser behavior is covered separately by the synthetic HTTPS browser suite.
+    const get = (headers: Record<string, string>) => new Promise<{ status: number | undefined; body: string }>((resolve, reject) => {
+      const request = httpRequest({ hostname: '127.0.0.1', port: address.port, path: `/api/chats/${ID}/messages`, headers }, response => {
+        const chunks: Buffer[] = [];
+        response.on('data', chunk => chunks.push(Buffer.from(chunk)));
+        response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
+        response.on('error', reject);
+      });
+      request.on('error', reject);
+      request.end();
+    });
+    expect(address.address).toBe('127.0.0.1');
+    const unauthenticated = await get({ host: HOST });
+    expect(unauthenticated.status).toBe(401);
+    expect(unauthenticated.body).not.toContain(BODY);
+    const badHost = await get({ host: 'evil.synthetic.test', cookie, 'x-forwarded-host': HOST });
+    expect(badHost.status).toBe(403);
+    expect(badHost.body).not.toContain(BODY);
+    const accepted = await get({ host: HOST, cookie, origin: ORIGIN });
+    expect(accepted.status).toBe(200);
+    expect(JSON.parse(accepted.body)).toEqual(HISTORY);
+  });
+});
