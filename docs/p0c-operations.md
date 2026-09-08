@@ -86,7 +86,7 @@ OS-reboot lock recovery is **unverified**. Until an approved isolated-state rehe
 
 ## Performance measurement definition
 
-All performance work is P0c-unexecuted. Compare foreground control and Agent under the same Mac, imsg version, release, and local selected conversation. Test up to 50 chats and 50 messages; when fewer exist, record the actual count and do not claim 50-item coverage.
+The Agent polling runs completed on both Macs but exceeded the preliminary latency guidance; deployment is stopped (see [latest acceptance checkpoint](p0c-acceptance.md)). Foreground control and the complete measurement contract remain unverified. Compare foreground control and Agent under the same Mac, imsg version, release, and local selected conversation. Test up to 50 chats and 50 messages; when fewer exist, record the actual count and do not claim 50-item coverage.
 
 - **Cold:** after app start, from `capabilities -> chats -> selected history` HTTP start until final body parse completes; do not purge OS DB cache.
 - **Warm:** the same cycle 20 times, 15 seconds apart; record all 20 successes. p95 is the 19th value after ascending sort.

@@ -1,5 +1,36 @@
 # P0c deployment acceptance — partial
 
+## Latest checkpoint — 2026-09-09
+
+M1 LaunchAgent access now works after the owner granted Full Disk Access to the dedicated Node executable. SIP remains enabled. Both temporary Agents are stopped following the performance gate below; no production Serve route or certificate was created. Earlier entries below are historical observations, not the current M1 blocker or release state.
+
+Both Macs ran immutable release `a342425`, archive SHA256 `4579a40b2ad9cfd91bce29059b33aef4d5861bae59564663b9c26bdd59990816`, including the private-log and probe fixes. Server/UI remains the P0b implementation.
+
+| C02 / C06 observation | Intel iMac | M1 Air |
+|---|---:|---:|
+| Actual chats / selected history messages | 24 / 50 | 28 / 50 |
+| Backend read-state / typing capability | available / available | unavailable / unavailable |
+| First API cycle after startup | 4,574 ms | 5,460 ms |
+| Warm cycles contributing to p95 | 20 | 20 |
+| Warm API-cycle p95 | 3,834 ms | 5,282 ms |
+| Requested continuous polling duration | 1,800 s, completed | 1,800 s, completed |
+| Observed sampled owned RSS maximum | 109 MiB | 53 MiB |
+| RSS median at 5–15 min / 20–30 min | 105.242 / 107.250 MiB | 44.656 / 44.875 MiB |
+| Defined RSS-growth flag | false | false |
+| Preliminary combined performance guidance | **Not met** | **Not met** |
+
+The API cycle is capabilities → chats → selected history, including body parsing, not browser rendering or a single endpoint. SIP capability observations do not authorize UI mutations. Both runs completed authenticated reads, rejected mutation routes and revoked test sessions with a subsequent401. A separate M1 verification also read28 chats/50 messages after the permission change.
+
+Limits: fewer than50 chats existed; no50-chat coverage is claimed. The probe retained one selected opaque chat ID in memory per run but did not persist the20 raw cycle timings. Its nominal15-second polling and5-second RSS sampling share a serial loop, so reads add scheduling jitter and short-lived CLI children can be missed by RSS snapshots. The reported duration is the requested duration, not an independently saved actual elapsed time. These results establish a slow completed run, not full C06 acceptance or a continuous peak-memory bound. Foreground comparison remains unexecuted. Do not weaken the threshold or change cycle definitions retrospectively.
+
+C04 ordinary cleanup: bootout of each exact temporary label completed; previously observed parent/RPC child PIDs were absent, port8787 had no listener, and private probe-state retained only owner.json (no lock/socket). Coarse wall-clock seconds were0 for both stops, not a subsecond benchmark. No active-read or forced-crash claim. Both Serve JSON outputs remained `{}`; the existing iMac watcher remained running. Runtime, releases, plists, logs and hash-only state were preserved. No message send/read-state mutation, OS reboot, automatic TCC edit or SIP change was performed.
+
+Next decision: keep deployment stopped and authorize a bounded diagnostic comparison with per-stage timings and a corrected measurement recorder, or explicitly accept a limited trial with these delays after the remaining safety checks. No diagnosis or application performance fix has been validated. Static inspection identifies per-read RPC status and periodic CLI status as candidates only; do not remove DB-identity/permission checks or cache message bodies merely to meet the timing target.
+
+Independent lifecycle-harness corrections and release-switch review did not complete because the assigned agents hit usage limits. Draft harnesses remain outside this release, unexecuted and unapproved. C03, active/crash C04, C05, complete C06 and C07 remain pending. Claude code approval is still unavailable; the existing neutral handoff packet remains available.
+
+## Earlier checkpoint — 2026-09-08
+
 2026-09-08. User approved the iMac-only Tailscale read-only deployment and temporary M1 Agent test, including CT hostname visibility, GUI-login dependency and trusted-local-machine/manual-recovery assumptions. No reboot, TCC edit, SIP change, Messages change, existing watcher change, push or public repository publication is authorized by this slice.
 
 ## Executed
