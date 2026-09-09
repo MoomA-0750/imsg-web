@@ -137,7 +137,7 @@ test('P3 raw harness output never contains response/error markers', async () => 
     assert.ok(!stdout.includes('SECRET'));
     assert.equal(stdout.trim().split('\n').length, 1);
     const summary = JSON.parse(stdout);
-    assert.ok(Object.keys(summary).every(k => ['outcome','closed','exitCode','signal','sentTerm','sentKill','elapsedMs','rows','namedRows'].includes(k)));
+    assert.ok(Object.keys(summary).every(k => ['outcome','closed','exitCode','signal','sentTerm','sentKill','elapsedMs','responseMs','rows','namedRows'].includes(k)));
   }
 });
 

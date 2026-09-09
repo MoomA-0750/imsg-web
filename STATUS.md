@@ -25,3 +25,9 @@ Private machine paths, retained temporary states and detailed restart context ar
 # 2026-09-10 isolated candidate access checkpoint
 
 Both custom imsg candidates completed one read-only chats.list(limit=1) through the reviewed standalone supervisor and exited normally without TERM/KILL. See `docs/custom-read-preflight-record.md` for artifact digests, individual review dispositions, synthetic/native checks, and limitations. Linux supervisor suite: 22 passed; Mac checks covered equivalent lifecycle cases and platform-specific follow-ups. No application runtime/deployment changes. C06 is still unaccepted; next phase is matched release baseline/candidate measurement. The independent review usage-limit interruption is recorded; no result is inferred from that attempt.
+
+## 2026-09-10 release comparison completed
+
+The previously pending release comparison is complete: same-host baseline/candidate ABBAABBA chats.list(limit=50), fresh processes, all four pairs matched on each Mac. Response medians Intel1051→269ms, M1785.5→361ms; total lifetimes also improved. Both versions returned the same names within each host, but Intel returned no optional names whereas M1 returned15 named rows. Twenty total preflight/sample children closed cleanly. See `docs/release-comparison-record.md` for every sample, artifact provenance, review dispositions and limits. Seven comparison tests pass on both Macs; experimental upstream patches are preserved under `experiments/contact-batch/` and checked against pinned bases.
+
+Current next step supersedes the earlier approval/build-pending entries: continue isolated persistent-RPC/history verification, followed by the original Agent/API C06 gates. No candidate adoption or production service change yet. Cold-process list results are not C06 acceptance.

@@ -1,0 +1,532 @@
+diff --git a/Sources/IMsgCore/ContactCatalog.swift b/Sources/IMsgCore/ContactCatalog.swift
+index 16099da..472e778 100644
+--- a/Sources/IMsgCore/ContactCatalog.swift
++++ b/Sources/IMsgCore/ContactCatalog.swift
+@@ -68,6 +68,31 @@
+       return resolved
+     }
+ 
++    /// Resolve one request's raw handles from one catalog snapshot. The batch
++    /// is private to this resolver and must be checked before response output.
++    package func contactNameBatch(for handles: [String]) -> ContactNameBatch {
++      let state = snapshot(region: defaultRegion)
++      let revision = state.revision
++      guard !state.unavailable else {
++        return ContactNameBatch(names: [:]) { [weak self] in
++          self?.batchIsCurrent(revision: revision) == true
++        }
++      }
++      let lookupNormalizer = PhoneNumberNormalizer()
++      var resolved: [String: String] = [:]
++      for handle in handles {
++        let lookup = Self.normalizedLookupHandle(handle)
++        let name =
++          lookup.contains("@")
++          ? state.catalog.emailToName[lookup.lowercased()]
++          : state.catalog.phoneToName[lookupNormalizer.normalize(lookup, region: defaultRegion)]
++        if let name { resolved[handle] = name }
++      }
++      return ContactNameBatch(names: resolved) { [weak self] in
++        self?.batchIsCurrent(revision: revision) == true
++      }
++    }
++
+     func searchByName(_ query: String, region: String) -> [ContactMatch] {
+       let state = snapshot(region: region)
+       guard !state.unavailable else { return [] }
+@@ -88,13 +113,14 @@
+     func invalidate() {
+       condition.lock()
+       invalidated = true
++      catalogRevision &+= 1
+       condition.broadcast()
+       condition.unlock()
+     }
+ 
+     func snapshot(
+       region: String
+-    ) -> (catalog: ContactCatalogSnapshot, unavailable: Bool) {
++    ) -> (catalog: ContactCatalogSnapshot, unavailable: Bool, revision: UInt64) {
+       let region = Self.normalizedRegion(region)
+       condition.lock()
+       while true {
+@@ -107,7 +133,7 @@
+           apply(.unauthorized)
+           let catalog = regionSnapshot(region)
+           condition.unlock()
+-          return (catalog, true)
++          return (catalog, true, catalogRevision)
+         }
+         let authorizationChanged = lastAuthorization != authorization
+         // Transient failures may retain only a catalog from the same source.
+@@ -117,9 +143,17 @@
+         if shouldRefresh {
+           refreshing = true
+           invalidated = false
++          let refreshRevision = catalogRevision
+           condition.unlock()
+           let result = loadCatalog()
+           condition.lock()
++          // A load begun before invalidation cannot become a valid catalog
++          // after a later source change or regrant.
++          if catalogRevision != refreshRevision {
++            refreshing = false
++            condition.broadcast()
++            continue
++          }
+           // A grant change can switch the data source. Discard an in-flight read
+           // from the old source instead of caching it under the new permission.
+           let sourceChanged = source.authorization() != authorization
+@@ -131,14 +165,30 @@
+           let catalog = regionSnapshot(region)
+           let isUnavailable = unavailable
+           condition.unlock()
+-          return (catalog, isUnavailable)
++          return (catalog, isUnavailable, catalogRevision)
+         }
+ 
+         let catalog = regionSnapshot(region)
+         let isUnavailable = unavailable
+         condition.unlock()
+-        return (catalog, isUnavailable)
++        return (catalog, isUnavailable, catalogRevision)
++      }
++    }
++
++    private func batchIsCurrent(revision: UInt64) -> Bool {
++      condition.lock()
++      defer { condition.unlock() }
++      guard source.authorization() == lastAuthorization, let authorization = lastAuthorization,
++        authorization.canAttemptRead
++      else {
++        // Observed source loss/change invalidates outstanding loads as well as
++        // this response. An ordinary old-token mismatch does not clear newer data.
++        invalidated = true
++        apply(.unauthorized)
++        condition.broadcast()
++        return false
+       }
++      return !unavailable && catalogRevision == revision
+     }
+ 
+     private enum LoadResult {
+@@ -168,6 +218,7 @@
+         regionRecency.removeAll(keepingCapacity: true)
+         hasLastGoodCatalog = true
+         unavailable = false
++        catalogRevision &+= 1
+       case .transientFailure:
+         unavailable = !hasLastGoodCatalog
+       case .unauthorized, .unavailable:
+@@ -177,6 +228,7 @@
+         regionRecency.removeAll(keepingCapacity: false)
+         hasLastGoodCatalog = false
+         unavailable = true
++        catalogRevision &+= 1
+       }
+     }
+ 
+diff --git a/Sources/IMsgCore/ContactResolver.swift b/Sources/IMsgCore/ContactResolver.swift
+index 449b106..2ca92da 100644
+--- a/Sources/IMsgCore/ContactResolver.swift
++++ b/Sources/IMsgCore/ContactResolver.swift
+@@ -28,6 +28,20 @@ public protocol ContactResolving: Sendable {
+   func searchByName(_ query: String) -> [ContactMatch]
+ }
+ 
++/// Request-local contact names with validation bound to their creating owner.
++/// This is not a persistent authorization or name cache.
++package struct ContactNameBatch: @unchecked Sendable {
++  package let names: [String: String]
++  private let validates: @Sendable () -> Bool
++
++  init(names: [String: String], validates: @escaping @Sendable () -> Bool) {
++    self.names = names
++    self.validates = validates
++  }
++
++  package func isValid() -> Bool { validates() }
++}
++
+ public final class NoOpContactResolver: ContactResolving, Sendable {
+   public let contactsUnavailable: Bool
+ 
+@@ -78,6 +92,9 @@ public final class ContactResolver: ContactResolving, @unchecked Sendable {
+     var lastAuthorization: ContactCatalogAuthorization?
+     var hasLastGoodCatalog = false
+     var unavailable = true
++    // Changes only for catalog replacement/clear/observed invalidation, not
++    // region-cache LRU maintenance.
++    var catalogRevision: UInt64 = 0
+     var cancelObservation: (() -> Void)?
+ 
+     init(
+diff --git a/Sources/imsg/RPCServer+Handlers.swift b/Sources/imsg/RPCServer+Handlers.swift
+index b3a943d..c462fdd 100644
+--- a/Sources/imsg/RPCServer+Handlers.swift
++++ b/Sources/imsg/RPCServer+Handlers.swift
+@@ -15,6 +15,65 @@ private enum RPCSendTransport: String {
+   }
+ }
+ 
++/// This adapter is scoped to one read request. It deliberately cannot search
++/// contacts or observe availability: doing either would add a second snapshot.
++private final class BatchContactResolver: ContactResolving, @unchecked Sendable {
++  private let names: [String: String]
++
++  init(_ batch: ContactNameBatch) { names = batch.names }
++
++  var contactsUnavailable: Bool { false }
++  func displayName(for handle: String) -> String? { names[handle] }
++  func displayNames(for handles: [String]) -> [String: String] {
++    var resolved: [String: String] = [:]
++    for handle in handles where names[handle] != nil { resolved[handle] = names[handle] }
++    return resolved
++  }
++  func searchByName(_ query: String) -> [ContactMatch] { [] }
++}
++
++private func stableUnique(_ handles: [String]) -> [String] {
++  var seen = Set<String>()
++  return handles.filter { seen.insert($0).inserted }
++}
++
++private func batchForRead(
++  handles: [String], contacts: any ContactResolving
++) -> (batch: ContactNameBatch?, resolver: any ContactResolving) {
++  #if os(macOS)
++  guard !handles.isEmpty, let owner = contacts as? ContactResolver else {
++    return (nil, contacts)
++  }
++  let batch = owner.contactNameBatch(for: stableUnique(handles))
++  return (batch, BatchContactResolver(batch))
++  #else
++    _ = handles
++    return (nil, contacts)
++  #endif
++}
++
++/// The common finalization boundary used by both read handlers. It is
++/// synchronous: state changes after this observation are not claimed seen.
++func finalizeReadContactNames(
++  _ payloads: [[String: Any]], batch: ContactNameBatch?
++) -> [[String: Any]] {
++  guard let batch, !batch.isValid() else { return payloads }
++  return payloads.map { payload in
++    var sanitized = payload
++    sanitized.removeValue(forKey: "contact_name")
++    sanitized.removeValue(forKey: "sender_name")
++    if var reactions = sanitized["reactions"] as? [[String: Any]] {
++      reactions = reactions.map { reaction in
++        var sanitizedReaction = reaction
++        sanitizedReaction.removeValue(forKey: "sender_name")
++        return sanitizedReaction
++      }
++      sanitized["reactions"] = reactions
++    }
++    return sanitized
++  }
++}
++
+ extension RPCServer {
+   func handleChatsList(id: Any?, params: [String: Any]) async throws {
+     let params = try RPCParameters(
+@@ -34,28 +93,41 @@ extension RPCServer {
+         "unread_only is unavailable because this Messages database has no read-state column")
+     }
+     let chats = try store.listChats(limit: limit, unreadOnly: unreadOnly)
+-    var payloads: [[String: Any]] = []
+-    payloads.reserveCapacity(chats.count)
++    var prepared: [(chat: Chat, info: ChatInfo?, participants: [String])] = []
++    var handles: [String] = []
++    prepared.reserveCapacity(chats.count)
+ 
+     for chat in chats {
+       let info = try store.chatInfo(chatID: chat.id)
+       let participants = try store.participants(chatID: chat.id)
++      prepared.append((chat, info, participants))
++      let identifier = info?.identifier ?? chat.identifier
++      let guid = info?.guid ?? ""
++      if !isGroupHandle(identifier: identifier, guid: guid) {
++        handles.append(identifier)
++        if participants.count == 1 { handles.append(participants[0]) }
++      }
++    }
++    let requestContacts = batchForRead(handles: handles, contacts: contactResolver)
++    var payloads: [[String: Any]] = []
++    payloads.reserveCapacity(prepared.count)
++    for item in prepared {
+       let contactName = contactNameForChat(
+-        chat: chat,
+-        chatInfo: info,
+-        participants: participants,
+-        contacts: contactResolver
++        chat: item.chat,
++        chatInfo: item.info,
++        participants: item.participants,
++        contacts: requestContacts.resolver
+       )
+       payloads.append(
+         try ChatPayload(
+-          chat: chat,
+-          chatInfo: info,
+-          participants: participants,
++          chat: item.chat,
++          chatInfo: item.info,
++          participants: item.participants,
+           contactName: contactName
+         ).asDictionary())
+     }
+ 
+-    respond(id: id, result: ["chats": payloads])
++    respond(id: id, result: ["chats": finalizeReadContactNames(payloads, batch: requestContacts.batch)])
+   }
+ 
+   func handleMessagesHistory(id: Any?, params: [String: Any]) async throws {
+@@ -92,6 +164,14 @@ extension RPCServer {
+     )
+     let filtered = try store.messages(chatID: chatID, limit: limit, filter: filter)
+     let reactionsByMessageID = try store.reactions(for: filtered)
++    var handles: [String] = []
++    for message in filtered {
++      if !message.isFromMe { handles.append(message.sender) }
++      for reaction in reactionsByMessageID[message.rowID] ?? [] where !reaction.isFromMe {
++        handles.append(reaction.sender)
++      }
++    }
++    let requestContacts = batchForRead(handles: handles, contacts: contactResolver)
+ 
+     var payloads: [[String: Any]] = []
+     payloads.reserveCapacity(filtered.count)
+@@ -103,12 +183,12 @@ extension RPCServer {
+         includeReactions: true,
+         prefetchedReactions: reactionsByMessageID[message.rowID] ?? [],
+         attachmentOptions: attachmentOptions,
+-        contactResolver: contactResolver
++        contactResolver: requestContacts.resolver
+       )
+       payloads.append(payload)
+     }
+ 
+-    respond(id: id, result: ["messages": payloads])
++    respond(id: id, result: ["messages": finalizeReadContactNames(payloads, batch: requestContacts.batch)])
+   }
+ 
+   func handleSend(params: [String: Any], id: Any?) async throws {
+diff --git a/Tests/IMsgCoreTests/ContactResolverTests.swift b/Tests/IMsgCoreTests/ContactResolverTests.swift
+index 01026c1..849a911 100644
+--- a/Tests/IMsgCoreTests/ContactResolverTests.swift
++++ b/Tests/IMsgCoreTests/ContactResolverTests.swift
+@@ -305,4 +305,98 @@ func noOpContactResolverCanRepresentUnavailableContacts() {
+     }
+     #expect(source.loadCount == 1)
+   }
++
++  @Test
++  func contactNameBatchUsesOneCatalogAndRejectsObservedRevocation() {
++    let source = ContactSourceHarness(records: [
++      ContactCatalogRecord(
++        name: "Alice", phones: ["+15551234567"], emails: ["alice@example.com"])
++    ])
++    let resolver = ContactResolver(region: "US", source: source.source, refreshInterval: 60)
++
++    let batch = resolver.contactNameBatch(for: [
++      "+15551234567", "alice@example.com", "+15550000000",
++    ])
++    #expect(batch.names["+15551234567"] == "Alice")
++    #expect(batch.names["alice@example.com"] == "Alice")
++    #expect(batch.names["+15550000000"] == nil)
++    #expect(source.loadCount == 1)
++    #expect(batch.isValid())
++
++    source.setAuthorization(.unavailable)
++    #expect(batch.isValid() == false)
++    #expect(resolver.displayName(for: "+15551234567") == nil)
++  }
++
++  @Test
++  func contactNameBatchRejectsOldCatalogAfterObservedRefresh() {
++    let source = ContactSourceHarness(records: [contactRecord(name: "Alice")])
++    let resolver = ContactResolver(region: "US", source: source.source, refreshInterval: 60)
++    let old = resolver.contactNameBatch(for: ["+15551234567"])
++    #expect(old.names["+15551234567"] == "Alice")
++
++    source.setRecords([contactRecord(name: "Bob")])
++    source.notify()
++    let replacement = resolver.contactNameBatch(for: ["+15551234567"])
++
++    #expect(old.isValid() == false)
++    #expect(replacement.isValid())
++    #expect(replacement.names["+15551234567"] == "Bob")
++  }
++
++  @Test
++  func contactNameBatchRejectsBothAddressBookSourceTransitions() {
++    let source = ContactSourceHarness(
++      authorization: .addressBook,
++      records: [contactRecord(name: "Address Book")]
++    )
++    let resolver = ContactResolver(region: "US", source: source.source, refreshInterval: 60)
++    let addressBook = resolver.contactNameBatch(for: ["+15551234567"])
++    #expect(addressBook.names["+15551234567"] == "Address Book")
++    #expect(addressBook.isValid())
++
++    source.setRecords([contactRecord(name: "Contacts")])
++    source.setAuthorization(.authorized)
++    #expect(addressBook.isValid() == false)
++    let contacts = resolver.contactNameBatch(for: ["+15551234567"])
++    #expect(contacts.names["+15551234567"] == "Contacts")
++    #expect(contacts.isValid())
++
++    source.setRecords([contactRecord(name: "Address Book Again")])
++    source.setAuthorization(.addressBook)
++    #expect(contacts.isValid() == false)
++    let replacement = resolver.contactNameBatch(for: ["+15551234567"])
++    #expect(replacement.names["+15551234567"] == "Address Book Again")
++    #expect(replacement.isValid())
++    #expect(source.loadCount == 3)
++  }
++
++  @Test(.timeLimit(.minutes(1)))
++  func contactNameBatchDoesNotPublishLoadStartedBeforeObservedRevocation() {
++    let source = ContactSourceHarness(records: [contactRecord(name: "Alice")])
++    let resolver = ContactResolver(region: "US", source: source.source, refreshInterval: 60)
++    let old = resolver.contactNameBatch(for: ["+15551234567"])
++    source.setRecords([contactRecord(name: "Bob")])
++    source.notify()
++    let started = DispatchSemaphore(value: 0)
++    let release = DispatchSemaphore(value: 0)
++    source.blockNextLoad(started: started, release: release)
++    let group = DispatchGroup()
++    group.enter()
++    Thread {
++      _ = resolver.contactNameBatch(for: ["+15551234567"])
++      group.leave()
++    }.start()
++    #expect(started.wait(timeout: .now() + 5) == .success)
++
++    source.setAuthorization(.unavailable)
++    #expect(old.isValid() == false)
++    source.setAuthorization(.authorized)
++    release.signal()
++    #expect(group.wait(timeout: .now() + 5) == .success)
++
++    let replacement = resolver.contactNameBatch(for: ["+15551234567"])
++    #expect(replacement.names["+15551234567"] == "Bob")
++    #expect(source.loadCount >= 3)
++  }
+ #endif
+diff --git a/Tests/imsgTests/RPCContactBatchTests.swift b/Tests/imsgTests/RPCContactBatchTests.swift
+new file mode 100644
+index 0000000..29a2088
+--- /dev/null
++++ b/Tests/imsgTests/RPCContactBatchTests.swift
+@@ -0,0 +1,108 @@
++import Foundation
++import Testing
++
++@testable import IMsgCore
++@testable import imsg
++
++#if os(macOS)
++  private final class BatchTestSource: @unchecked Sendable {
++    private let lock = NSLock()
++    private var authorization: ContactCatalogAuthorization = .authorized
++    private var authorizationCalls = 0
++
++    var source: ContactCatalogSource {
++      ContactCatalogSource(
++        authorization: { [self] in
++          lock.withLock {
++            authorizationCalls += 1
++            return authorization
++          }
++        },
++        load: {
++          [ContactCatalogRecord(
++            name: "Alice", phones: ["+15551234567"], emails: ["alice@example.com"])
++          ]
++        },
++        observeChanges: { _ in {} }
++      )
++    }
++
++    func revoke() { lock.withLock { authorization = .unavailable } }
++    func resetAuthorizationCalls() { lock.withLock { authorizationCalls = 0 } }
++    var observedAuthorizationCalls: Int { lock.withLock { authorizationCalls } }
++  }
++
++  @Test
++  func finalizationRemovesAllContactFieldsAfterObservedRevocation() throws {
++    let source = BatchTestSource()
++    let resolver = ContactResolver(region: "US", source: source.source)
++    let batch = resolver.contactNameBatch(for: ["+15551234567", "alice@example.com"])
++    #expect(batch.isValid())
++    let payloads: [[String: Any]] = [[
++      "contact_name": "Alice",
++      "sender_name": "Alice",
++      "body": "fixture-only",
++      "reactions": [[
++        "sender_name": "Alice", "sender": "alice@example.com", "is_from_me": false,
++      ]],
++    ]]
++
++    source.revoke()
++    let actual = finalizeReadContactNames(payloads, batch: batch)
++    let first = try #require(actual.first)
++    #expect(first["contact_name"] == nil)
++    #expect(first["sender_name"] == nil)
++    #expect(first["body"] as? String == "fixture-only")
++    let reaction = try #require((first["reactions"] as? [[String: Any]])?.first)
++    #expect(reaction["sender_name"] == nil)
++    #expect(reaction["sender"] as? String == "alice@example.com")
++  }
++
++  @Test
++  func rpcHistoryUsesOneBatchRatherThanPerMessageScalarSnapshots() async throws {
++    let store = try CommandTestDatabase.makeStoreForRPCDirectChat()
++    _ = try store.withConnection { db in
++      try db.run("UPDATE chat SET chat_identifier = '+15551234567', guid = 'iMessage;-;+15551234567' WHERE ROWID = 1")
++      try db.run("UPDATE handle SET id = '+15551234567' WHERE ROWID = 1")
++      for rowID in 6...10 {
++        try db.run(
++          "INSERT INTO message(ROWID, handle_id, text, date, is_from_me, service) VALUES (?, 1, 'fixture', ?, 0, 'iMessage')",
++          rowID, Int64(rowID) * 1_000_000_000
++        )
++        try db.run("INSERT INTO chat_message_join(chat_id, message_id) VALUES (1, ?)", rowID)
++      }
++    }
++    let source = BatchTestSource()
++    let resolver = ContactResolver(region: "US", source: source.source, refreshInterval: 60)
++    let output = TestRPCOutput()
++    let server = RPCServer(store: store, verbose: false, output: output, contactResolver: resolver)
++
++    source.resetAuthorizationCalls()
++    await server.handleLineForTesting(
++      #"{"jsonrpc":"2.0","id":"history","method":"messages.history","params":{"chat_id":1,"limit":50,"attachments":false}}"#)
++
++    let result = try #require(output.responses.first?["result"] as? [String: Any])
++    let messages = try #require(result["messages"] as? [[String: Any]])
++    #expect(messages.count == 6)
++    #expect(messages.allSatisfy { $0["sender_name"] as? String == "Alice" })
++    // Cold load checks authorization before/during/after loading, then the
++    // response boundary validates once. The count does not grow by messages.
++    #expect(source.observedAuthorizationCalls == 4)
++  }
++
++  @Test
++  func rpcGroupOnlyChatsSkipContactSnapshot() async throws {
++    let store = try CommandTestDatabase.makeStoreForRPC()
++    let source = BatchTestSource()
++    let resolver = ContactResolver(region: "US", source: source.source, refreshInterval: 60)
++    let output = TestRPCOutput()
++    let server = RPCServer(store: store, verbose: false, output: output, contactResolver: resolver)
++
++    source.resetAuthorizationCalls()
++    await server.handleLineForTesting(
++      #"{"jsonrpc":"2.0","id":"groups","method":"chats.list","params":{"limit":1}}"#)
++
++    #expect(output.errors.isEmpty)
++    #expect(source.observedAuthorizationCalls == 0)
++  }
++#endif

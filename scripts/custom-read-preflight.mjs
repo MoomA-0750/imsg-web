@@ -25,7 +25,8 @@ export async function verifyArtifact(root, executable, digest) {
 }
 
 // Test seam takes a factory, never a CLI-controlled command or RPC method.
-export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitMs = 2000, signals = process } = {}) {
+export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitMs = 2000, signals = process, limit = 1, observe = () => {} } = {}) {
+  if (![1, 50].includes(limit)) throw new Error('precondition');
   return new Promise(resolve => {
     const start = performance.now();
     let child, failure, output = Buffer.alloc(0), total = 0, result;
@@ -84,10 +85,11 @@ export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitM
           const msg = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line));
           if (result || !record(msg) || msg.jsonrpc !== '2.0' || msg.id !== request.id ||
               Object.keys(msg).some(k => !['jsonrpc', 'id', 'result'].includes(k)) ||
-              !record(msg.result) || !Array.isArray(msg.result.chats) || msg.result.chats.length > 1 ||
+              !record(msg.result) || !Array.isArray(msg.result.chats) || msg.result.chats.length > limit ||
               !msg.result.chats.every(c => record(c) && Number.isSafeInteger(c.id) && c.id > 0 &&
                 (!Object.hasOwn(c, 'contact_name') || typeof c.contact_name === 'string'))) throw new Error();
-          result = { rows: msg.result.chats.length, namedRows: msg.result.chats.filter(c => typeof c.contact_name === 'string').length };
+          result = { responseMs: Math.round(performance.now() - start), rows: msg.result.chats.length, namedRows: msg.result.chats.filter(c => typeof c.contact_name === 'string').length };
+          observe(msg.result);
           stop();
         } catch { fail('protocol'); return; }
       }
@@ -96,7 +98,7 @@ export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitM
       const fn = () => fail('interrupted'); handlers.set(name, fn); signals.on(name, fn);
     }
     later(() => fail('timeout'), timeoutMs);
-    child.stdin.write(`${JSON.stringify(request)}\n`);
+    child.stdin.write(`${JSON.stringify({ ...request, params: { limit } })}\n`);
   });
 }
 
