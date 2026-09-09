@@ -55,6 +55,8 @@ Sol reviewed the recorder and re-reviewed scoped fixes with no remaining signifi
 
 Locate the remaining imsg wait before choosing a production fix. Candidates from fixed-version source include repeated per-message metadata queries and per-lookup Contacts authorization checks. These are hypotheses, not measured root causes. A short, exact-owned-process stack sample can distinguish waiting in Contacts/TCC from SQLite/data decoding. Do not spoof SSH environment, weaken permission checks, modify the Messages DB, replace installed imsg, or apply an upstream fork without a separately reviewed implementation scope. P0c deployment, counterbalanced/20-sample/30-minute acceptance and lifecycle/network handoff gates remain incomplete.
 
-### Stack-sampling draft review — not executed
+### Stack-sampling draft review — historical checkpoint
 
 An independent review of a separate draft found five unresolved conditions: missing child-absence evidence if initialization fails before PID discovery; no proven sample/request overlap; missing report target/structure/nonzero-sample validation; numeric PID reuse/check-to-attach race; and a hard lifecycle bound that relies on supervision not yet implemented in the reviewed materials. All five findings are accepted for correction, **not resolved**. The raw stack sampler has not been run on either Mac or integrated into this release. A one-test parser check does not validate those operational properties. See [checkpoint](../STATUS.md) for the next steps.
+
+Subsequent update: the scoped corrections and independent re-review are complete; both bounded live profiles succeeded. See [owned-profile results](owned-profile-results.md) for actual evidence, remaining PID race/coverage limits and per-finding dispositions. The paragraph above preserves the earlier checkpoint, not current execution status. No production fix or C06 acceptance follows from this diagnostic.

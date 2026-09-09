@@ -13,7 +13,8 @@
     "doctor": "node dist/doctor.js",
     "start": "node dist/main.js serve",
     "test:browser": "playwright test",
-    "test:diagnostic": "node --test scripts/diagnose-performance.test.mjs"
+    "test:diagnostic": "node --test scripts/diagnose-performance.test.mjs",
+    "test:profile": "node --test scripts/profile-owned-rpc.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
