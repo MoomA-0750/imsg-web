@@ -2,6 +2,8 @@
 
 ## Latest checkpoint — 2026-09-09
 
+Follow-up: the owner approved bounded performance diagnosis while keeping deployment stopped. Foreground/default-Agent/Interactive-Agent observations and review dispositions are in [performance diagnosis](performance-diagnosis.md). The short comparison did not establish a sufficient fix; no permanent resource-policy or application change was adopted, and C06 remains incomplete.
+
 M1 LaunchAgent access now works after the owner granted Full Disk Access to the dedicated Node executable. SIP remains enabled. Both temporary Agents are stopped following the performance gate below; no production Serve route or certificate was created. Earlier entries below are historical observations, not the current M1 blocker or release state.
 
 Both Macs ran immutable release `a342425`, archive SHA256 `4579a40b2ad9cfd91bce29059b33aef4d5861bae59564663b9c26bdd59990816`, including the private-log and probe fixes. Server/UI remains the P0b implementation.

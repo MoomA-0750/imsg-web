@@ -1,0 +1,1387 @@
+{
+  "date": "2026-09-09",
+  "kind": "exploratory-not-acceptance",
+  "applicationArtifact": "a342425",
+  "runs": [
+    {
+      "host": "Intel",
+      "processType": "standard",
+      "samples": [
+        {
+          "index": 0,
+          "firstInFreshRuntime": true,
+          "startOffsetMs": 1.9,
+          "cycleMs": 5595.6,
+          "cliRefresh": true,
+          "capabilitiesMs": 2273.8,
+          "chatsMs": 2132.4,
+          "historyMs": 1189.4,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 675.9,
+              "ok": true
+            },
+            {
+              "stage": "reader.close",
+              "ms": 34.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 686.2,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 869.8,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 239.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1887.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 185.7,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 999.1,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 15000.7,
+          "cycleMs": 3606.7,
+          "cliRefresh": false,
+          "capabilitiesMs": 259.2,
+          "chatsMs": 2062.1,
+          "historyMs": 1285.4,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 255,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 256.3,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1801.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 240.6,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1039.4,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 30002.3,
+          "cycleMs": 3613.7,
+          "cliRefresh": false,
+          "capabilitiesMs": 187.5,
+          "chatsMs": 2122.3,
+          "historyMs": 1304,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 184.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 242.2,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1871.5,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 234.3,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1063.8,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 45000.3,
+          "cycleMs": 4514.4,
+          "cliRefresh": true,
+          "capabilitiesMs": 1080,
+          "chatsMs": 2150.9,
+          "historyMs": 1283.5,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 220.4,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 857.5,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 263.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1884.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 248,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1028.3,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 60001.6,
+          "cycleMs": 3611.2,
+          "cliRefresh": false,
+          "capabilitiesMs": 118.3,
+          "chatsMs": 2157,
+          "historyMs": 1335.9,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 109.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 262.5,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1890.1,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 273.6,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1059.1,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 75000.8,
+          "cycleMs": 3723.6,
+          "cliRefresh": false,
+          "capabilitiesMs": 254.9,
+          "chatsMs": 2154.5,
+          "historyMs": 1314.2,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 252,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 255.5,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1894,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 254.7,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1055.7,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 90000.2,
+          "cycleMs": 4341.8,
+          "cliRefresh": true,
+          "capabilitiesMs": 963.9,
+          "chatsMs": 2198.4,
+          "historyMs": 1179.5,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 115.9,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 845.3,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 265.2,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1918.4,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 161.5,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1013.7,
+              "ok": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "mode": "stage-diagnostic",
+        "context": "agent-standard",
+        "workload": "each-host-first-chat-not-cross-host-matched",
+        "withCli": {
+          "count": 2,
+          "minMs": 4341.8,
+          "maxMs": 4514.4
+        },
+        "withoutCli": {
+          "count": 4,
+          "minMs": 3606.7,
+          "maxMs": 3723.6
+        },
+        "actualElapsedMs": 94342.3,
+        "parentCpuUserMs": 140.8,
+        "parentCpuSystemMs": 21.6,
+        "parentRssMiB": 81.2,
+        "childCpuAndEnergyAssessed": false,
+        "gateMeasurement": false
+      },
+      "cleanup": {
+        "confirmed": true,
+        "revocationVerified": true,
+        "shutdownVerified": true,
+        "stateVerified": true
+      }
+    },
+    {
+      "host": "Intel",
+      "processType": "interactive",
+      "samples": [
+        {
+          "index": 0,
+          "firstInFreshRuntime": true,
+          "startOffsetMs": 7.4,
+          "cycleMs": 4460.2,
+          "cliRefresh": true,
+          "capabilitiesMs": 1464.4,
+          "chatsMs": 1908,
+          "historyMs": 1087.8,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 473.3,
+              "ok": true
+            },
+            {
+              "stage": "reader.close",
+              "ms": 6.4,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 481.2,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 495,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 100.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1803.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 121.8,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 960.9,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 15000.8,
+          "cycleMs": 3103.5,
+          "cliRefresh": false,
+          "capabilitiesMs": 113,
+          "chatsMs": 1892.2,
+          "historyMs": 1098.2,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 108.4,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 112.3,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1776.7,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 112.2,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 980.8,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 30006.5,
+          "cycleMs": 3229.9,
+          "cliRefresh": false,
+          "capabilitiesMs": 112.9,
+          "chatsMs": 2007.8,
+          "historyMs": 1109.3,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 109.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 168.4,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1835,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 158.6,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 945.7,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 45000,
+          "cycleMs": 3647.1,
+          "cliRefresh": true,
+          "capabilitiesMs": 678.1,
+          "chatsMs": 1909.4,
+          "historyMs": 1059.5,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 116.4,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 557.7,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 106.4,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1798,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 106,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 949.8,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 60003,
+          "cycleMs": 3169.1,
+          "cliRefresh": false,
+          "capabilitiesMs": 121.2,
+          "chatsMs": 1935.3,
+          "historyMs": 1112.6,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 118.1,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 185,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1746,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 174.6,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 932.3,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 75001.9,
+          "cycleMs": 3191.9,
+          "cliRefresh": false,
+          "capabilitiesMs": 180.5,
+          "chatsMs": 1865.4,
+          "historyMs": 1145.9,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 177.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 97,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1765,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 167.2,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 973.5,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 90000.2,
+          "cycleMs": 3784.7,
+          "cliRefresh": true,
+          "capabilitiesMs": 638.6,
+          "chatsMs": 1982.9,
+          "historyMs": 1163.2,
+          "chats": 24,
+          "messages": 50,
+          "read": "available",
+          "typing": "available",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 123.3,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 513,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 158.4,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1820.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 177.3,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 979.7,
+              "ok": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "mode": "stage-diagnostic",
+        "context": "agent-interactive",
+        "workload": "each-host-first-chat-not-cross-host-matched",
+        "withCli": {
+          "count": 2,
+          "minMs": 3647.1,
+          "maxMs": 3784.7
+        },
+        "withoutCli": {
+          "count": 4,
+          "minMs": 3103.5,
+          "maxMs": 3229.9
+        },
+        "actualElapsedMs": 93785.3,
+        "parentCpuUserMs": 146.6,
+        "parentCpuSystemMs": 21.2,
+        "parentRssMiB": 81.2,
+        "childCpuAndEnergyAssessed": false,
+        "gateMeasurement": false
+      },
+      "cleanup": {
+        "confirmed": true,
+        "revocationVerified": true,
+        "shutdownVerified": true,
+        "stateVerified": true
+      }
+    },
+    {
+      "host": "M1",
+      "processType": "standard",
+      "samples": [
+        {
+          "index": 0,
+          "firstInFreshRuntime": true,
+          "startOffsetMs": 1.8,
+          "cycleMs": 4131.9,
+          "cliRefresh": true,
+          "capabilitiesMs": 1062.7,
+          "chatsMs": 1515.1,
+          "historyMs": 1554.1,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 354.2,
+              "ok": true
+            },
+            {
+              "stage": "reader.close",
+              "ms": 8.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 302,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 376.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 45.7,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1460.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 40.5,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1506.5,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 15001.9,
+          "cycleMs": 2943.4,
+          "cliRefresh": false,
+          "capabilitiesMs": 43.5,
+          "chatsMs": 1405.3,
+          "historyMs": 1494.6,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 39.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 40.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1360.8,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 41.7,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1447.9,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 30001.8,
+          "cycleMs": 2877.8,
+          "cliRefresh": false,
+          "capabilitiesMs": 37.3,
+          "chatsMs": 1026.9,
+          "historyMs": 1813.5,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 33.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 19.8,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1003,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 33,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1775.6,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 45001.8,
+          "cycleMs": 3383.2,
+          "cliRefresh": true,
+          "capabilitiesMs": 446,
+          "chatsMs": 1220.8,
+          "historyMs": 1716.3,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 32.3,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 409.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 27.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1189,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 37.4,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1673.5,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 60002,
+          "cycleMs": 4161.8,
+          "cliRefresh": false,
+          "capabilitiesMs": 34.4,
+          "chatsMs": 1128.1,
+          "historyMs": 2999.3,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 31.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 17.4,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1099.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 39.8,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 2952.8,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 75001.9,
+          "cycleMs": 3476.4,
+          "cliRefresh": false,
+          "capabilitiesMs": 41.2,
+          "chatsMs": 1335,
+          "historyMs": 2100.2,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 38.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 38.9,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1289.7,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 32,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 2062.7,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 90096.1,
+          "cycleMs": 3873.6,
+          "cliRefresh": true,
+          "capabilitiesMs": 845.2,
+          "chatsMs": 1449.6,
+          "historyMs": 1578.7,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 93.5,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 467,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 37.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1392.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 33.9,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1540.2,
+              "ok": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "mode": "stage-diagnostic",
+        "context": "agent-standard",
+        "workload": "each-host-first-chat-not-cross-host-matched",
+        "withCli": {
+          "count": 2,
+          "minMs": 3383.2,
+          "maxMs": 3873.6
+        },
+        "withoutCli": {
+          "count": 4,
+          "minMs": 2877.8,
+          "maxMs": 4161.8
+        },
+        "actualElapsedMs": 93979.4,
+        "parentCpuUserMs": 172.1,
+        "parentCpuSystemMs": 57,
+        "parentRssMiB": 34.1,
+        "childCpuAndEnergyAssessed": false,
+        "gateMeasurement": false
+      },
+      "cleanup": {
+        "confirmed": true,
+        "revocationVerified": true,
+        "shutdownVerified": true,
+        "stateVerified": true
+      }
+    },
+    {
+      "host": "M1",
+      "processType": "interactive",
+      "samples": [
+        {
+          "index": 0,
+          "firstInFreshRuntime": true,
+          "startOffsetMs": 2.4,
+          "cycleMs": 3974.5,
+          "cliRefresh": true,
+          "capabilitiesMs": 755.7,
+          "chatsMs": 1605.7,
+          "historyMs": 1613.1,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 372.8,
+              "ok": true
+            },
+            {
+              "stage": "reader.close",
+              "ms": 7.5,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 207.6,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 150.7,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 33.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1562.9,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 36.4,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1567.8,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 1,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 15002.5,
+          "cycleMs": 2947.3,
+          "cliRefresh": false,
+          "capabilitiesMs": 33.9,
+          "chatsMs": 1252.7,
+          "historyMs": 1660.7,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 30.5,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 22.4,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1226.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 33,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1621.8,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 2,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 30000.8,
+          "cycleMs": 3004.2,
+          "cliRefresh": false,
+          "capabilitiesMs": 37.7,
+          "chatsMs": 1310.3,
+          "historyMs": 1656.2,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 32.2,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 24.3,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1281.5,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 41.7,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1609.6,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 3,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 45000.2,
+          "cycleMs": 3410.4,
+          "cliRefresh": true,
+          "capabilitiesMs": 200.8,
+          "chatsMs": 1433.6,
+          "historyMs": 1776,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 36.6,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 160.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 31.8,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1396.8,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 38.9,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1731.9,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 4,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 60001.7,
+          "cycleMs": 2955,
+          "cliRefresh": false,
+          "capabilitiesMs": 38.2,
+          "chatsMs": 1260.1,
+          "historyMs": 1656.7,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 34.5,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 22.1,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1233.7,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 35.1,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1616,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 5,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 75001.9,
+          "cycleMs": 2737,
+          "cliRefresh": false,
+          "capabilitiesMs": 36.6,
+          "chatsMs": 1005.7,
+          "historyMs": 1694.8,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 33.6,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 19.6,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 981,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 38,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1651.2,
+              "ok": true
+            }
+          ]
+        },
+        {
+          "index": 6,
+          "firstInFreshRuntime": false,
+          "startOffsetMs": 90001,
+          "cycleMs": 3054.2,
+          "cliRefresh": true,
+          "capabilitiesMs": 188.2,
+          "chatsMs": 1193.2,
+          "historyMs": 1672.8,
+          "chats": 28,
+          "messages": 50,
+          "read": "unavailable",
+          "typing": "unavailable",
+          "events": [
+            {
+              "stage": "status",
+              "ms": 33.8,
+              "ok": true
+            },
+            {
+              "stage": "cli.status",
+              "ms": 150.7,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 26.4,
+              "ok": true
+            },
+            {
+              "stage": "chats.list",
+              "ms": 1162.4,
+              "ok": true
+            },
+            {
+              "stage": "status",
+              "ms": 35,
+              "ok": true
+            },
+            {
+              "stage": "messages.history",
+              "ms": 1632.5,
+              "ok": true
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "mode": "stage-diagnostic",
+        "context": "agent-interactive",
+        "workload": "each-host-first-chat-not-cross-host-matched",
+        "withCli": {
+          "count": 2,
+          "minMs": 3054.2,
+          "maxMs": 3410.4
+        },
+        "withoutCli": {
+          "count": 4,
+          "minMs": 2737,
+          "maxMs": 3004.2
+        },
+        "actualElapsedMs": 93057.8,
+        "parentCpuUserMs": 162.3,
+        "parentCpuSystemMs": 35.1,
+        "parentRssMiB": 77.6,
+        "childCpuAndEnergyAssessed": false,
+        "gateMeasurement": false
+      },
+      "cleanup": {
+        "confirmed": true,
+        "revocationVerified": true,
+        "shutdownVerified": true,
+        "stateVerified": true
+      }
+    }
+  ]
+}
