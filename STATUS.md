@@ -22,3 +22,6 @@ P0a/P0b readonly core/UI are implemented. P0c deployment remains stopped; no pro
 Review capacity: the independent diagnostic reviews completed; a later Sol internal-source task hit a usage limit and returned no result. Direct Claude review remains unavailable; neutral Markdown handoff exists. Account-wide remaining quota is not exposed by the available tools; no remaining-token estimate is assumed.
 
 Private machine paths, retained temporary states and detailed restart context are recorded in the owner's Vault project note, not in this public-safe file. No push/publication or OS reboot performed. Preserve unrelated worktree edits.
+# 2026-09-10 isolated candidate access checkpoint
+
+Both custom imsg candidates completed one read-only chats.list(limit=1) through the reviewed standalone supervisor and exited normally without TERM/KILL. See `docs/custom-read-preflight-record.md` for artifact digests, individual review dispositions, synthetic/native checks, and limitations. Linux supervisor suite: 22 passed; Mac checks covered equivalent lifecycle cases and platform-specific follow-ups. No application runtime/deployment changes. C06 is still unaccepted; next phase is matched release baseline/candidate measurement. The independent review usage-limit interruption is recorded; no result is inferred from that attempt.
