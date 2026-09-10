@@ -47,3 +47,26 @@ timing, epoch/target/HTTP failure, malformed DTOs, empty history, concurrency,
 redacted transport exceptions, fresh-arm IDs and invalid clocks. No sleeps,
 network, Mac access or live data are involved. Exact Node 24.20.0 remains pending.
 Production/browser suites were not rerun for this additive standalone helper.
+
+## Authenticated route integration — 2026-09-10 follow-up
+
+Added `tests/nonlaunch-api-workload.test.ts` to run the actual helper through
+`createApp` routing, authentication and response serialization using synthetic
+`ReadSource` data and in-process HTTP injection. Four cases cover a successful
+cycle followed by CSRF-protected logout, pre-request revocation with no source
+dispatch, revocation while history is pending, and a redacted upstream failure.
+Failures remain terminal and never count as measurements. Fixtures revoke all
+sessions and await application/source closure in teardown, including failed tests.
+
+The full application suite now passes 127 tests on available Node 24.19.0;
+the six standalone helper tests also pass. Typecheck passes on Node 22.23.1,
+and `git diff --check` is clean. No production source or UI changed. Browser,
+build, exact Node 24.20.0, and Mac checks were not rerun in this follow-up.
+
+This verifies compatibility with real API handlers, not a live transport or
+process supervisor: no socket, RPC child, owner state file, or Mac was created.
+In particular, the fixture explicitly closes its source; `createApp.close()`
+alone is not asserted to own or terminate RPC children. Bounded authenticated
+loopback transport and exact-owned process cleanup remain the next integration
+work, followed by the admission/parity/review gates above. No independent review
+or C06 acceptance is claimed.

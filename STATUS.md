@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-10 authenticated workload integration
+
+The nonlaunch workload now has four synthetic integration tests through the actual application routes/authentication/serialization: success and logout, revoked-session rejection without dispatch, revocation during pending history, and redacted upstream failure. Full suite: 127 passed on Node 24.19.0; standalone helper: six passed; typecheck passed on Node 22.23.1. No production/UI changes or remote execution. This does not test TCP deadlines or owned RPC exit; bounded loopback transport and process supervision are still required before live use. See [integration evidence and limits](docs/nonlaunch-api-workload.md). Production remains stopped.
+
 ## Latest update — 2026-09-10 API workload preparation
 
 Added a transport-free, fail-closed API cycle helper with six synthetic tests passing on Node 22.23.1 and 24.19.0. It emits only fixed categories/counts/timings and never claims C06 acceptance. No application/production changes or remote execution. [Preparation and remaining integration gates](docs/nonlaunch-api-workload.md) records the missing authenticated transport, artifact admission, cross-arm raw identity/parity, owned-child supervisor and independent review. These are still required before live measurement; the helper alone is not a runnable Mac harness.
