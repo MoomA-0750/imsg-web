@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-10 API workload preparation
+
+Added a transport-free, fail-closed API cycle helper with six synthetic tests passing on Node 22.23.1 and 24.19.0. It emits only fixed categories/counts/timings and never claims C06 acceptance. No application/production changes or remote execution. [Preparation and remaining integration gates](docs/nonlaunch-api-workload.md) records the missing authenticated transport, artifact admission, cross-arm raw identity/parity, owned-child supervisor and independent review. These are still required before live measurement; the helper alone is not a runnable Mac harness.
+
 ## Latest update — 2026-09-10 Web polling safety
 
 Automatic CLI status was removed from Web LiveSource before isolated API measurement. Basic reads retain RPC/DB checks; advanced read/typing now honestly report unknown with STATUS_PROBE_DISABLED and explanatory UI text. 123 tests passed on Node 24.19.0; typecheck/build and 10 browser tests passed. Exact pinned Node 24.20.0 and live Mac validation remain pending. See [implementation and next experiment boundary](docs/nonlaunch-status-result.md). This supersedes the next-step entries below: prepare a new reviewed application/API harness; do not reuse a342425's CLI-injecting diagnostic workload. Production remains stopped.
