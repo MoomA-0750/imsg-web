@@ -143,3 +143,41 @@ Next implementation must register every bootstrap/reopened child at creation,
 fail closed after forced/uncertain shutdown, close all registered handles on
 every failure path, and admit the owned listener before sending credentials.
 Artifact/source verification, cross-arm parity and C06 gates remain pending.
+
+## Owned-reader gate implementation — 2026-09-10 follow-up
+
+Added `scripts/nonlaunch-owned-readers.mjs`. Its synchronous factory requires a
+trusted constructor adapter to register each newly created ChildProcess before
+returning the RPC client. Registration observes close/errors/stderr and wraps
+that exact handle's kill method to record even failed signal attempts. There is
+no global spawn monkey-patch, PID discovery, or runnable live entry point.
+
+The gate allows at most bootstrap plus one usable reader. Wrapped client close
+requires observed, requested, zero-code/no-signal exit with no signal attempts
+or child errors. Forced or unexpected exit, stderr, missing/extra registration,
+and constructor failure prevent replacement construction. In particular, the
+native LiveSource integration now verifies that a stubborn bootstrap child is
+closed and rejected **before the second child is spawned**. Normal bootstrap
+and final shutdown still pass. Production source code has not changed.
+
+Gate close initiates client cleanup for all registered children, then uses
+bounded EOF/TERM/KILL waits against those exact handles, including a child left
+behind by a throwing constructor. Missing close acknowledgement destroys local
+pipes/unrefs the handle and returns allClosed:false, never success. An unresolved
+client-close promise also prevents allNormal:true even if the OS child closed.
+Output is only fixed booleans/counts with gateMeasurement:false. allNormal is
+lifecycle evidence, not workload success, listener ownership or C06 acceptance.
+
+Five standalone fault tests pass (constructor throw, missing close, signal with
+exit zero, registration/stderr violations, unexpected exit zero). Full suite,
+including two added native gate integrations: 133 passed on Node 24.19.0.
+Typecheck passes on Node 22.23.1. A subsequent sandboxed full run failed across
+existing subprocess/socket suites; approved unrestricted rerun passed all 133.
+No Mac, independent review, exact Node 24.20.0, browser or build run this turn.
+
+Remaining: the registration adapter is currently test-local. A reviewed isolated
+application constructor must ensure every actual spawn is registered; this gate
+cannot detect a trusted callback secretly creating an unregistered child. Wire
+that adapter to verified artifact admission and listener ownership, then join
+transport close, session revocation, source/gate close, and signal/whole-run
+deadlines in one supervisor. Do not use this module alone as live authorization.

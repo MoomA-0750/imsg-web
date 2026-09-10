@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { afterEach, expect, it, vi } from 'vitest';
 
-const tracking = vi.hoisted(() => ({ children: [] as { child: ChildProcess; closed: boolean; done: Promise<void> }[], events: [] as string[] }));
+const tracking = vi.hoisted(() => ({ children: [] as { child: ChildProcess; closed: boolean; done: Promise<void> }[], events: [] as string[], register: undefined as undefined | ((child: ChildProcess) => void) }));
 vi.mock('node:child_process', async importOriginal => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return { ...actual, spawn: (...args: Parameters<typeof actual.spawn>) => {
@@ -16,11 +16,14 @@ vi.mock('node:child_process', async importOriginal => {
       record.closed = true; tracking.events.push(`close-${index}`); resolve();
     }));
     tracking.children.push(record); tracking.events.push(`spawn-${index}`);
+    tracking.register?.(child);
     return child;
   } };
 });
 import { LiveSource } from '../src/server/live-source.js';
 import { ReadonlyRpcClient } from '../src/server/rpc/readonly-client.js';
+// @ts-expect-error Experimental standalone JavaScript helper has no declarations.
+import { createOwnedReaderGate } from '../scripts/nonlaunch-owned-readers.mjs';
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -33,16 +36,23 @@ afterEach(async () => {
   }
 });
 
-async function fixture(modes: string[]) {
+async function fixture(modes: string[], gate?: ReturnType<typeof createOwnedReaderGate>) {
   const dir = await mkdtemp(join(tmpdir(), 'iw-native-source-'));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'synthetic.db'); await writeFile(path, 'synthetic');
   let count = 0;
-  const source = new LiveSource({ executable: process.execPath, factory: () => new ReadonlyRpcClient({
+  const create = () => new ReadonlyRpcClient({
     executable: process.execPath,
     args: [fileURLToPath(new URL('./fixtures/nonlaunch-source-rpc.mjs', import.meta.url)), path, modes[count++] ?? 'normal'],
     timeoutMs: 5000, shutdownGraceMs: 80,
-  }) });
+  });
+  const source = new LiveSource({ executable: process.execPath, factory: () => {
+    if (!gate) return create();
+    return gate.factory((register: (child: ChildProcess) => void) => {
+      tracking.register = register;
+      try { return create(); } finally { tracking.register = undefined; }
+    });
+  } });
   cleanups.push(() => source.close().catch(() => {}));
   return source;
 }
@@ -85,4 +95,24 @@ it('records that successful source bootstrap alone does not prove normal child e
   expect(tracking.events).toEqual(['spawn-0', 'close-0', 'spawn-1']);
   await source.close();
   expect(tracking.children.every(r => r.closed)).toBe(true);
+});
+
+it('measurement gate rejects forced bootstrap close before a second child can spawn', async () => {
+  const gate = createOwnedReaderGate({ graceMs: 100, killWaitMs: 1000 });
+  cleanups.push(() => gate.close());
+  const source = await fixture(['stubborn', 'normal'], gate);
+  await expect(source.capabilities()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
+  expect(tracking.children).toHaveLength(1);
+  await expect(source.capabilities()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
+  expect(await gate.close()).toEqual({ gateMeasurement: false, children: 1, allClosed: true, allNormal: false, signalAttempted: true });
+});
+
+it('measurement gate accepts normal bootstrap and shutdown while preventing future construction', async () => {
+  const gate = createOwnedReaderGate({ graceMs: 100, killWaitMs: 1000 });
+  cleanups.push(() => gate.close());
+  const source = await fixture(['normal', 'normal'], gate);
+  await source.capabilities();
+  await source.close();
+  expect(await gate.close()).toEqual({ gateMeasurement: false, children: 2, allClosed: true, allNormal: true, signalAttempted: false });
+  expect(() => gate.factory(() => { throw new Error('must not run'); })).toThrow('OWNED_READER_FAILED');
 });

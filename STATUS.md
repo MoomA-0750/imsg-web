@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-10 owned-reader gate
+
+Implemented an experimental exact-handle lifecycle gate: forced/unexpected exit and signal attempts reject an arm and prevent bootstrap replacement. Bounded cleanup includes constructor-orphan children and reports missing close acknowledgement as failure. Two native integrations plus five standalone fault tests pass; full suite 133 passed on Node 24.19.0 and typecheck passed on Node 22.23.1. No production source change or Mac execution. Registration remains test-local: a reviewed real constructor adapter, artifact/listener admission and joined session/transport/process supervision are still required before live measurement. [Implementation boundary](docs/nonlaunch-api-workload.md).
+
 ## Latest update — 2026-09-10 native source lifecycle tests
 
 Three new tests exercise production LiveSource/ReadonlyRpcClient with real synthetic Node children: bootstrap closes before reopening, stuck history is interrupted and the owned child closes, and forced bootstrap exit is distinguished from normal exit. Full suite: 131 passed on Node 24.19.0; typecheck passed on Node 22.23.1. Important supervisor requirement: source.close resolving is not sufficient for a clean measurement, because existing RPC close accepts confirmed forced exit. Capture exit code/signal and signal attempts for every child and reject such arms. No runnable experiment supervisor or production changes yet; no Mac execution. [Evidence and next implementation requirements](docs/nonlaunch-api-workload.md).
