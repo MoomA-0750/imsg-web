@@ -4,6 +4,8 @@ import { createApp } from '../src/server/http.js';
 import type { ReadSource } from '../src/shared/web-types.js';
 // @ts-expect-error Standalone Node diagnostic is JavaScript without declarations.
 import { createApiWorkload } from '../scripts/nonlaunch-api-workload.mjs';
+// @ts-expect-error Standalone Node diagnostic is JavaScript without declarations.
+import { createApiTransport } from '../scripts/nonlaunch-api-transport.mjs';
 
 const HOST = 'imsg.synthetic.test', ORIGIN = `https://${HOST}`;
 const KEY = 'A'.repeat(43), ID = 'C'.repeat(43), BODY = 'SYNTHETIC_PRIVATE_BODY';
@@ -86,4 +88,20 @@ it('stops on a real API error without exposing upstream details or reading histo
   expect(await f.cycle()).toEqual({ outcome: 'unavailable', gateMeasurement: false });
   expect(f.source.chats).toHaveBeenCalledTimes(1);
   expect(f.source.history).not.toHaveBeenCalled();
+});
+
+it('runs the workload over bounded loopback HTTP against the authenticated application', async () => {
+  const f = await fixture();
+  await f.app.listen({ host: '127.0.0.1', port: 0 });
+  const address = f.app.server.address();
+  if (!address || typeof address === 'string') throw new Error('Expected TCP listener');
+  // Test fixture owns this listener. Production supervisor admission is pending.
+  const transport = createApiTransport({ port: address.port, origin: ORIGIN, cookie: f.cookie });
+  try {
+    const cycle = createApiWorkload(transport.get);
+    expect(await cycle()).toMatchObject({ outcome: 'ok', gateMeasurement: false, chats: 1, messages: 1 });
+    f.auth.revokeAll();
+    expect(await cycle()).toEqual({ outcome: 'failed', phase: 'capabilities', gateMeasurement: false });
+    expect(f.source.capabilities).toHaveBeenCalledTimes(1);
+  } finally { await transport.close(); }
 });

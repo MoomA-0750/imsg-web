@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-10 bounded loopback transport
+
+Added GET-only measurement transport restricted to literal loopback and workload paths, with absolute request deadlines, byte/header bounds, redacted failures, no redirects/retries, and awaited local socket closure on abort/close. Seven synthetic transport tests and all 128 application tests pass on Node 24.19.0; typecheck passes on Node 22.23.1. The workload now also has an authenticated real-loopback integration test. Local connection cleanup is not proof of upstream RPC cancellation or child exit. Next remains exact-owned process/listener admission and lifecycle supervision, then parity/review/live gates. No Mac or production changes; production remains stopped. [Evidence and boundaries](docs/nonlaunch-api-workload.md).
+
 ## Latest update — 2026-09-10 authenticated workload integration
 
 The nonlaunch workload now has four synthetic integration tests through the actual application routes/authentication/serialization: success and logout, revoked-session rejection without dispatch, revocation during pending history, and redacted upstream failure. Full suite: 127 passed on Node 24.19.0; standalone helper: six passed; typecheck passed on Node 22.23.1. No production/UI changes or remote execution. This does not test TCP deadlines or owned RPC exit; bounded loopback transport and process supervision are still required before live use. See [integration evidence and limits](docs/nonlaunch-api-workload.md). Production remains stopped.

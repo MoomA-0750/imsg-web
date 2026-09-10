@@ -70,3 +70,44 @@ alone is not asserted to own or terminate RPC children. Bounded authenticated
 loopback transport and exact-owned process cleanup remain the next integration
 work, followed by the admission/parity/review gates above. No independent review
 or C06 acceptance is claimed.
+
+## Bounded loopback transport — 2026-09-10 follow-up
+
+Added `scripts/nonlaunch-api-transport.mjs`, an experimental authenticated GET
+transport consumed by the existing workload. It connects only to literal
+127.0.0.1 at a supplied port, sends a canonical configured HTTPS origin as
+Host/Origin and a strictly shaped session cookie, and accepts only the three
+workload routes (history IDs use the application's 43-character token shape).
+It does not follow redirects, use proxies, retry, log responses, authenticate
+an owner, or run on import. Each request uses a separate nonpersistent socket.
+
+The request deadline includes headers and body, is not reset by incoming bytes,
+and is checked around JSON parsing. Responses are limited to at most 4 MiB and
+16 KiB headers; malformed UTF-8/JSON, encoded/non-JSON content, non-200 status,
+truncation, and abort fail with a fixed error. Failed transports are terminal;
+overlapping calls are rejected without issuing another request. Failure destroys
+the local request/response/socket. Settlement waits for request and socket close;
+`close()` prevents future requests and waits for active local transport teardown.
+
+**Local socket closure does not mean upstream work stopped.** The application may
+still await an RPC after a client disconnect. This is not RPC cancellation or an
+owned-process exit guarantee, and it does not replace supervisor cleanup. A
+loopback port also does not prove listener ownership: a reviewed supervisor must
+establish that before handing a credential to this transport. Login, revocation,
+artifact/runtime admission, signals, whole-run deadlines and source/child exit
+confirmation remain outside this helper. No live use is approved by these tests.
+
+Seven standalone synthetic HTTP tests pass on Node 24.19.0, including continuous
+body bytes, no response headers, abort/close, malformed/oversized responses,
+redirect rejection and exact request headers. The sandbox initially denied
+loopback listening (EPERM); these tests passed after explicit execution approval.
+One additional full-workload test now runs against the actual authenticated app
+over loopback, then verifies revoked-session rejection. Full application suite:
+128 passed on Node 24.19.0; typecheck passed on Node 22.23.1. Production sources,
+UI and installed Mac artifacts remain unchanged. Exact Node 24.20.0, browser/build,
+independent review and Mac performance checks were not run in this follow-up.
+
+Run the standalone suite with `node scripts/nonlaunch-api-transport.test.mjs`.
+The earlier remaining-gates list now requires supervisor integration/review of
+this transport rather than its initial implementation. Next: exact-owned
+application/RPC lifecycle and listener admission, with failure-path tests.
