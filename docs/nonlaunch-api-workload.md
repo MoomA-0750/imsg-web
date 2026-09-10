@@ -111,3 +111,35 @@ Run the standalone suite with `node scripts/nonlaunch-api-transport.test.mjs`.
 The earlier remaining-gates list now requires supervisor integration/review of
 this transport rather than its initial implementation. Next: exact-owned
 application/RPC lifecycle and listener admission, with failure-path tests.
+
+## Native source lifecycle evidence — 2026-09-10 follow-up
+
+Added `tests/nonlaunch-source-lifecycle.test.ts` and a synthetic Node RPC child
+fixture. Unlike earlier fake-source route tests, these use production LiveSource
+and ReadonlyRpcClient with real subprocesses. The test-local spawn wrapper keeps
+the exact returned ChildProcess handles and registers close observation before
+returning each handle. It does not discover or signal arbitrary numeric PIDs.
+The fixture uses a temporary synthetic file only, not Messages DB or imsg.
+
+Three passing cases establish:
+
+- Bootstrap child `close` occurs before usable-reader spawn. Both children exit
+  normally for a successful capabilities/chats/history session and source close.
+- A history child ignoring stdin EOF and SIGTERM is killed with SIGKILL when the
+  source closes; the pending history rejects, close is observed, and subsequent
+  reads do not create another child.
+- **A resolved source bootstrap is not evidence of normal bootstrap-child exit.**
+  ReadonlyRpcClient.close accepts confirmed forced exit; LiveSource can then open
+  the usable reader. This is existing application recovery behavior, not changed
+  by this work. A measurement supervisor must reject such an arm explicitly,
+  using exit code/signal and signal-attempt observations rather than only awaiting
+  source.close or checking the client's logical closed flag.
+
+The full suite passes 131 tests on available Node 24.19.0, and typecheck passes
+on Node 22.23.1. Production code remains unchanged. No Mac, exact Node 24.20.0,
+browser/build or independent review was run. This is lifecycle evidence, not a
+completed supervisor: test-local capture is not wired into a runnable experiment.
+Next implementation must register every bootstrap/reopened child at creation,
+fail closed after forced/uncertain shutdown, close all registered handles on
+every failure path, and admit the owned listener before sending credentials.
+Artifact/source verification, cross-arm parity and C06 gates remain pending.

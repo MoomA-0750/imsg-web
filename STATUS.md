@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-10 native source lifecycle tests
+
+Three new tests exercise production LiveSource/ReadonlyRpcClient with real synthetic Node children: bootstrap closes before reopening, stuck history is interrupted and the owned child closes, and forced bootstrap exit is distinguished from normal exit. Full suite: 131 passed on Node 24.19.0; typecheck passed on Node 22.23.1. Important supervisor requirement: source.close resolving is not sufficient for a clean measurement, because existing RPC close accepts confirmed forced exit. Capture exit code/signal and signal attempts for every child and reject such arms. No runnable experiment supervisor or production changes yet; no Mac execution. [Evidence and next implementation requirements](docs/nonlaunch-api-workload.md).
+
 ## Latest update — 2026-09-10 bounded loopback transport
 
 Added GET-only measurement transport restricted to literal loopback and workload paths, with absolute request deadlines, byte/header bounds, redacted failures, no redirects/retries, and awaited local socket closure on abort/close. Seven synthetic transport tests and all 128 application tests pass on Node 24.19.0; typecheck passes on Node 22.23.1. The workload now also has an authenticated real-loopback integration test. Local connection cleanup is not proof of upstream RPC cancellation or child exit. Next remains exact-owned process/listener admission and lifecycle supervision, then parity/review/live gates. No Mac or production changes; production remains stopped. [Evidence and boundaries](docs/nonlaunch-api-workload.md).
