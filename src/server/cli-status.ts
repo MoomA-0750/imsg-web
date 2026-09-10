@@ -2,7 +2,9 @@ import { spawn } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { RpcError } from './rpc/errors.js';
 
-/** Fixed read-only command; bounded stdout, drained stderr, no raw diagnostics returned. */
+/** Explicit diagnostic only: upstream CLI status can launch/repair Messages.app.
+ * Never use for automatic Web polling or isolated no-launch experiments.
+ * Bounded stdout, drained stderr, no raw diagnostics returned. */
 export function cliStatus(executable: string): Promise<unknown> {
   if (!isAbsolute(executable) || executable.includes('\0')) return Promise.reject(new RpcError('CONFIG_INVALID'));
   return new Promise((resolve, reject) => {

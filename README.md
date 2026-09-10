@@ -6,6 +6,8 @@ An early foundation for a single-owner, self-hosted iMessage web interface on ma
 
 ## 開発と診断
 
+Webの機能確認はRPCのみを使用します。既読・入力中の安全な機能確認は未実装のため、状態を「未確認」と表示します。明示的な `doctor` は引き続きCLI statusを呼び、上流実装によりMessages.appを起動・修復する可能性があります。アプリを起動しない検証には使用しないでください。
+
 Node **24.20.0**を専用パスへ用意し、その `bin` をPATHの先頭に置きます。既存のNodeを置き換える必要はありません。`imsg`は別途導入し、Messages DBを読む権限を所有者が設定してください。このツールは権限を変更しません。
 
 ```sh

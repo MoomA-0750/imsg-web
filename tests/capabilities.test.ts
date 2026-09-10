@@ -30,10 +30,16 @@ describe('P0a A03 fixed capability truth table', () => {
     expect(c.typing).toEqual(c.read);
     expect(c.send.state).toBe('unknown');
   });
-  it('does not turn independent reads off if CLI status fails', () => {
+  it('keeps basic reads available with advanced discovery disabled', () => {
     const c = capabilities(rpc(), undefined);
     expect(c.chats.state).toBe('available'); expect(c.contacts.state).toBe('available');
-    expect(c.read).toEqual({ state: 'unknown', reasonCode: 'CLI_STATUS_INVALID' });
+    expect(c.read).toEqual({ state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' });
+    expect(c.typing).toEqual(c.read);
+    expect(capabilities(null).read.reasonCode).toBe('RPC_STATUS_INVALID');
+    expect(capabilities(rpc('1.2.3')).read.reasonCode).toBe('VERSION_UNTESTED');
+  });
+  it.each([null, {}, [], 'invalid'])('keeps malformed supplemental evidence distinct %#', cli => {
+    expect(capabilities(rpc(), cli).read.reasonCode).toBe('CLI_STATUS_INVALID');
   });
   it('distinguishes DB denial, method absence, and unknown versions', () => {
     const r = rpc(); r.database.ready = false;

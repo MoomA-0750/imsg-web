@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-10 Web polling safety
+
+Automatic CLI status was removed from Web LiveSource before isolated API measurement. Basic reads retain RPC/DB checks; advanced read/typing now honestly report unknown with STATUS_PROBE_DISABLED and explanatory UI text. 123 tests passed on Node 24.19.0; typecheck/build and 10 browser tests passed. Exact pinned Node 24.20.0 and live Mac validation remain pending. See [implementation and next experiment boundary](docs/nonlaunch-status-result.md). This supersedes the next-step entries below: prepare a new reviewed application/API harness; do not reuse a342425's CLI-injecting diagnostic workload. Production remains stopped.
+
 P0a/P0b readonly core/UI are implemented. P0c deployment remains stopped; no production Tailscale route or permanent Agent. Latest application artifact on both Macs is a342425. This checkpoint adds diagnostic tooling and evidence, not a performance fix or upstream imsg change.
 
 ## Completed

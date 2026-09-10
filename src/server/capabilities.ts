@@ -3,7 +3,7 @@ import { isObject } from './rpc/errors.js';
 export const TESTED_VERSIONS = ['0.14.2', '0.15.1'] as const;
 export type Reason = 'SUPPORTED' | 'RPC_STATUS_INVALID' | 'VERSION_UNTESTED'
   | 'DATABASE_UNAVAILABLE' | 'METHOD_UNAVAILABLE' | 'CONTACTS_UNAVAILABLE'
-  | 'CLI_STATUS_INVALID' | 'SIP_ENABLED' | 'FEATURE_UNAVAILABLE' | 'NOT_IMPLEMENTED';
+  | 'CLI_STATUS_INVALID' | 'STATUS_PROBE_DISABLED' | 'SIP_ENABLED' | 'FEATURE_UNAVAILABLE' | 'NOT_IMPLEMENTED';
 export type Capability = { state: 'available' | 'unavailable' | 'unknown'; reasonCode: Reason };
 export type Status = {
   version: string; protocolVersion: number; databaseReady: boolean;
@@ -25,7 +25,7 @@ export function parseStatus(input: unknown): Status | undefined {
 }
 
 const cap = (state: Capability['state'], reasonCode: Reason): Capability => ({ state, reasonCode });
-export function capabilities(rpc: unknown, cli: unknown): Record<'chats' | 'history' | 'watch' | 'contacts' | 'read' | 'typing' | 'send', Capability> {
+export function capabilities(rpc: unknown, cli?: unknown): Record<'chats' | 'history' | 'watch' | 'contacts' | 'read' | 'typing' | 'send', Capability> {
   const status = parseStatus(rpc);
   const invalid = status === undefined ? 'RPC_STATUS_INVALID'
     : status.protocolVersion !== 1 || !(TESTED_VERSIONS as readonly string[]).includes(status.version) ? 'VERSION_UNTESTED' : undefined;
@@ -35,6 +35,7 @@ export function capabilities(rpc: unknown, cli: unknown): Record<'chats' | 'hist
     : cap('available', 'SUPPORTED');
   const advanced = (method: 'read' | 'typing', flag: string): Capability => {
     if (invalid) return cap('unknown', invalid);
+    if (cli === undefined) return cap('unknown', 'STATUS_PROBE_DISABLED');
     if (!isObject(cli) || cli.version !== status!.version) return cap('unknown', 'CLI_STATUS_INVALID');
     if (cli.sip === 'enabled') return cap('unavailable', 'SIP_ENABLED');
     if (cli[flag] === false) return cap('unavailable', 'FEATURE_UNAVAILABLE');

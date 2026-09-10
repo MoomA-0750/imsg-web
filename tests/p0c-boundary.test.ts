@@ -55,7 +55,7 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
     const f = await fixture(sip), session = await f.login();
     const caps = await f.get(session.cookie, '/api/capabilities');
     expect(caps.statusCode).toBe(200);
-    expect(caps.json()).toMatchObject({ mode: 'readonly', features: { chats: { state: 'available' }, history: { state: 'available' }, read: { state: sip === 'enabled' ? 'unavailable' : 'available' }, typing: { state: sip === 'enabled' ? 'unavailable' : 'available' } } });
+    expect(caps.json()).toMatchObject({ mode: 'readonly', features: { chats: { state: 'available' }, history: { state: 'available' }, read: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' }, typing: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' } } });
     const chats = await f.get(session.cookie, '/api/chats?limit=50');
     expect(chats.statusCode).toBe(200);
     const id = chats.json().chats[0].id as string;
@@ -80,9 +80,9 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
     } finally { await client.close(); }
     await f.source.close();
     const rows = await f.audit(), spawns = rows.filter(row => row.kind === 'spawn'), requests = rows.filter(row => row.kind === 'request');
-    expect(spawns.map(row => row.args)).toEqual([['rpc'], ['rpc'], ['status', '--json'], ['rpc']]);
+    expect(spawns.map(row => row.args)).toEqual([['rpc'], ['rpc'], ['rpc']]);
     const launches = vi.mocked(spawn).mock.calls.slice(spawnStart);
-    expect(launches.map(call => call[0])).toEqual(Array(4).fill(f.executable));
+    expect(launches.map(call => call[0])).toEqual(Array(3).fill(f.executable));
     expect(launches.map(call => call[1])).toEqual(spawns.map(row => row.args));
     for (const call of launches) expect(call[2]).toMatchObject({ shell: false });
     expect(requests.map(row => row.method)).toEqual(['status', 'status', 'status', 'chats.list', 'status', 'messages.history', 'status', 'watch.subscribe', 'watch.unsubscribe']);

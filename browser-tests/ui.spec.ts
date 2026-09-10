@@ -4,6 +4,15 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   await expect(page.getByRole('button', { name: /合成テスト会話 Alpha/ })).toBeVisible();
 }
+test('explains disabled advanced discovery without claiming SIP or permission state', async ({ page }) => {
+  await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
+    chats: { state: 'available', reasonCode: 'SUPPORTED' },
+    read: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' },
+    typing: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' },
+  } } }));
+  await login(page);
+  await expect(page.getByRole('status').filter({ hasText: '既読・入力中の機能状態' })).toHaveText('既読・入力中の機能状態は未確認です。安全に確認する機能はまだ実装されていません。');
+});
 test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and no durable private state', async ({ page, context }) => {
   await login(page);
   const cookies = await context.cookies(); const cookie = cookies.find(c => c.name === '__Host-imsg_session')!;

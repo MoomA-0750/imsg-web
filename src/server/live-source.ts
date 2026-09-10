@@ -4,16 +4,14 @@ import { isAbsolute } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot } from '../shared/web-types.js';
 import { ReadonlyAdapter } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
-import { isObject, RpcError } from './rpc/errors.js';
+import { isObject } from './rpc/errors.js';
 import { capabilities } from './capabilities.js';
-import { cliStatus } from './cli-status.js';
 import { WebError } from './web-error.js';
 
 type Client = Pick<ReadonlyRpcClient, 'request' | 'close' | 'closed'>;
 export type SourceOptions = {
   executable: string;
   factory?: () => Client;
-  getCli?: () => Promise<unknown>;
 };
 export function clip(text: string, length: number) {
   const cut = text.length > length;
@@ -34,8 +32,6 @@ export class LiveSource implements ReadSource {
   #stopped = false;
   #closeFailed = false;
   #closing: Promise<void> | undefined;
-  #cli: unknown;
-  #cliAt = 0;
   constructor(private readonly options: SourceOptions) {}
   #id(kind: string, value: string): string { return createHmac('sha256', this.#key).update(`${this.#epoch}:${kind}:${value}`).digest('base64url'); }
   #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); }
@@ -108,7 +104,7 @@ export class LiveSource implements ReadSource {
   chats(limit: number): Promise<ChatSnapshot> {
     return this.#queue(`chats:${limit}`, async () => {
       const c = await this.#context();
-      const features = capabilities(c.raw, this.#cli);
+      const features = capabilities(c.raw);
       if (features.chats.state !== 'available') throw new WebError(features.chats.reasonCode);
       const rows = await c.adapter.chats(limit);
       await this.#verify(c.path, c.identity, c.epoch);
@@ -125,7 +121,7 @@ export class LiveSource implements ReadSource {
       const target = this.#map.get(id); if (!target) throw new WebError('STALE_CHAT', 409);
       const c = await this.#context();
       if (!this.#map.has(id)) throw new WebError('DB_CHANGED', 409);
-      if (capabilities(c.raw, this.#cli).history.state !== 'available') throw new WebError('HISTORY_UNAVAILABLE');
+      if (capabilities(c.raw).history.state !== 'available') throw new WebError('HISTORY_UNAVAILABLE');
       const rows = await c.adapter.history(target.row, limit);
       await this.#verify(c.path, c.identity, c.epoch);
       return { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
@@ -137,16 +133,8 @@ export class LiveSource implements ReadSource {
   capabilities(): Promise<CapabilitySnapshot> {
     return this.#queue('capabilities', async () => {
       const c = await this.#context();
-      if (Date.now() - this.#cliAt > 30_000) {
-        try { this.#cli = await (this.options.getCli?.() ?? cliStatus(this.options.executable)); }
-        catch (error) {
-          if (error instanceof RpcError && error.code === 'SHUTDOWN_FAILED') { this.#closeFailed = true; throw new WebError('READER_RECOVERY_REQUIRED'); }
-          this.#cli = undefined;
-        }
-        this.#cliAt = Date.now();
-      }
       await this.#verify(c.path, c.identity, c.epoch);
-      return { epoch: this.#epoch, mode: 'readonly', features: capabilities(c.raw, this.#cli) };
+      return { epoch: this.#epoch, mode: 'readonly', features: capabilities(c.raw) };
     });
   }
   close(): Promise<void> {

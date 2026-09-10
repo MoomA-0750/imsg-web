@@ -3,7 +3,9 @@ import { mkdtemp, open, rename, writeFile, rm, unlink, type FileHandle } from 'n
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LiveSource, clip } from '../src/server/live-source.js';
-import { RpcError } from '../src/server/rpc/errors.js';
+const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn(), forbiddenSpawn: vi.fn() }));
+vi.mock('../src/server/cli-status.js', () => ({ cliStatus: forbiddenCli }));
+vi.mock('node:child_process', () => ({ spawn: forbiddenSpawn }));
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -37,7 +39,7 @@ async function setup() {
       throw new Error('unexpected method');
     } };
   };
-  const source = new LiveSource({ executable: '/synthetic/imsg', factory, getCli: async () => ({ version: '0.15.1', sip: 'enabled' }) });
+  const source = new LiveSource({ executable: '/synthetic/imsg', factory });
   cleanups.push(async () => { failClose = false; hold?.resolve(); await source.close().catch(() => {}); for (const h of handles) await h.close().catch(() => {}); });
   const replace = async () => { await writeFile(join(dir, 'replacement'), 'new'); await rename(join(dir, 'replacement'), path); };
   return { source, calls, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
@@ -95,14 +97,27 @@ describe('B04 DB generation and reader lifetime', () => {
     await expect(f.source.chats(50)).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' }); expect(f.created).toBe(count);
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
-  it('does not report clean close after a detached CLI child whose stop is uncertain', async () => {
+  it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {
     const f = await setup();
-    // Exercise the real source path with an injected CLI shutdown failure.
-    const dir = await mkdtemp(join(tmpdir(), 'iw-cli-')); cleanups.push(() => rm(dir, { recursive: true, force: true }));
-    const path = join(dir, 'db'); await writeFile(path, 'synthetic');
-    const source = new LiveSource({ executable: '/synthetic/imsg', factory: () => ({ closed: false, close: async () => {}, request: async () => ({ version: '0.15.1', protocol_version: 1, database: { ready: true, path }, bridge: { ready: false }, contacts: { available: false }, methods: ['status'] }) }), getCli: async () => { throw new RpcError('SHUTDOWN_FAILED'); } });
-    await expect(source.capabilities()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
-    await expect(source.close()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
-    await f.source.close();
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      clock.mockReturnValue(100_000);
+      expect((await f.source.capabilities()).features.read).toEqual({ state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' });
+      const chats = await f.source.chats(50);
+      clock.mockReturnValue(131_001);
+      await Promise.all([f.source.capabilities(), f.source.capabilities(), f.source.chats(50), f.source.history(chats.chats[0]!.id, 50)]);
+      expect(f.calls).toContain('messages.history');
+      expect(f.calls.every(method => ['status', 'chats.list', 'messages.history'].includes(method))).toBe(true);
+      expect(forbiddenCli).not.toHaveBeenCalled();
+      expect(forbiddenSpawn).not.toHaveBeenCalled();
+    } finally { clock.mockRestore(); }
+  });
+  it('does not report clean shutdown after RPC close fails during capability bootstrap', async () => {
+    const f = await setup(); f.setFailClose();
+    await expect(f.source.capabilities()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
+    const created = f.created;
+    await expect(f.source.capabilities()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
+    await expect(f.source.close()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
+    expect(f.created).toBe(created);
   });
 });
