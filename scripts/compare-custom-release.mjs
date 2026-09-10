@@ -5,7 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { probe, verifyArtifact } from './custom-read-preflight.mjs';
 
 const order = ['A', 'B', 'B', 'A', 'A', 'B', 'B', 'A'];
-function canonical(value) {
+export function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
   return JSON.stringify(value);

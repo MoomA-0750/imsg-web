@@ -25,18 +25,22 @@ export async function verifyArtifact(root, executable, digest) {
 }
 
 // Test seam takes a factory, never a CLI-controlled command or RPC method.
-export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitMs = 2000, signals = process, limit = 1, observe = () => {} } = {}) {
+export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitMs = 2000, signals = process, limit = 1, observe = () => {}, history = false, target, observeTarget = () => {}, observeHistory = () => {}, overallMs = 90000 } = {}) {
   if (![1, 50].includes(limit)) throw new Error('precondition');
+  if (history && target !== undefined && (!Number.isSafeInteger(target) || target <= 0)) throw new Error('precondition');
   return new Promise(resolve => {
     const start = performance.now();
     let child, failure, output = Buffer.alloc(0), total = 0, result;
     let stopping = false, settled = false, sentTerm = false, sentKill = false;
+    let stage = 0, issued = start, pending = false, requestTimer;
+    const histories = [];
     const timers = [], handlers = new Map();
     const later = (fn, ms) => { timers.push(setTimeout(fn, ms)); };
     const finish = (closed, code = null, signal = null) => {
       if (settled) return;
       settled = true;
       for (const timer of timers) clearTimeout(timer);
+      clearTimeout(requestTimer);
       for (const [name, fn] of handlers) signals.off(name, fn);
       if (!closed) {
         failure = 'cleanup';
@@ -53,6 +57,7 @@ export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitM
     const stop = () => {
       if (stopping || settled) return;
       stopping = true;
+      clearTimeout(requestTimer);
       child?.stdin.end();
       later(() => {
         if (settled) return;
@@ -75,30 +80,62 @@ export function probe(createChild, { timeoutMs = 15000, graceMs = 500, killWaitM
     child.stdout.on('data', chunk => {
       if (settled) return;
       total += chunk.length;
-      if (total > 1024 * 1024) { fail('oversize'); return; }
+      if (total > (history ? 8 : 1) * 1024 * 1024) { fail('oversize'); return; }
       if (failure) return;
       output = Buffer.concat([output, chunk]);
+      if (output.indexOf(10) === -1 && output.length > 1024 * 1024) { fail('oversize'); return; }
       let at;
       while ((at = output.indexOf(10)) !== -1) {
         const line = output.subarray(0, at); output = output.subarray(at + 1);
+        if (line.length > 1024 * 1024) { fail('oversize'); return; }
         try {
           const msg = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line));
-          if (result || !record(msg) || msg.jsonrpc !== '2.0' || msg.id !== request.id ||
+          const expectedID = stage === 0 ? request.id : `history-${stage-1}`;
+          if (result || !pending || !record(msg) || msg.jsonrpc !== '2.0' || msg.id !== expectedID ||
               Object.keys(msg).some(k => !['jsonrpc', 'id', 'result'].includes(k)) ||
-              !record(msg.result) || !Array.isArray(msg.result.chats) || msg.result.chats.length > limit ||
-              !msg.result.chats.every(c => record(c) && Number.isSafeInteger(c.id) && c.id > 0 &&
-                (!Object.hasOwn(c, 'contact_name') || typeof c.contact_name === 'string'))) throw new Error();
-          result = { responseMs: Math.round(performance.now() - start), rows: msg.result.chats.length, namedRows: msg.result.chats.filter(c => typeof c.contact_name === 'string').length };
-          observe(msg.result);
-          stop();
+              !record(msg.result)) throw new Error();
+          const rows = stage === 0 ? msg.result.chats : msg.result.messages;
+          const optionalNames = row => ['sender_name','contact_name'].every(k => !Object.hasOwn(row,k) || typeof row[k] === 'string');
+          if (!Array.isArray(rows) || rows.length > (history ? 50 : limit) ||
+              !rows.every(c => record(c) && Number.isSafeInteger(c.id) && c.id > 0 && optionalNames(c))) throw new Error();
+          if (stage > 0 && !rows.every(c => c.chat_id === target && typeof c.is_from_me === 'boolean' && Array.isArray(c.reactions) && c.reactions.every(r => record(r) && typeof r.is_from_me === 'boolean' && optionalNames(r)))) throw new Error();
+          const responseMs = Math.round(performance.now() - issued);
+          clearTimeout(requestTimer); pending = false;
+          if (stage === 0) {
+            if (!history) {
+              result = { responseMs, rows: rows.length, namedRows: rows.filter(c => typeof c.contact_name === 'string').length };
+              observe(msg.result); stop();
+            } else {
+              const chosen = target === undefined ? rows.find(c => c.is_group === false) : rows.find(c => c.id === target && c.is_group === false);
+              if (!chosen) { fail('no-target'); return; }
+              target = chosen.id; observeTarget(target);
+              stage++; queueMicrotask(issue);
+            }
+          } else {
+            observeHistory(msg.result,stage-1);
+            histories.push({responseMs,rows:rows.length,namedRows:rows.filter(c=>typeof c.sender_name==='string').length,
+              incoming:rows.filter(c=>!c.is_from_me).length + rows.flatMap(c=>c.reactions).filter(r=>!r.is_from_me).length});
+            if (stage === 4) { result = { histories }; stop(); }
+            else { stage++; queueMicrotask(issue); }
+          }
         } catch { fail('protocol'); return; }
       }
+      if (output.length > 1024 * 1024) fail('oversize');
     });
     for (const name of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
       const fn = () => fail('interrupted'); handlers.set(name, fn); signals.on(name, fn);
     }
-    later(() => fail('timeout'), timeoutMs);
-    child.stdin.write(`${JSON.stringify({ ...request, params: { limit } })}\n`);
+    function issue() {
+      if (stopping || settled || failure) return;
+      const next = stage === 0 ? { ...request, params: { limit: history ? 50 : limit } } :
+        { jsonrpc:'2.0',id:`history-${stage-1}`,method:'messages.history',params:{chat_id:target,limit:50,attachments:false,convert_attachments:false} };
+      if (stage !== 0) issued = performance.now();
+      pending = true;
+      requestTimer = setTimeout(() => fail('timeout'), timeoutMs);
+      child.stdin.write(`${JSON.stringify(next)}\n`);
+    }
+    if (history) later(() => fail('overall-timeout'),overallMs);
+    issue();
   });
 }
 
