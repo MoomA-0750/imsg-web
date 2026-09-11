@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 private registry + external absence integration
+
+Connected the synthetic measurement worker's listener/two RPC registrations to the parent over a separate bounded fd3 channel. Exact ordered records, seal and EOF are required; successful stdout cannot bypass missing registration. Complete registries feed external PID/port absence checks without logging identities or upgrading failed measurements. Six registry and four worker-bridge tests pass on Node24.19.0. Broader descendant proof, crash-mid-registration coverage, review and Mac artifact admission remain pending; no production/Mac change. [Registry trust boundary and tests](docs/nonlaunch-residue.md).
+
 ## Latest update — 2026-09-11 external residue observation
 
 Added read-only observation of registered PIDs and loopback listener: ambiguous errors/incomplete registries fail closed, no discovered-PID/group termination or lock release. Three native synthetic tests pass on Node24.19.0, including a killed worker whose child/listener survive. Normal reaped exit is distinguishable from residual resources. Actual measurement-worker registry transfer/completeness is not wired yet; parent descendantStopConfirmed remains false. No Mac or production changes. [Evidence and remaining integration](docs/nonlaunch-residue.md).

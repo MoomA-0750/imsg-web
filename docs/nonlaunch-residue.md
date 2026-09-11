@@ -49,3 +49,44 @@ empty process list that vacuously passes. No missing PID/port may be fabricated.
 The current parent watchdog still returns descendantStopConfirmed:false. This
 observer is not yet wired to it or an admitted Mac worker. Source/artifact audit,
 registry completeness, worker/listener identity and review remain live-use gates.
+
+## Private registry bridge — 2026-09-11 follow-up
+
+`scripts/nonlaunch-registry.mjs` now connects the parent watchdog to residue
+observation through a separate inherited fd3 pipe. stdout remains only the fixed
+public completion protocol. The parser accepts at most1024 bytes, in order:
+one listener port, exactly two distinct RPC child PIDs (different from the owned
+worker PID), then a sealed marker. Exact fields/types are required; overflow,
+extra/truncated frames, malformed UTF-8, early seal and duplicate PIDs reject.
+Both seal and EOF are required before registryComplete can become true.
+
+The synthetic measurement worker emits listener registration after its own bind,
+then each child registration synchronously via the real onChild observer. Seal
+follows the second registration and relies on the trusted gate forbidding further
+spawn/recovery. The parent supplies the worker PID from its own ChildProcess,
+not from a worker-supplied identity. Invalid registry cancels the worker through
+the existing watchdog and cannot throw away ownership of an already-created
+worker. The private pipe is also destroyed when watchdog observation finishes.
+
+After worker supervision, only a complete, valid registry is passed to the
+external PID/port observer. A provisional successful stdout result is downgraded
+if the registry is incomplete or registered resources cannot be observed absent.
+Timeout/crash/failure never upgrades to success even if subsequent absence checks
+pass. Returned records contain fixed booleans/categories, not the private IDs.
+safeToRelease and descendantStopConfirmed still remain false: a private pipe
+binds data to this worker, but is not proof an unreviewed worker truthfully lists
+every possible descendant, nor proof against source/binary behavior outside the
+gate. Mac/source/runtime admission remains required.
+
+Six registry tests pass on Node24.19.0 with approved unrestricted execution:
+fragmented complete and partial records, malformed/duplicate/overflow records,
+real normal/EOF-interrupted/startup-failed measurement workers with external
+absence checks, and a successful stdout report with an empty private registry.
+The four preexisting worker-bridge tests also pass. No production source changes,
+full app suite/typecheck/build/browser rerun, exact24.20.0, independent review or
+Mac access this turn. The fixture uses the existing built dist; build before
+running `node scripts/nonlaunch-registry.test.mjs` in a fresh checkout.
+
+Next: failure injection for mid-registration worker crashes and retained private
+pipes, then review the complete local chain and establish admitted Mac artifacts.
+This synthetic connection is not a production worker entry point or C06 run.

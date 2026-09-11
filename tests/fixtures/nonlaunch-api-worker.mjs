@@ -1,5 +1,6 @@
 // Synthetic end-to-end worker only. Requires npm run build; never invokes imsg.
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,8 @@ import { createOwnedReaderGate } from '../../scripts/nonlaunch-owned-readers.mjs
 import { runApiWorker } from '../../scripts/nonlaunch-api-worker.mjs';
 
 const mode = process.argv[2];
+const registry = process.argv[3] === '--registry';
+const record = value => { if (registry) writeSync(3, JSON.stringify(value) + '\n'); };
 let dir, app, source, auth;
 const readers = createOwnedReaderGate({ graceMs: 300, killWaitMs: 1000 });
 const summary = await runApiWorker({
@@ -24,11 +27,16 @@ const summary = await runApiWorker({
     source = new LiveSource({ executable: process.execPath, factory: () => readers.factory(register => new ReadonlyRpcClient({
       executable: process.execPath,
       args: [fileURLToPath(new URL('./nonlaunch-source-rpc.mjs', import.meta.url)), path, count++ === 0 || mode !== 'hold' ? 'normal' : 'hold-history'],
-      onChild: register, timeoutMs: 5000, shutdownGraceMs: 100,
+      onChild: child => {
+        register(child);
+        record({ event: 'child', pid: child.pid });
+        if (count === 2) record({ event: 'sealed' });
+      }, timeoutMs: 5000, shutdownGraceMs: 100,
     })) });
     app = await createApp({ auth, source, origin });
     if (mode === 'startup-fail' || signal.aborted) throw new Error('SYNTHETIC_STARTUP_FAILURE');
     await app.listen({ host: '127.0.0.1', port: 0 });
+    record({ event: 'listener', port: app.server.address().port });
     return { app, auth, source, readers, key, origin };
   },
   async cleanupStartup() {
