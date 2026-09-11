@@ -76,6 +76,7 @@ export async function superviseRegisteredWorker(createChild, options = {}) {
       uncertain = observation.observationUncertain;
     } catch {}
   }
-  return { ...worker, outcome: worker.outcome === 'ok' ? !complete ? 'registry-incomplete' : !absence ? 'residue-unconfirmed' : 'ok' : worker.outcome,
+  const outcome = worker.outcome === 'ok' ? !complete ? 'registry-incomplete' : !absence ? 'residue-unconfirmed' : 'ok' : worker.outcome;
+  return { ...worker, outcome, sample: outcome === 'ok' ? worker.sample : null,
     registryComplete: complete, registeredResourcesAbsent: absence, observationUncertain: uncertain, safeToRelease: false };
 }

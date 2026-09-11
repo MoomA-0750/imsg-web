@@ -47,16 +47,19 @@ for (const mode of ['normal', 'hold', 'startup-fail']) test(`private registry jo
   assert.equal(result.outcome, mode === 'normal' ? 'ok' : mode === 'hold' ? 'deadline' : 'exit');
   assert.equal(result.safeToRelease, false);
   assert.equal(result.descendantStopConfirmed, false);
+  assert.equal(result.sample !== null, mode === 'normal');
 });
 
 test('a successful stdout report cannot bypass an empty private registry', async () => {
-  const line = JSON.stringify({ event: 'complete', sessionSucceeded: true, cleanupConfirmed: true }) + '\n';
+  const line = JSON.stringify({ event: 'complete', version: 2, sessionSucceeded: true, cleanupConfirmed: true,
+    sample: { capabilitiesMs: 1, chatsMs: 2, historyMs: 3, cycleMs: 7, chats: 1, messages: 1, nonemptyHistory: true } }) + '\n';
   const result = await superviseRegisteredWorker(() => spawn(process.execPath, ['-e', `process.stdout.write(${JSON.stringify(line)})`], {
     shell: false, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
   }));
   assert.equal(result.outcome, 'registry-incomplete');
   assert.equal(result.registryComplete, false);
   assert.equal(result.registeredResourcesAbsent, false);
+  assert.equal(result.sample, null);
 });
 
 for (const count of [0, 1, 2, 3]) test(`crash after ${count} private registry frames never confirms absence`, { timeout: 5000 }, async () => {

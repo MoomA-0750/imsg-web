@@ -39,10 +39,10 @@ experimental measurement tooling, not the production RPC client or UI.
    of those recorded resources, not discovery/proof of every possible descendant.
    Missing registration or uncertain cleanup must retain ownership and forbid
    retry/promotion, even if a worker claims cleanup success.
-4. The current parent completion protocol carries booleans only. It discards the
-   session's numeric sample and is a lifecycle experiment, **not yet a usable
-   performance recorder**. A reviewed fixed-field timing schema is needed before
-   collecting an API comparison; do not silently call lifecycle success C06.
+4. The v2 parent completion protocol now carries a validated fixed-field numeric
+   sample, discarded on any failure or incomplete registry/residue observation.
+   Legacy boolean-only records remain lifecycle-only with sample:null. This is
+   still **not an admitted performance recorder**; do not call success C06.
 5. Same raw chat target and ordered payload/name parity across baseline/candidate
    are not connected to this pipeline. Random per-session Web IDs cannot establish
    equivalence. Counterbalancing and the full20-sample/30-minute gate remain.
@@ -56,3 +56,13 @@ After the fix, `npm run test:nonlaunch` builds fresh dist and passes all53 tests
 the separate application suite passes all149 tests, both using Node24.19.0.
 git diff --check passes. Typecheck/browser/exact24.20.0 were not rerun in this
 tooling-only change. No live data, remote access or production mutation occurred.
+
+## Numeric sample follow-up
+
+V2 schema and parent success/failure projection tests bring the preparation suite
+to56 passing tests on Node24.19.0, with fresh build. Registry assertions were then
+strengthened to require null samples on incomplete registration and non-success;
+all12 registry tests pass again. The separate149 application tests and diff check
+pass. No browser run or exact24.20.0 validation occurred. A selected source packet
+was submitted to Claude Opus (medium, no tools, safe-mode, no session persistence)
+for the outstanding independent review; submission alone is not approval.

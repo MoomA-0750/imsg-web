@@ -8,8 +8,9 @@ const launch = mode => () => spawn(process.execPath, [worker, mode], { shell: fa
 
 test('parent supervises real HTTP session, reader bootstrap and normal cleanup', { timeout: 15000 }, async () => {
   const report = await superviseApiWorker(launch('normal'), { timeoutMs: 8000, graceMs: 2000 });
-  assert.deepEqual(report, { outcome: 'ok', gateMeasurement: false, workerClosed: true,
-    workerCleanupReported: true, descendantStopConfirmed: false, signalAttempted: false });
+  assert.ok(report.sample && report.sample.messages === 1);
+  assert.deepEqual({ ...report, sample: null }, { outcome: 'ok', gateMeasurement: false, workerClosed: true,
+    workerCleanupReported: true, descendantStopConfirmed: false, signalAttempted: false, sample: null });
 });
 
 test('parent deadline sends EOF that interrupts pending history and reports cleanup without forced kill', { timeout: 15000 }, async () => {

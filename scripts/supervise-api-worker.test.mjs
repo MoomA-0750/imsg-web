@@ -25,10 +25,34 @@ test('rejects duplicate/trailing/oversized/secret diagnostics and false cleanup 
   for (const body of [
     `process.stdout.write(${JSON.stringify(complete + complete)});`,
     `process.stdout.write(${JSON.stringify(complete + 'SECRET')});`,
-    `process.stdout.write('x'.repeat(257));`,
+    `process.stdout.write('x'.repeat(1025));`,
     `process.stderr.write('SECRET');`,
     `process.stdout.write(${JSON.stringify(complete.replace('true', 'false'))});`,
   ]) assert.notEqual((await run(body)).outcome, 'ok');
+});
+
+test('v2 exports only validated numeric samples after clean completion', async () => {
+  const sample = { capabilitiesMs: 1, chatsMs: 2, historyMs: 3, cycleMs: 7,
+    chats: 1, messages: 1, nonemptyHistory: true };
+  const message = { event: 'complete', version: 2, sessionSucceeded: true, cleanupConfirmed: true, sample };
+  const body = value => `process.stdout.write(${JSON.stringify(JSON.stringify(value) + '\n')});`;
+  assert.deepEqual((await run(body(message))).sample, sample);
+  assert.equal((await run(`process.stdout.write(${JSON.stringify(complete)});`)).sample, null);
+  for (const invalid of [
+    { ...message, version: 3 }, { ...message, sample: null },
+    { ...message, sample: { ...sample, text: 'SECRET' } },
+    { ...message, sample: { ...sample, cycleMs: 1 } },
+    { ...message, cleanupConfirmed: false },
+  ]) {
+    const report = await run(body(invalid));
+    assert.notEqual(report.outcome, 'ok');
+    assert.equal(report.sample, null);
+  }
+  for (const suffix of ['process.exitCode = 2;', 'process.stderr.write("SECRET");', 'setInterval(() => {}, 1000);']) {
+    const report = await run(body(message) + suffix, { timeoutMs: 200 });
+    assert.notEqual(report.outcome, 'ok');
+    assert.equal(report.sample, null);
+  }
 });
 
 test('parent deadline works when child event loop is synchronously blocked', { timeout: 5000 }, async () => {

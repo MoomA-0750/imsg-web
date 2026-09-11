@@ -5,17 +5,25 @@ application worker's event loop. Its trusted factory must synchronously create
 and return one fresh ChildProcess with piped stdio, with no unregistered child
 created before throwing. It is not a CLI launcher or artifact-admission layer.
 
-The worker may emit exactly one UTF-8 JSON line, with exactly these fields:
+The worker emits exactly one UTF-8 JSON line. The v2 contract is:
 
 ```json
-{"event":"complete","sessionSucceeded":true,"cleanupConfirmed":true}
+{"event":"complete","version":2,"sessionSucceeded":true,"cleanupConfirmed":true,"sample":{"capabilitiesMs":1,"chatsMs":2,"historyMs":3,"cycleMs":7,"chats":1,"messages":1,"nonemptyHistory":true}}
 ```
 
-Total stdout is capped at 256 bytes; stderr, malformed/extra output, failed spawn,
+Legacy three-field boolean records remain accepted for lifecycle-only tests,
+with sample:null. V2 failed reports require sample:null. Successful v2 records
+require the exact seven-field numeric sample: finite timings from 0 to 60000 ms
+at tenth-ms precision, bounded counts (chats 1–50, messages 0–50), consistent
+nonemptyHistory and stage/cycle timings (0.2 ms aggregate rounding allowance).
+Only normal completion retains the projected sample; any later failure or
+incomplete registry/residue observation discards it. No raw objects are exported.
+
+Total stdout is capped at 1024 bytes; stderr, malformed/extra output, failed spawn,
 nonzero/signal exit, deadline or external AbortSignal fails the run. The completion
 record is provisional until the worker and its stdio close normally. stdout and
-stderr are never forwarded. No timings, credentials, IDs, paths or arbitrary
-worker error strings enter the returned record.
+stderr are never forwarded. No credentials, IDs, paths or arbitrary worker error
+strings enter the returned record; only the validated numeric sample is exported.
 
 On completion or failure the parent ends worker stdin, allowing a future worker
 entry point to interpret EOF as a cleanup request. If close does not arrive,
