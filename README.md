@@ -18,7 +18,7 @@ npm run build
 IMSG_PATH=/absolute/path/to/imsg npm run doctor
 ```
 
-doctorは `status --json`、RPC `status`、最大1会話と最大1メッセージ、watch購読と解除だけを実行します。送信・既読変更・Messages起動・bridge注入は行いません。出力は状態、理由コード、件数、時間などに限定し、本文・宛先・GUID・内部パスを出しません。`ready`は基本的な読み取り検査の結果であり、送信やWebアプリの安全性を保証しません。通知が0件でも購読自体は成功し得ます。`deliveryVerified`は常にfalseです。
+doctorは `status --json`、RPC `status`、最大1会話と最大1メッセージ、watch購読と解除を実行します。送信・既読変更は行いませんが、CLI statusの上流経路はMessages起動・修復・bridge注入へ入り得ます。起動なしの検証には使わないでください。出力は状態、理由コード、件数、時間などに限定し、本文・宛先・GUID・内部パスを出しません。`ready`は基本的な読み取り検査の結果であり、送信やWebアプリの安全性を保証しません。通知が0件でも購読自体は成功し得ます。`deliveryVerified`は常にfalseです。
 
 This diagnostic reads at most one chat and one message in memory, but never prints their content or identifiers. It subscribes briefly, unsubscribes, and closes only its own read-only child. Exit status is nonzero when core checks fail. Missing CLI status degrades capability diagnostics independently of DB reads. Empty chat history is reported as skipped, not tested.
 
