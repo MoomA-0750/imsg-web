@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 external residue observation
+
+Added read-only observation of registered PIDs and loopback listener: ambiguous errors/incomplete registries fail closed, no discovered-PID/group termination or lock release. Three native synthetic tests pass on Node24.19.0, including a killed worker whose child/listener survive. Normal reaped exit is distinguishable from residual resources. Actual measurement-worker registry transfer/completeness is not wired yet; parent descendantStopConfirmed remains false. No Mac or production changes. [Evidence and remaining integration](docs/nonlaunch-residue.md).
+
 ## Latest update — 2026-09-11 joined parent/worker/native RPC path
 
 Connected the session runner to a worker entry adapter with EOF/OS-signal cancellation and partial-startup cleanup. Four synthetic integrations now traverse parent watchdog → worker → real HTTP/Auth/LiveSource → Node fake-RPC children, covering normal completion, deadline/EOF, startup failure and SIGTERM. Fixed parent handling to retain bounded cleanup ACKs after failure without upgrading timeout to success. Six watchdog regressions and all149 app tests pass on Node24.19.0; build passes on22.23.1. Descendant/listener absence after worker crash remains unproven; no live launcher/admission or Mac changes. [Evidence and remaining boundary](docs/nonlaunch-worker-watchdog.md).
