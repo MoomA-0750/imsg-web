@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ReadonlyRpcClient, type ReadMethod } from '../src/server/rpc/readonly-client.js';
 import { RpcError } from '../src/server/rpc/errors.js';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 
 const fixture = resolve(fileURLToPath(new URL('./fixtures/fake-imsg.mjs', import.meta.url)));
 const code = (error: unknown) => error instanceof RpcError ? error.code : undefined;
@@ -24,6 +25,42 @@ async function using<T>(client: ReadonlyRpcClient, body: () => Promise<T>): Prom
 }
 
 describe('ReadonlyRpcClient subprocess acceptance', () => {
+  it('registers its actual child synchronously once before returning the client', async () => {
+    let owned: ChildProcessWithoutNullStreams | undefined, called = 0;
+    let closed!: Promise<void>;
+    const client = new ReadonlyRpcClient({ executable: process.execPath, args: [fixture, 'echo'], onChild: child => {
+      called++; owned = child;
+      closed = new Promise(resolve => child.once('close', () => resolve()));
+    } });
+    expect(called).toBe(1);
+    expect(owned?.pid).toBeGreaterThan(0);
+    try { await client.request('status'); }
+    finally { await client.close(); await closed; }
+    expect(called).toBe(1);
+    expect(owned?.exitCode).toBe(0);
+  });
+
+  it('redacts a throwing ownership observer and still closes its created child', async () => {
+    let closed!: Promise<void>;
+    expect(() => new ReadonlyRpcClient({ executable: process.execPath, args: [fixture, 'echo'], shutdownGraceMs: 500,
+      onChild: child => {
+        closed = new Promise(resolve => child.once('close', () => resolve()));
+        throw new Error('SYNTHETIC_PRIVATE_OBSERVER_ERROR');
+      },
+    })).toThrowError(expect.objectContaining({ code: 'CONFIG_INVALID', message: 'CONFIG_INVALID' }));
+    await closed;
+  });
+
+  it('registers failed-spawn handles so ownership cleanup can still observe close', async () => {
+    let closed!: Promise<void>, called = 0;
+    const client = new ReadonlyRpcClient({ executable: '/synthetic/absent-imsg', onChild: child => {
+      called++; closed = new Promise(resolve => child.once('close', () => resolve()));
+    } });
+    await expect(client.request('status')).rejects.toMatchObject({ code: 'RPC_SPAWN_FAILED' });
+    await client.close(); await closed;
+    expect(called).toBe(1);
+  });
+
   it('detaches inherited pipes on failed shutdown without signalling grandchildren', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'rpc-inherited-'));
     const marker = join(dir, 'requests');

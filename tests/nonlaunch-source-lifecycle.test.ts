@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { ChildProcess } from 'node:child_process';
 import { afterEach, expect, it, vi } from 'vitest';
 
-const tracking = vi.hoisted(() => ({ children: [] as { child: ChildProcess; closed: boolean; done: Promise<void> }[], events: [] as string[], register: undefined as undefined | ((child: ChildProcess) => void) }));
+const tracking = vi.hoisted(() => ({ children: [] as { child: ChildProcess; closed: boolean; done: Promise<void> }[], events: [] as string[] }));
 vi.mock('node:child_process', async importOriginal => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return { ...actual, spawn: (...args: Parameters<typeof actual.spawn>) => {
@@ -16,7 +16,6 @@ vi.mock('node:child_process', async importOriginal => {
       record.closed = true; tracking.events.push(`close-${index}`); resolve();
     }));
     tracking.children.push(record); tracking.events.push(`spawn-${index}`);
-    tracking.register?.(child);
     return child;
   } };
 });
@@ -45,17 +44,15 @@ async function fixture(modes: string[], gate?: ReturnType<typeof createOwnedRead
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   const path = join(dir, 'synthetic.db'); await writeFile(path, 'synthetic');
   let count = 0;
-  const create = () => new ReadonlyRpcClient({
+  const create = (onChild?: (child: ChildProcess) => void) => new ReadonlyRpcClient({
     executable: process.execPath,
     args: [fileURLToPath(new URL('./fixtures/nonlaunch-source-rpc.mjs', import.meta.url)), path, modes[count++] ?? 'normal'],
     timeoutMs: 5000, shutdownGraceMs: 80,
+    ...(onChild ? { onChild } : {}),
   });
   const source = new LiveSource({ executable: process.execPath, factory: () => {
     if (!gate) return create();
-    return gate.factory((register: (child: ChildProcess) => void) => {
-      tracking.register = register;
-      try { return create(); } finally { tracking.register = undefined; }
-    });
+    return gate.factory((register: (child: ChildProcess) => void) => create(register));
   } });
   cleanups.push(() => source.close().catch(() => {}));
   return source;

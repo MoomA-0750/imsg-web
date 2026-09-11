@@ -17,6 +17,10 @@ type Options = {
   timeoutMs?: number;
   shutdownGraceMs?: number;
   maxFrameBytes?: number;
+  // Trusted server-only ownership observer; never derived from an HTTP request.
+  // Called synchronously once, after IO/error handlers are installed. Throwing
+  // rejects construction and initiates cleanup of this exact child.
+  onChild?: (child: ChildProcessWithoutNullStreams) => void;
 };
 
 /** P0 ONLY: a strictly read-only child. Never reuse its timeout/kill policy for mutations. */
@@ -38,6 +42,7 @@ export class ReadonlyRpcClient {
 
   constructor(options: Options) {
     if (!isAbsolute(options.executable) || options.executable.includes('\0')) throw new RpcError('CONFIG_INVALID');
+    if (options.onChild !== undefined && typeof options.onChild !== 'function') throw new RpcError('CONFIG_INVALID');
     this.#timeoutMs = options.timeoutMs ?? 10_000;
     this.#graceMs = options.shutdownGraceMs ?? 2_000;
     this.#maxFrame = options.maxFrameBytes ?? 4 * 1024 * 1024;
@@ -61,6 +66,8 @@ export class ReadonlyRpcClient {
       this.#resolveExit();
       this.#fail('RPC_EOF');
     });
+    try { options.onChild?.(this.#child); }
+    catch { this.#fail('CONFIG_INVALID'); throw new RpcError('CONFIG_INVALID'); }
   }
 
   get closed(): boolean { return this.#closed; }

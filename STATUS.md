@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 real child registration
+
+ReadonlyRpcClient now offers a synchronous server-only onChild observer, with redacted construction failure and exact-child cleanup if it throws. Native measurement-gate/session tests use this real registration path instead of the test-local spawn registration seam. Ordinary callers, HTTP/UI contracts, executable admission and RPC whitelist remain unchanged. All 149 tests pass on Node 24.19.0; typecheck/build pass on Node 22.23.1. No Mac deployment. App/runtime/imsg artifact/source admission and an independent outer process watchdog still block live measurement. [Registration boundary](docs/nonlaunch-api-workload.md).
+
 ## Latest update — 2026-09-11 session watchdogs
 
 The joined runner now aborts at a whole-cycle deadline and bounds cleanup observation with a shared watchdog. Revocation precedes concurrently initiated transport/source/gate/app close; unacknowledged cleanup remains false, samples are discarded, and late completion cannot upgrade the returned failure report. Five new timeout/fault tests; full suite 146 passed on Node 24.19.0, typecheck passed on Node 22.23.1. This is not an OS exit guarantee: an outer owned-process/listener watchdog, artifact/startup admission and real child registration still block live use. Production unchanged/stopped. [Limits and evidence](docs/nonlaunch-api-workload.md).

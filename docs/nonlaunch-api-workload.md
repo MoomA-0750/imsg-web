@@ -251,3 +251,44 @@ constructs LiveSource and startRuntime, so it is not silently repurposed as the
 isolated launcher. Artifact/digest/source admission, real child registration,
 startup supervision and OS-signal wiring remain unimplemented for live use.
 No independent review, exact Node 24.20.0, browser/build or Mac run this turn.
+
+## Real constructor registration — 2026-09-11 follow-up
+
+Added an optional, trusted server-only `onChild` observer to ReadonlyRpcClient.
+It receives the actual ChildProcess synchronously after IO/error handlers are
+installed, before construction returns. Invalid observer types are rejected
+before spawn. If the observer throws, construction throws a redacted
+CONFIG_INVALID and starts the client's existing exact-child shutdown policy.
+The observer can register even an asynchronously failed-spawn handle so close
+acknowledgement remains observable. This is a small production-code change;
+ordinary callers omit the option and retain existing behavior. No HTTP input,
+DTO, executable whitelist, RPC method list or UI code changed.
+
+Native measurement-gate fixtures now connect through this real observer:
+
+```js
+factory: () => gate.factory(register => new ReadonlyRpcClient({
+  executable: admittedExecutable,
+  onChild: register,
+}))
+```
+
+`admittedExecutable` in this fragment must come from reviewed artifact admission,
+not request input. Tests still observe spawn ordering independently, but the gate
+no longer obtains registration through a mocked/global spawn replacement. The
+existing joined HTTP/native subprocess sessions and forced-bootstrap rejection
+therefore exercise the actual registration path intended for the isolated app.
+
+Three added native tests verify synchronous single registration, cleanup after
+observer exception, and failed-spawn close observation. Full suite: 149 passed
+on Node 24.19.0; typecheck and build passed on Node 22.23.1. git diff --check
+passed. Exact Node 24.20.0, browser suite, independent review and Mac execution
+remain unperformed in this follow-up.
+
+This closes the test-only registration seam, not the complete startup gate.
+Next remains an isolated launcher with pinned app/runtime/imsg artifact and
+source verification plus an independent outer watchdog. Existing verifyArtifact
+only checks one private-root executable's digest; it does not admit the app's
+whole import/dependency tree or attest source provenance. Production startRuntime
+uses owner lock/admin state and is not silently reused or weakened. No permanent
+Agent, Serve route, installed binary replacement or live measurement occurred.
