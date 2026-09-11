@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 registration fault coverage + combined regression
+
+Added four mid-registration crash cases, retained-fd3/no-EOF and missing-fd3 coverage. All remain incomplete/unsafe; no waiting forever or late-success upgrade was observed. New npm run test:nonlaunch builds fresh dist and runs the complete standalone chain serially:51 tests passed on Node24.19.0. Typecheck passes on22.23.1. No production/Mac changes. Next is combined boundary review and pinned Mac artifact/source reconciliation, not further live execution based on synthetic success alone. [Coverage and command](docs/nonlaunch-residue.md).
+
 ## Latest update — 2026-09-11 private registry + external absence integration
 
 Connected the synthetic measurement worker's listener/two RPC registrations to the parent over a separate bounded fd3 channel. Exact ordered records, seal and EOF are required; successful stdout cannot bypass missing registration. Complete registries feed external PID/port absence checks without logging identities or upgrading failed measurements. Six registry and four worker-bridge tests pass on Node24.19.0. Broader descendant proof, crash-mid-registration coverage, review and Mac artifact admission remain pending; no production/Mac change. [Registry trust boundary and tests](docs/nonlaunch-residue.md).

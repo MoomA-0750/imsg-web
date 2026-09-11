@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { EventEmitter } from 'node:events';
+import { PassThrough } from 'node:stream';
 import { createRegistryDecoder, superviseRegisteredWorker } from './nonlaunch-registry.mjs';
 const frames = [{ event: 'listener', port: 12345 }, { event: 'child', pid: 123 }, { event: 'child', pid: 124 }, { event: 'sealed' }];
 const encode = rows => Buffer.from(rows.map(r => JSON.stringify(r) + '\n').join(''));
@@ -53,6 +55,56 @@ test('a successful stdout report cannot bypass an empty private registry', async
     shell: false, stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
   }));
   assert.equal(result.outcome, 'registry-incomplete');
+  assert.equal(result.registryComplete, false);
+  assert.equal(result.registeredResourcesAbsent, false);
+});
+
+for (const count of [0, 1, 2, 3]) test(`crash after ${count} private registry frames never confirms absence`, { timeout: 5000 }, async () => {
+  // Synthetic numeric frames intentionally have no real RPC children. Because
+  // the registry is incomplete, none of these numeric PIDs may be probed.
+  const partial = encode(frames.slice(0, count)).toString();
+  const result = await superviseRegisteredWorker(() => spawn(process.execPath, ['-e',
+    `require('node:fs').writeSync(3, ${JSON.stringify(partial)}); process.kill(process.pid, 'SIGKILL');`,
+  ], { shell: false, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] }), { timeoutMs: 1000, graceMs: 50, killWaitMs: 100 });
+  assert.equal(result.outcome, 'exit');
+  assert.equal(result.workerClosed, true);
+  assert.equal(result.registryComplete, false);
+  assert.equal(result.registeredResourcesAbsent, false);
+  assert.equal(result.observationUncertain, true);
+  assert.equal(result.safeToRelease, false);
+});
+
+test('inherited registry pipe without EOF is bounded, detached and never treated as complete', async () => {
+  const child = Object.assign(new EventEmitter(), {
+    pid: 122, stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(),
+    signals: [], unreffed: false, kill(s) { this.signals.push(s); }, unref() { this.unreffed = true; },
+  });
+  const privatePipe = new PassThrough();
+  child.stdio = [child.stdin, child.stdout, child.stderr, privatePipe];
+  const resultPromise = superviseRegisteredWorker(() => child, { timeoutMs: 10, graceMs: 10, killWaitMs: 10 });
+  privatePipe.write(encode(frames)); // Complete frames, but deliberately no EOF.
+  child.emit('exit', 0, null); // Direct worker gone; inherited descriptors persist.
+  const result = await resultPromise;
+  assert.equal(result.outcome, 'cleanup-unconfirmed');
+  assert.equal(result.workerClosed, false);
+  assert.equal(result.registryComplete, false);
+  assert.equal(result.registeredResourcesAbsent, false);
+  assert.equal(privatePipe.destroyed, true);
+  assert.ok(child.stdin.destroyed && child.stdout.destroyed && child.stderr.destroyed);
+  assert.equal(child.unreffed, true);
+  assert.deepEqual(child.signals, []); // Do not target exited worker or descendants.
+  const snapshot = JSON.stringify(result);
+  child.emit('close', 0, null);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(JSON.stringify(result), snapshot);
+});
+
+test('missing registry pipe cancels and closes the already-owned worker', { timeout: 5000 }, async () => {
+  const result = await superviseRegisteredWorker(() => spawn(process.execPath, ['-e', 'process.stdin.resume();'], {
+    shell: false, stdio: 'pipe',
+  }), { timeoutMs: 1000, graceMs: 200, killWaitMs: 200 });
+  assert.equal(result.outcome, 'interrupted');
+  assert.equal(result.workerClosed, true);
   assert.equal(result.registryComplete, false);
   assert.equal(result.registeredResourcesAbsent, false);
 });

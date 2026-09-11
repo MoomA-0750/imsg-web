@@ -90,3 +90,35 @@ running `node scripts/nonlaunch-registry.test.mjs` in a fresh checkout.
 Next: failure injection for mid-registration worker crashes and retained private
 pipes, then review the complete local chain and establish admitted Mac artifacts.
 This synthetic connection is not a production worker entry point or C06 run.
+
+## Registration crash/pipe fault coverage — 2026-09-11 follow-up
+
+Added six further registry cases (12 registry tests total): real synthetic workers
+self-terminate via SIGKILL after zero, one, two or three registration frames;
+an exited worker with a retained private pipe never supplies EOF/close; and a
+worker lacks fd3 entirely. Every case remains incomplete and cannot confirm
+registered-resource absence. The four crash workers emit synthetic numeric
+records, not actual RPC children; incomplete registries never reach PID probing.
+Normal/EOF-interrupted real RPC integration remains covered separately.
+
+The retained-pipe test uses an event-emitter fault seam: it verifies the hard
+watchdog result is cleanup-unconfirmed, all four local pipe handles are destroyed,
+and neither the already-exited worker nor any descendant is signalled. A later
+close event cannot upgrade the returned report. Missing fd3 cancels and closes
+the already-owned real worker rather than losing its handle. No additional
+implementation defect was found in these cases.
+
+Added `npm run test:nonlaunch`: builds fresh dist first, then runs every standalone
+nonlaunch suite and the parent watchdog suite serially. This removes reliance on
+stale dist when invoking the combined regression command. All51 tests pass on
+Node24.19.0 with approved unrestricted execution, including transport, workload,
+bundle, owned-reader, registry, residue, worker bridge and parent watchdog cases.
+Build also passes on24.19.0; typecheck passes on22.23.1 and diff check passes.
+The separate149-test application suite/browser checks were not rerun this turn.
+No Mac, exact24.20.0 or independent review was run; no live artifact is admitted.
+
+The local preparation chain now has a reproducible combined regression command.
+Next is review of the combined trust/ownership boundaries and reconciliation with
+pinned Mac app/runtime/imsg sources and artifacts, before any live execution.
+Passing synthetic tests is not independent review, C06 acceptance or authorization
+to release uncertain ownership markers.
