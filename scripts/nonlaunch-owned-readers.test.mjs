@@ -63,3 +63,33 @@ test('unexpected exit zero cannot be reused as a normal bootstrap close', async 
   assert.throws(() => gate.factory(() => assert.fail('must not construct')), /OWNED_READER_FAILED/);
   assert.equal((await gate.close()).allNormal, false);
 });
+
+test('exit before close request stays unexpected even when stdio closes afterward', async () => {
+  const gate = make(), c = child('never');
+  const client = gate.factory(register => {
+    register(c);
+    return { closed: false, close: async () => { c.emit('close', 0, null); } };
+  });
+  c.emit('exit', 0, null);
+  assert.equal(client.closed, true);
+  await assert.rejects(client.close(), /OWNED_READER_FAILED/);
+  const report = await gate.close();
+  assert.equal(report.allClosed, true);
+  assert.equal(report.allNormal, false);
+  assert.deepEqual(c.signals, []);
+});
+
+test('exited child with retained pipes is detached without sending more signals', async () => {
+  const gate = make(), c = child('never');
+  gate.factory(register => {
+    register(c);
+    return { closed: false, close: async () => { c.kill('SIGTERM'); } };
+  });
+  c.emit('exit', 0, null);
+  const report = await gate.close();
+  assert.equal(report.allClosed, false);
+  assert.equal(report.allNormal, false);
+  assert.equal(report.signalAttempted, false);
+  assert.deepEqual(c.signals, []);
+  assert.ok(c.stdin.destroyed && c.stdout.destroyed && c.stderr.destroyed && c.unreffed);
+});

@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 lead integration review
+
+Lead review found/fixed an exit-vs-stdio-close race in the experimental reader gate: unexpected exit is now permanently failed before a later close request, and no underlying signal call occurs after exit. Two new regressions; combined53 nonlaunch tests/build and149 app tests pass on Node24.19.0. This is not independent review. [Review and concrete remaining gates](docs/nonlaunch-lead-review.md) explicitly records missing Mac artifact/upstream admission, cross-arm parity and numeric sample export (current worker protocol is lifecycle-only). No Mac or production changes.
+
 ## Latest update — 2026-09-11 registration fault coverage + combined regression
 
 Added four mid-registration crash cases, retained-fd3/no-EOF and missing-fd3 coverage. All remain incomplete/unsafe; no waiting forever or late-success upgrade was observed. New npm run test:nonlaunch builds fresh dist and runs the complete standalone chain serially:51 tests passed on Node24.19.0. Typecheck passes on22.23.1. No production/Mac changes. Next is combined boundary review and pinned Mac artifact/source reconciliation, not further live execution based on synthetic success alone. [Coverage and command](docs/nonlaunch-residue.md).

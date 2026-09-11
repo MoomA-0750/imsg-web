@@ -10,8 +10,14 @@ export function createOwnedReaderGate({ graceMs = 500, killWaitMs = 1000 } = {})
   const normal = r => r.closed && r.code === 0 && r.signal === null && !r.signalled && !r.error;
   const register = child => {
     if (!constructing || records.some(r => r.child === child)) throw failure();
-    const r = { child, closed: false, closing: false, code: null, signal: null, signalled: false, error: false };
+    const r = { child, exited: false, closed: false, closing: false, code: null, signal: null, signalled: false, error: false };
     records.push(r);
+    child.once('exit', () => {
+      r.exited = true;
+      // Exit can precede stdio close. A later close() call must not relabel an
+      // unexpected exit as an orderly, requested shutdown.
+      if (!r.closing) { r.error = true; stopped = true; }
+    });
     r.done = new Promise(resolve => child.once('close', (code, signal) => {
       r.closed = true; r.code = code; r.signal = signal;
       if (!r.closing) r.error = true;
@@ -21,7 +27,10 @@ export function createOwnedReaderGate({ graceMs = 500, killWaitMs = 1000 } = {})
     child.on('error', () => { r.error = true; stopped = true; });
     // Observe even unsuccessful signal attempts and a handler that exits zero.
     const kill = child.kill.bind(child);
-    child.kill = (...args) => { r.signalled = true; stopped = true; return kill(...args); };
+    child.kill = (...args) => {
+      if (r.exited) return false; // Inherited pipes are not a live direct child.
+      r.signalled = true; stopped = true; return kill(...args);
+    };
     child.stderr.on('data', () => { r.error = true; stopped = true; });
   };
   const factory = createClient => {
@@ -77,8 +86,8 @@ export function createOwnedReaderGate({ graceMs = 500, killWaitMs = 1000 } = {})
             r.child.stdin.on('error', () => { r.error = true; });
             r.child.stdout.resume(); r.child.stderr.resume();
             r.child.stdin.end(); await wait(r, graceMs);
-            if (!r.closed) { r.child.kill('SIGTERM'); await wait(r, graceMs); }
-            if (!r.closed) { r.child.kill('SIGKILL'); await wait(r, killWaitMs); }
+            if (!r.closed) { if (!r.exited) r.child.kill('SIGTERM'); await wait(r, graceMs); }
+            if (!r.closed) { if (!r.exited) r.child.kill('SIGKILL'); await wait(r, killWaitMs); }
           } catch { r.error = true; }
           if (!r.closed) {
             r.child.stdin.destroy(); r.child.stdout.destroy(); r.child.stderr.destroy(); r.child.unref();
