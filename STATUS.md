@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 parent-side worker watchdog
+
+Added a separate-event-loop worker watchdog with bounded EOF/TERM/KILL cleanup, strict fixed completion protocol and no forwarded diagnostics. Six synthetic tests pass on Node24.19.0, including a synchronously blocked real worker and missing stdio close. Direct-worker closure is explicitly not RPC-child/listener proof: descendantStopConfirmed remains false and no live launcher is provided. The admitted worker bridge and independent descendant/listener observation remain required. No production/Mac changes. [Contract and limits](docs/nonlaunch-worker-watchdog.md).
+
 ## Latest update — 2026-09-11 actual app staging check
 
 Created a private local stage from fresh dist plus55 runtime dependency packages using offline npm ci with install scripts and bin links disabled. All2,189 files/15,928,498 bytes passed inventory self-consistency verification; staged synthetic login/chats/HTML smoke passed and sessions returned to zero. Eight bundle tests and build pass. The generated inventory is explicitly unapproved; the stage excludes Node/imsg binaries and is not a Mac deployment artifact. No production/remote changes. [Preserved evidence, runtime caveats and next gates](docs/nonlaunch-bundle.md).
