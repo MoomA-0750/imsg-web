@@ -79,7 +79,7 @@ export function createOwnedReaderGate({ graceMs = 500, killWaitMs = 1000 } = {})
           // Initiate client cleanup, but don't trust its promise as OS evidence.
           if (r.client) {
             r.clientSettled = false;
-            try { Promise.resolve(r.client.close()).then(() => { r.clientSettled = true; }, () => { r.error = true; r.clientSettled = true; }); }
+            try { r.clientClose = Promise.resolve(r.client.close()).then(() => { r.clientSettled = true; }, () => { r.error = true; r.clientSettled = true; }); }
             catch { r.error = true; r.clientSettled = true; }
           }
           try {
@@ -91,6 +91,14 @@ export function createOwnedReaderGate({ graceMs = 500, killWaitMs = 1000 } = {})
           } catch { r.error = true; }
           if (!r.closed) {
             r.child.stdin.destroy(); r.child.stdout.destroy(); r.child.stderr.destroy(); r.child.unref();
+          }
+          // OS close and client promise settlement are separate acknowledgements.
+          // Allow a bounded final grace for asynchronous client bookkeeping;
+          // unresolved/rejected cleanup must never become a normal result.
+          if (r.closed && r.clientClose && !r.clientSettled) {
+            let timer;
+            try { await Promise.race([r.clientClose, new Promise(resolve => { timer = setTimeout(resolve, graceMs); })]); }
+            finally { clearTimeout(timer); }
           }
         }));
         return { gateMeasurement: false, children: records.length,

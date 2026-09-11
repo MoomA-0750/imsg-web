@@ -15,6 +15,25 @@ function child(mode) {
 }
 const make = () => createOwnedReaderGate({ graceMs: 5, killWaitMs: 5 });
 
+test('waits for delayed client settlement after OS close but bounds a missing acknowledgement', async () => {
+  for (const settles of [true, false]) {
+    const gate = createOwnedReaderGate({ graceMs: 50, killWaitMs: 5 }), c = child('normal');
+    let release;
+    gate.factory(register => {
+      register(c);
+      return { closed: false, close: () => new Promise(resolve => { release = resolve; }) };
+    });
+    c.once('close', () => { if (settles) setTimeout(() => release(), 5); });
+    const report = await gate.close();
+    assert.equal(report.allClosed, true);
+    assert.equal(report.allNormal, settles);
+    assert.deepEqual(c.signals, []);
+    release();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(report.allNormal, settles); // Late settlement cannot upgrade.
+  }
+});
+
 test('constructor throw after registration still closes its exact orphan handle', async () => {
   const gate = make(), c = child('normal');
   assert.throws(() => gate.factory(register => { register(c); throw new Error('SECRET'); }), /^Error: OWNED_READER_FAILED$/);

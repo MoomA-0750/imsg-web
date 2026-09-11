@@ -3,6 +3,8 @@ import { validateSample } from './nonlaunch-sample.mjs';
 
 // Trusted entry-point adapter, not an admitted launcher. start must promptly
 // observe signal during setup and register partial resources for cleanupStartup.
+// cleanupStartup must be idempotent: incomplete session cleanup also invokes it,
+// without upgrading the failed session's acknowledgement or sample.
 // The outer watchdog, not this event loop, owns the final startup deadline.
 export async function runApiWorker({ start, cleanupStartup }, { input = process.stdin, output = process.stdout, signals = process } = {}) {
   const controller = new AbortController();
@@ -29,8 +31,11 @@ export async function runApiWorker({ start, cleanupStartup }, { input = process.
     }
   } catch { sessionSucceeded = false; sample = null; /* Never forward errors. */ }
   finally {
-    if (!sessionStarted) {
-      try { cleanupConfirmed = await cleanupStartup() === true; } catch {}
+    if (!sessionStarted || !cleanupConfirmed) {
+      try {
+        const startupClean = await cleanupStartup() === true;
+        if (!sessionStarted) cleanupConfirmed = startupClean;
+      } catch { cleanupConfirmed = false; }
     }
     input.off('end', abort); input.off('error', abort); input.off('data', abort);
     for (const name of names) signals.off(name, abort);
