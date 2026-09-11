@@ -147,3 +147,49 @@ it('joined session abort interrupts pending source work as well as the HTTP sock
   expect(f.auth.count).toBe(0);
   expect(f.source.close).toHaveBeenCalledOnce();
 });
+
+it('whole-cycle deadline cancels pending history before the per-request timeout', async () => {
+  const f = await fixture();
+  await f.app.listen({ host: '127.0.0.1', port: 0 });
+  let rejectHistory: ((error: Error) => void) | undefined;
+  f.source.history.mockImplementationOnce(() => new Promise<never>((_resolve, reject) => { rejectHistory = reject; }));
+  f.source.close.mockImplementationOnce(async () => { rejectHistory?.(new Error(BODY)); });
+  const readers = { close: async () => ({ allClosed: true, allNormal: true, signalAttempted: false }) };
+  const result = await runApiSession({ ...f, readers, key: KEY, origin: ORIGIN, timeoutMs: 2000, overallMs: 200 });
+  expect(f.source.history).toHaveBeenCalledOnce();
+  expect(result).toMatchObject({ outcome: 'failed', sample: null, deadlineExceeded: true, cleanupExpired: false });
+  expect(Object.values(result.cleanup).every(Boolean)).toBe(true);
+  expect(f.app.server.listening).toBe(false);
+});
+
+it.each(['source', 'readers', 'app'] as const)('cleanup watchdog records unconfirmed %s closure without later upgrading its report', async kind => {
+  const f = await fixture();
+  await f.app.listen({ host: '127.0.0.1', port: 0 });
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const normal = { allClosed: true, allNormal: true, signalAttempted: false };
+  const readers = { close: vi.fn(async () => { if (kind === 'readers') await pending; return normal; }) };
+  if (kind === 'source') f.source.close.mockImplementationOnce(() => pending);
+  const app = kind === 'app' ? { server: f.app.server, close: () => pending } : f.app;
+  const result = await runApiSession({ ...f, app, readers, key: KEY, origin: ORIGIN, cleanupMs: 30 });
+  expect(result).toMatchObject({ outcome: 'failed', sample: null, cleanupExpired: true });
+  expect(result.cleanup[`${kind}Closed`]).toBe(false);
+  expect(result.cleanup.revoked).toBe(true);
+  expect(result.cleanup.transportClosed).toBe(true);
+  expect(readers.close).toHaveBeenCalledOnce();
+  const snapshot = JSON.stringify(result);
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  expect(JSON.stringify(result)).toBe(snapshot);
+});
+
+it('invalid watchdog settings reject measurement but still clean up transferred resources', async () => {
+  const f = await fixture();
+  await f.app.listen({ host: '127.0.0.1', port: 0 });
+  const readers = { close: vi.fn(async () => ({ allClosed: true, allNormal: true, signalAttempted: false })) };
+  const result = await runApiSession({ ...f, readers, key: KEY, origin: ORIGIN, overallMs: NaN });
+  expect(result.outcome).toBe('failed');
+  expect(f.source.capabilities).not.toHaveBeenCalled();
+  expect(result.cleanup.appClosed).toBe(true);
+  expect(f.auth.count).toBe(0);
+});

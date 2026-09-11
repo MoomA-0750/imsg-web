@@ -218,3 +218,36 @@ still prevent return. Whole-run/startup/cleanup watchdogs and process-signal
 wiring therefore remain required in the outer supervisor, alongside artifact
 audit, listener admission, raw-target parity and full C06 scheduling. Do not
 interpret this short integrated run as live-use approval or a performance pass.
+
+## Session/cleanup watchdogs — 2026-09-11 follow-up
+
+The joined runner now has a 45-second default whole-cycle budget (distinct from
+each GET's 15-second limit) and a shared 10-second cleanup observation budget.
+Both are bounded configurable positive integer durations, at most 60 seconds.
+The cycle deadline aborts transport; external cancellation is bridged through the
+same controller. Monotonic checks also reject late completion when a timer's
+callback has not yet run. Cleanup begins by revoking sessions, then initiates
+transport, source, reader-gate **and app** close without serially waiting on a
+potentially hung close. This supersedes the prior sequential app-close ordering.
+
+Cleanup timeout returns failure with cleanupExpired:true and leaves every
+unacknowledged field false. Output copies cleanup flags so later completions
+cannot upgrade an already-returned result. Successful samples are discarded on
+interruption, either deadline, or any cleanup failure. All started cleanup
+promises retain rejection handlers; timeout does not imply the underlying work
+stopped, authorize retry, or authorize releasing a live owner marker.
+
+Five added tests cover cycle expiry during pending history, independently hung
+source/gate/app cleanup with late-completion immutability, and invalid watchdog
+configuration. Full suite: 146 passed on Node 24.19.0; typecheck passed on Node
+22.23.1. No production sources/UI or Mac artifacts changed.
+
+Remaining boundary: these timers need a responsive Node event loop. They cannot
+preempt synchronous blocking code, stop an unregistered process, or ensure a
+failed app.close actually releases the listener. The outer watchdog must retain
+ownership on uncertainty and verify exact-process/listener exit. The runner
+still receives an already-listening app; main.ts's production startup directly
+constructs LiveSource and startRuntime, so it is not silently repurposed as the
+isolated launcher. Artifact/digest/source admission, real child registration,
+startup supervision and OS-signal wiring remain unimplemented for live use.
+No independent review, exact Node 24.20.0, browser/build or Mac run this turn.
