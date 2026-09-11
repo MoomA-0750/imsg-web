@@ -54,3 +54,46 @@ the same suite passed unrestricted. No raw worker output was printed.
 No Mac or staged app execution, independent review, exact24.20.0, production
 source change, full app suite or browser/build run occurred in this additive
 watchdog turn. Run `node scripts/supervise-api-worker.test.mjs`. Diff check passes.
+
+## Joined worker bridge — 2026-09-11 follow-up
+
+Added `scripts/nonlaunch-api-worker.mjs`, a trusted entry-point adapter. It installs
+stdin EOF/error/unexpected-data cancellation plus SIGINT/SIGTERM/SIGHUP handlers
+before calling the supplied startup function. Startup must track partial
+resources and observe AbortSignal; cleanupStartup is used if startup throws.
+Once ready, the existing session runner owns cleanup. The bridge removes signal
+handlers, closes stdin, and flushes one fixed completion record only after the
+session or startup cleanup returns. Exceptions never become printed diagnostics.
+This does not select a binary, load arbitrary paths or approve a bundle.
+
+`tests/fixtures/nonlaunch-api-worker.mjs` is a synthetic-only executable bridge:
+it loads freshly built application modules, creates its own ephemeral loopback
+server/Auth, runs LiveSource with real Node fake-RPC children registered through
+onChild, and uses only a temporary synthetic database file. It never invokes
+imsg or accesses Messages. Build first, then run:
+
+```sh
+npm run build
+node scripts/nonlaunch-worker-bridge.test.mjs
+```
+
+Four parent/worker/native-reader integration cases pass: normal API completion,
+parent deadline/EOF interrupting pending history without a forced kill, partial
+startup failure, and SIGTERM-driven worker cancellation with cleanup reporting.
+This confirms the protocol wiring with real HTTP and nested processes. It does
+not independently prove descendant/listener absence after a worker crash:
+descendantStopConfirmed remains false in all parent reports.
+
+Integration exposed a parent bug: after setting a timeout/abort failure reason,
+it discarded the worker's subsequent cleanup acknowledgement. The parent now
+continues bounded parsing after cancellation without allowing the failure reason
+to become success. Malformed/trailing output invalidates the cleanup report.
+The six parent watchdog regression tests also pass. Full application suite149
+passes on Node24.19.0; build passes on Node22.23.1. No typecheck/browser rerun,
+exact24.20.0, independent review, Mac execution or live admission this turn.
+
+Next required work remains externally verifiable RPC-child/listener observation
+for killed/crashed workers, then pinned Mac/runtime/imsg admission. Startup
+callbacks/cleanupStartup can still hang in this event loop; the external parent
+bounds worker lifetime but cannot infer the fate of unacknowledged descendants.
+Never deploy this synthetic entry point or promote its reports to C06 evidence.

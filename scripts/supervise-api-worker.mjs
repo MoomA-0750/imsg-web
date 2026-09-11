@@ -8,7 +8,7 @@ export function superviseApiWorker(createChild, { timeoutMs = 60_000, graceMs = 
     workerCleanupReported: false, descendantStopConfirmed: false, signalAttempted: false });
   return new Promise(resolve => {
     let child, reason, report, buffer = Buffer.alloc(0), bytes = 0;
-    let stopping = false, finished = false, exited = false, signalled = false;
+    let stopping = false, finished = false, exited = false, signalled = false, invalidOutput = false;
     const timers = new Set();
     const later = (fn, ms) => { const timer = setTimeout(fn, ms); timers.add(timer); };
     const finish = (closed, code = null, exitSignal = null) => {
@@ -22,7 +22,7 @@ export function superviseApiWorker(createChild, { timeoutMs = 60_000, graceMs = 
       const normal = closed && code === 0 && exitSignal === null && !signalled;
       resolve({ outcome: !closed ? 'cleanup-unconfirmed' : reason ?? (!normal ? 'exit' : !report || buffer.length ? 'protocol' : report.sessionSucceeded && report.cleanupConfirmed ? 'ok' : 'worker-failed'),
         gateMeasurement: false, workerClosed: closed,
-        workerCleanupReported: report?.cleanupConfirmed === true,
+        workerCleanupReported: !invalidOutput && buffer.length === 0 && report?.cleanupConfirmed === true,
         descendantStopConfirmed: false, signalAttempted: signalled });
     };
     const sendSignal = name => {
@@ -55,9 +55,11 @@ export function superviseApiWorker(createChild, { timeoutMs = 60_000, graceMs = 
     for (const stream of [child.stdin, child.stdout, child.stderr]) stream.on('error', () => fail('io'));
     child.stderr.on('data', () => fail('stderr'));
     child.stdout.on('data', chunk => {
-      if (finished || reason) return;
+      // Even after timeout/abort, consume a bounded cleanup acknowledgement.
+      // The failure reason remains terminal; an ACK cannot make the run succeed.
+      if (finished || invalidOutput) return;
       bytes += chunk.length;
-      if (bytes > 256) { fail('protocol'); return; }
+      if (bytes > 256) { invalidOutput = true; fail('protocol'); return; }
       buffer = Buffer.concat([buffer, chunk]);
       const end = buffer.indexOf(10);
       if (end === -1) return;
@@ -70,7 +72,7 @@ export function superviseApiWorker(createChild, { timeoutMs = 60_000, graceMs = 
         buffer = buffer.subarray(end + 1);
         if (buffer.length) throw new Error();
         stop(); // The record is provisional until normal process+stdio close.
-      } catch { fail('protocol'); }
+      } catch { invalidOutput = true; fail('protocol'); }
     });
     signal?.addEventListener('abort', interrupt, { once: true });
     if (signal?.aborted) interrupt();

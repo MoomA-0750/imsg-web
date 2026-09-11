@@ -16,6 +16,7 @@ lines.on('line', line => {
   };
   else if (method === 'chats.list') result = { chats: [{ id: 1, guid: 'synthetic-chat', name: 'Synthetic', service: 'iMessage' }] };
   else if (method === 'messages.history') {
+    if (mode === 'hold-history') return;
     if (mode === 'stubborn') { process.stderr.write('synthetic-history-entered\n'); return; }
     result = { messages: [{ id: 2, chat_id: params.chat_id, guid: 'synthetic-message', text: 'Synthetic', is_from_me: false }] };
   } else { process.exitCode = 1; lines.close(); return; }

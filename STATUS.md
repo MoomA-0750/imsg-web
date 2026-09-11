@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 joined parent/worker/native RPC path
+
+Connected the session runner to a worker entry adapter with EOF/OS-signal cancellation and partial-startup cleanup. Four synthetic integrations now traverse parent watchdog → worker → real HTTP/Auth/LiveSource → Node fake-RPC children, covering normal completion, deadline/EOF, startup failure and SIGTERM. Fixed parent handling to retain bounded cleanup ACKs after failure without upgrading timeout to success. Six watchdog regressions and all149 app tests pass on Node24.19.0; build passes on22.23.1. Descendant/listener absence after worker crash remains unproven; no live launcher/admission or Mac changes. [Evidence and remaining boundary](docs/nonlaunch-worker-watchdog.md).
+
 ## Latest update — 2026-09-11 parent-side worker watchdog
 
 Added a separate-event-loop worker watchdog with bounded EOF/TERM/KILL cleanup, strict fixed completion protocol and no forwarded diagnostics. Six synthetic tests pass on Node24.19.0, including a synchronously blocked real worker and missing stdio close. Direct-worker closure is explicitly not RPC-child/listener proof: descendantStopConfirmed remains false and no live launcher is provided. The admitted worker bridge and independent descendant/listener observation remain required. No production/Mac changes. [Contract and limits](docs/nonlaunch-worker-watchdog.md).
