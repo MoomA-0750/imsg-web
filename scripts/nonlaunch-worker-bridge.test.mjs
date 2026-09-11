@@ -23,7 +23,7 @@ test('incomplete successful startup invokes fallback cleanup without upgrading t
 
 test('parent supervises real HTTP session, reader bootstrap and normal cleanup', { timeout: 15000 }, async () => {
   const report = await superviseApiWorker(launch('normal'), { timeoutMs: 8000, graceMs: 2000 });
-  assert.ok(report.sample && report.sample.messages === 1);
+  assert.equal(report.sample, null); // Lifecycle-only entry has no registry admission.
   assert.deepEqual({ ...report, sample: null }, { outcome: 'ok', gateMeasurement: false, workerClosed: true,
     workerCleanupReported: true, descendantStopConfirmed: false, signalAttempted: false, sample: null });
 });

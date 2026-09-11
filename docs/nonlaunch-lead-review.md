@@ -46,10 +46,12 @@ experimental measurement tooling, not the production RPC client or UI.
 5. Same raw chat target and ordered payload/name parity across baseline/candidate
    are not connected to this pipeline. Random per-session Web IDs cannot establish
    equivalence. Counterbalancing and the full20-sample/30-minute gate remain.
-6. Claude's independent review has now been received and triaged in
-   `nonlaunch-independent-review-2026-09-11.md`. Two adopted fixes still require
-   re-review; neither review authorizes a Mac run, fork adoption, stock-binary
-   replacement, Agent installation, Serve publication or production restart.
+6. Claude's focused re-review is complete in
+   `nonlaunch-rereview-2026-09-12.md`. The two cleanup fixes have no scoped blocker;
+   the additional sample-export blocker was fixed and independently rechecked.
+   No new scoped blocker remains under the stated trusted-adapter assumptions.
+   This does not authorize a Mac run, fork adoption, stock-binary replacement,
+   Agent installation, Serve publication or production restart.
 
 ## Verification
 

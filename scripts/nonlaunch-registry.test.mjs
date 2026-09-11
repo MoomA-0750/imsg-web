@@ -48,6 +48,19 @@ for (const mode of ['normal', 'hold', 'startup-fail']) test(`private registry jo
   assert.equal(result.safeToRelease, false);
   assert.equal(result.descendantStopConfirmed, false);
   assert.equal(result.sample !== null, mode === 'normal');
+  if (mode === 'normal') assert.equal(result.sample.messages, 1);
+});
+
+test('cancellation after direct worker close still discards the registered sample', async () => {
+  const controller = new AbortController();
+  const result = await superviseRegisteredWorker(() => {
+    const child = spawn(process.execPath, [fixture, 'normal', '--registry'], { shell: false, stdio: ['pipe', 'pipe', 'pipe', 'pipe'] });
+    child.once('close', () => queueMicrotask(() => controller.abort()));
+    return child;
+  }, { timeoutMs: 8000, graceMs: 3000, signal: controller.signal });
+  assert.equal(result.workerClosed, true);
+  assert.equal(result.outcome, 'interrupted');
+  assert.equal(result.sample, null);
 });
 
 test('a successful stdout report cannot bypass an empty private registry', async () => {

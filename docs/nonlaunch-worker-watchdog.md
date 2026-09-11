@@ -19,6 +19,13 @@ nonemptyHistory and stage/cycle timings (0.2 ms aggregate rounding allowance).
 Only normal completion retains the projected sample; any later failure or
 incomplete registry/residue observation discards it. No raw objects are exported.
 
+2026-09-12 boundary correction: `superviseApiWorker` is strictly lifecycle-only
+and ALWAYS returns sample:null, even on normal v2 completion. Candidate-producing
+logic is private inside `nonlaunch-registry.mjs`; only `superviseRegisteredWorker`
+can export it after complete registration and observed absence. The original
+supervisor module is a compatibility re-export, not a bypass. A final external
+AbortSignal check discards values when cancellation arrives after worker close.
+
 Total stdout is capped at 1024 bytes; stderr, malformed/extra output, failed spawn,
 nonzero/signal exit, deadline or external AbortSignal fails the run. The completion
 record is provisional until the worker and its stdio close normally. stdout and

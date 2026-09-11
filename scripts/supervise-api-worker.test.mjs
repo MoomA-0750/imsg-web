@@ -31,12 +31,12 @@ test('rejects duplicate/trailing/oversized/secret diagnostics and false cleanup 
   ]) assert.notEqual((await run(body)).outcome, 'ok');
 });
 
-test('v2 exports only validated numeric samples after clean completion', async () => {
+test('v2 validates numeric samples but lifecycle-only public entry never exports them', async () => {
   const sample = { capabilitiesMs: 1, chatsMs: 2, historyMs: 3, cycleMs: 7,
     chats: 1, messages: 1, nonemptyHistory: true };
   const message = { event: 'complete', version: 2, sessionSucceeded: true, cleanupConfirmed: true, sample };
   const body = value => `process.stdout.write(${JSON.stringify(JSON.stringify(value) + '\n')});`;
-  assert.deepEqual((await run(body(message))).sample, sample);
+  assert.equal((await run(body(message))).sample, null);
   assert.equal((await run(`process.stdout.write(${JSON.stringify(complete)});`)).sample, null);
   for (const invalid of [
     { ...message, version: 3 }, { ...message, sample: null },

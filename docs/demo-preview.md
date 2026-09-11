@@ -31,6 +31,13 @@ history, logout, mobile back/empty state and horizontal overflow checks passed.
 Actual remote PC/phone reachability remains for the user to confirm. No production
 code was modified. Existing dist was reused; this is not a new release build.
 
+User follow-up: the offered operations were exercised from the user's devices,
+with no apparent frontend malfunction. This is limited functional/display
+feedback on synthetic data, NOT acceptance of normal-use specifications or visual
+design. The user has future behavior and appearance preferences not yet collected.
+Real Messages retrieval, correspondence with source data and live correctness
+remain unverified. Do not turn this preview feedback into production acceptance.
+
 ```sh
 node --test scripts/demo-preview.test.mjs
 node scripts/demo-preview-browser.mjs http://<this-machine-tailscale-ipv4>:18787
