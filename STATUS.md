@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 actual app staging check
+
+Created a private local stage from fresh dist plus55 runtime dependency packages using offline npm ci with install scripts and bin links disabled. All2,189 files/15,928,498 bytes passed inventory self-consistency verification; staged synthetic login/chats/HTML smoke passed and sessions returned to zero. Eight bundle tests and build pass. The generated inventory is explicitly unapproved; the stage excludes Node/imsg binaries and is not a Mac deployment artifact. No production/remote changes. [Preserved evidence, runtime caveats and next gates](docs/nonlaunch-bundle.md).
+
 ## Latest update — 2026-09-11 static bundle inventory verification
 
 Added a read-only complete-tree verifier with externally pinned manifest digest, exact file hashes/modes/ownership, no symlinks/hardlinks or unlisted entries, and bounded streamed reads. Six synthetic filesystem tests pass on Node 24.19.0 in approved unrestricted execution; diff check passes. No production or Mac changes. This does not attest source/import safety or atomically verify-and-execute; actual packaging/admission and the outer process watchdog remain pending. [Manifest contract, tests and limitations](docs/nonlaunch-bundle.md).

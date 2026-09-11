@@ -60,3 +60,50 @@ fixture-byte-count assertion was corrected from 22 to 23, then all tests rerun.
 Run `node scripts/nonlaunch-bundle.test.mjs`. git diff --check passes. No production
 source/UI change, Mac access, full application suite, typecheck/build/browser run
 or independent review in this additive-helper turn. Exact Node 24.20.0 is pending.
+
+## Actual local staging check — 2026-09-11 follow-up
+
+Built application sources at repository revision b089af5 (latest RPC source
+change 7f699d3), then created a fresh private `/tmp/iw-app-stage.ZMQNP7`.
+Copied package.json/package-lock.json and ran:
+
+```sh
+npm ci --omit=dev --ignore-scripts --offline --no-bin-links --no-audit --no-fund
+```
+
+The existing cache supplied 55 runtime packages without network, install scripts
+or `.bin` links. Copied the freshly built dist tree into the stage. The staged
+node_modules includes transitive dependencies and package-distributed auxiliary
+files, not only entry modules. No source-repository dependency tree was pruned.
+
+`scripts/inventory-bundle.mjs` now generates unapproved canonical inventory for a
+controlled packaging directory; it is not a replacement for verifyBundle or a
+race-safe scanner of an adversarial directory. It rejects observed links and
+oversized/nonregular entries, emits approved:false, and never itself writes a
+manifest or runs code. Two added tests bring the bundle suite to eight passing
+tests on Node 24.19.0 in approved unrestricted execution.
+
+Local stage self-consistency result:
+
+- 2,189 regular files, 15,928,498 bytes, all entries accepted by verifyBundle.
+- Inventory digest: `53c2e244f71c5df8d3efff6484d2da54738608fed8344766f7931cf2a7e9f4f1`.
+- Inventory saved exclusively with mode0600 outside the stage at
+  `/tmp/iw-app-stage.ZMQNP7.manifest.json`; it remains **unapproved**. Computing
+  and checking the same inventory is packaging consistency, not independent
+  artifact/source authorization.
+- `/tmp/iw-app-stage-check.mjs` loaded Auth/createApp from staged dist and served
+  staged web assets through in-process HTTP injection with synthetic ReadSource.
+  Login, authenticated empty chats, and root HTML succeeded; sessions revoked
+  to zero and app/source close awaited. No TCP listener or RPC child was needed.
+
+Build and npm staging used available Node22.23.1; npm emitted the expected engine
+warning for required24.20.0. Inventory verification and staged smoke used24.19.0.
+These artifacts do **not** include an admitted Node executable or imsg binary,
+are not Mac-specific deployment bundles, and do not establish Linux/Mac parity.
+No full application/browser suite or independent review rerun in this follow-up;
+build, eight bundle tests, staged synthetic smoke and diff check passed.
+
+Preserved the stage, inventory and smoke script for inspection; nothing was
+deployed, installed globally or published. Next: reviewed Mac packaging/runtime
+and imsg provenance, then outer-process/listener supervision. Do not promote this
+generated digest directly into a live trust pin without that review.

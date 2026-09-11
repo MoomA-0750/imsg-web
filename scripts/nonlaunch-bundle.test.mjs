@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { verifyBundle } from './nonlaunch-bundle.mjs';
+import { inventoryBundle } from './inventory-bundle.mjs';
 const hash = text => createHash('sha256').update(text).digest('hex');
 const digest = manifest => hash(JSON.stringify([...manifest].sort((a, b) => a.path < b.path ? -1 : 1)));
 async function fixture(t) {
@@ -88,4 +89,18 @@ test('requires private root and rejects writable bundle directories', async t =>
   await rejected(verifyBundle(f.root, f.manifest, f.pinned));
   await chmod(f.root, 0o700); await chmod(join(f.root, 'app'), 0o777);
   await rejected(verifyBundle(f.root, f.manifest, f.pinned));
+});
+
+test('inventory produces canonical review material, not independent approval', async t => {
+  const f = await fixture(t), inventory = await inventoryBundle(f.root);
+  assert.equal(inventory.approved, false);
+  assert.deepEqual(inventory.manifest, f.manifest);
+  assert.equal(inventory.digest, f.pinned);
+  assert.equal((await verifyBundle(f.root, inventory.manifest, f.pinned)).verified, true);
+});
+
+test('inventory rejects links instead of silently following packaging shims', async t => {
+  const f = await fixture(t);
+  await symlink(join(f.root, 'node'), join(f.root, 'shim'));
+  await assert.rejects(inventoryBundle(f.root), e => e.message === 'INVENTORY_REJECTED');
 });
