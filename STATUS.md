@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 static bundle inventory verification
+
+Added a read-only complete-tree verifier with externally pinned manifest digest, exact file hashes/modes/ownership, no symlinks/hardlinks or unlisted entries, and bounded streamed reads. Six synthetic filesystem tests pass on Node 24.19.0 in approved unrestricted execution; diff check passes. No production or Mac changes. This does not attest source/import safety or atomically verify-and-execute; actual packaging/admission and the outer process watchdog remain pending. [Manifest contract, tests and limitations](docs/nonlaunch-bundle.md).
+
 ## Latest update — 2026-09-11 real child registration
 
 ReadonlyRpcClient now offers a synchronous server-only onChild observer, with redacted construction failure and exact-child cleanup if it throws. Native measurement-gate/session tests use this real registration path instead of the test-local spawn registration seam. Ordinary callers, HTTP/UI contracts, executable admission and RPC whitelist remain unchanged. All 149 tests pass on Node 24.19.0; typecheck/build pass on Node 22.23.1. No Mac deployment. App/runtime/imsg artifact/source admission and an independent outer process watchdog still block live measurement. [Registration boundary](docs/nonlaunch-api-workload.md).
