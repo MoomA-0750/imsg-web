@@ -1,5 +1,9 @@
 # Development checkpoint — 2026-09-09
 
+## Latest update — 2026-09-11 joined isolated session
+
+Implemented one-cycle orchestration for an already-owned loopback app: local session issuance, bounded authenticated GETs, revocation first, joined transport/source/reader cleanup, and app closure. Samples are discarded on any cleanup failure. Eight new integrations include actual Node RPC children and HTTP in the same run, forced bootstrap rejection and mid-history abort. All 141 tests pass on Node 24.19.0; typecheck passes on Node 22.23.1. Production untouched. Outer artifact/startup admission, real spawn registration, bounded whole-run/cleanup supervision, signal wiring and parity/C06 remain pending. [Runner boundary and evidence](docs/nonlaunch-api-workload.md).
+
 ## Latest update — 2026-09-10 owned-reader gate
 
 Implemented an experimental exact-handle lifecycle gate: forced/unexpected exit and signal attempts reject an arm and prevent bootstrap replacement. Bounded cleanup includes constructor-orphan children and reports missing close acknowledgement as failure. Two native integrations plus five standalone fault tests pass; full suite 133 passed on Node 24.19.0 and typecheck passed on Node 22.23.1. No production source change or Mac execution. Registration remains test-local: a reviewed real constructor adapter, artifact/listener admission and joined session/transport/process supervision are still required before live measurement. [Implementation boundary](docs/nonlaunch-api-workload.md).

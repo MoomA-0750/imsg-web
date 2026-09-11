@@ -6,6 +6,8 @@ import type { ReadSource } from '../src/shared/web-types.js';
 import { createApiWorkload } from '../scripts/nonlaunch-api-workload.mjs';
 // @ts-expect-error Standalone Node diagnostic is JavaScript without declarations.
 import { createApiTransport } from '../scripts/nonlaunch-api-transport.mjs';
+// @ts-expect-error Standalone Node diagnostic is JavaScript without declarations.
+import { runApiSession } from '../scripts/nonlaunch-api-session.mjs';
 
 const HOST = 'imsg.synthetic.test', ORIGIN = `https://${HOST}`;
 const KEY = 'A'.repeat(43), ID = 'C'.repeat(43), BODY = 'SYNTHETIC_PRIVATE_BODY';
@@ -104,4 +106,44 @@ it('runs the workload over bounded loopback HTTP against the authenticated appli
     expect(await cycle()).toEqual({ outcome: 'failed', phase: 'capabilities', gateMeasurement: false });
     expect(f.source.capabilities).toHaveBeenCalledTimes(1);
   } finally { await transport.close(); }
+});
+
+it.each(['ok', 'read failure', 'source close failure', 'forced reader exit', 'pre-abort'] as const)('joined session handles %s and revokes credentials', async kind => {
+  const f = await fixture();
+  await f.app.listen({ host: '127.0.0.1', port: 0 });
+  if (kind === 'read failure') f.source.history.mockRejectedValueOnce(new Error(BODY));
+  if (kind === 'source close failure') f.source.close.mockRejectedValueOnce(new Error(BODY));
+  const readers = { close: vi.fn(async () => ({ allClosed: true, allNormal: kind !== 'forced reader exit', signalAttempted: kind === 'forced reader exit' })) };
+  const report = await runApiSession({ ...f, readers, key: KEY, origin: ORIGIN,
+    ...(kind === 'pre-abort' ? { signal: AbortSignal.abort() } : {}) });
+  expect(report.outcome).toBe(kind === 'ok' ? 'ok' : 'failed');
+  expect(report.gateMeasurement).toBe(false);
+  expect(report.cleanup).toMatchObject({ revoked: true, transportClosed: true, appClosed: true, readersClosed: true });
+  expect(f.auth.count).toBe(0);
+  expect(f.app.server.listening).toBe(false);
+  expect(readers.close).toHaveBeenCalledOnce();
+  expect(f.source.close).toHaveBeenCalledOnce();
+  if (kind !== 'ok') expect(report.sample).toBeNull();
+  if (kind === 'pre-abort') expect(f.source.capabilities).not.toHaveBeenCalled();
+  for (const secret of [KEY, ID, BODY, f.cookie, f.csrf]) expect(JSON.stringify(report)).not.toContain(secret);
+});
+
+it('joined session abort interrupts pending source work as well as the HTTP socket', async () => {
+  const f = await fixture();
+  await f.app.listen({ host: '127.0.0.1', port: 0 });
+  const controller = new AbortController();
+  let rejectHistory!: (error: Error) => void;
+  f.source.history.mockImplementationOnce(() => {
+    const pending = new Promise<never>((_resolve, reject) => { rejectHistory = reject; });
+    controller.abort();
+    return pending;
+  });
+  f.source.close.mockImplementationOnce(async () => { rejectHistory(new Error(BODY)); });
+  const readers = { close: vi.fn(async () => ({ allClosed: true, allNormal: false, signalAttempted: true })) };
+  const result = await runApiSession({ ...f, readers, key: KEY, origin: ORIGIN, signal: controller.signal });
+  expect(result.outcome).toBe('failed');
+  expect(result.sample).toBeNull();
+  expect(result.cleanup).toMatchObject({ revoked: true, transportClosed: true, sourceClosed: true, readersClosed: true, appClosed: true });
+  expect(f.auth.count).toBe(0);
+  expect(f.source.close).toHaveBeenCalledOnce();
 });

@@ -22,8 +22,12 @@ vi.mock('node:child_process', async importOriginal => {
 });
 import { LiveSource } from '../src/server/live-source.js';
 import { ReadonlyRpcClient } from '../src/server/rpc/readonly-client.js';
+import { Auth, hashKey } from '../src/server/auth.js';
+import { createApp } from '../src/server/http.js';
 // @ts-expect-error Experimental standalone JavaScript helper has no declarations.
 import { createOwnedReaderGate } from '../scripts/nonlaunch-owned-readers.mjs';
+// @ts-expect-error Experimental standalone JavaScript helper has no declarations.
+import { runApiSession } from '../scripts/nonlaunch-api-session.mjs';
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -115,4 +119,24 @@ it('measurement gate accepts normal bootstrap and shutdown while preventing futu
   await source.close();
   expect(await gate.close()).toEqual({ gateMeasurement: false, children: 2, allClosed: true, allNormal: true, signalAttempted: false });
   expect(() => gate.factory(() => { throw new Error('must not run'); })).toThrow('OWNED_READER_FAILED');
+});
+
+it.each(['normal', 'stubborn'])('joined session owns HTTP, auth and native %s bootstrap cleanup', async mode => {
+  const gate = createOwnedReaderGate({ graceMs: 200, killWaitMs: 1000 });
+  cleanups.push(() => gate.close());
+  const source = await fixture([mode, 'normal'], gate);
+  const key = 'A'.repeat(43), origin = 'https://imsg.synthetic.test';
+  const auth = new Auth(hashKey(key));
+  const app = await createApp({ auth, source, origin });
+  cleanups.push(() => app.close());
+  await app.listen({ host: '127.0.0.1', port: 0 });
+  const report = await runApiSession({ app, auth, source, readers: gate, key, origin });
+  expect(report.outcome).toBe(mode === 'normal' ? 'ok' : 'failed');
+  expect(report.cleanup).toMatchObject({ revoked: true, transportClosed: true, readersClosed: true, appClosed: true });
+  expect(report.cleanup.readersNormal).toBe(mode === 'normal');
+  expect(auth.count).toBe(0);
+  expect(app.server.listening).toBe(false);
+  expect(tracking.children).toHaveLength(mode === 'normal' ? 2 : 1);
+  expect(tracking.children.every(r => r.closed)).toBe(true);
+  if (mode !== 'normal') expect(report.sample).toBeNull();
 });

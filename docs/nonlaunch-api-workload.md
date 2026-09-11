@@ -181,3 +181,40 @@ cannot detect a trusted callback secretly creating an unregistered child. Wire
 that adapter to verified artifact admission and listener ownership, then join
 transport close, session revocation, source/gate close, and signal/whole-run
 deadlines in one supervisor. Do not use this module alone as live authorization.
+
+## Joined isolated session — 2026-09-11
+
+Added `scripts/nonlaunch-api-session.mjs`, joining one API workload cycle with
+authentication, bounded GET transport and mandatory cleanup. The caller transfers
+an already-listening, exclusively owned app and its matching Auth, source and
+reader gate. This must never receive production/shared resources: all sessions
+are revoked and the app is closed, even on setup/read failure. It verifies an
+active literal-loopback listener, issues a session via the local Auth instance
+(outside the timed workload), and never returns credentials or raw errors.
+
+Finally revokes credentials first, starts transport/source/gate closure together,
+then awaits app closure. Independent gate cleanup still runs when source.close
+rejects. A successful sample is retained only if every cleanup acknowledgement
+passes, including normal reader exit; all results remain gateMeasurement:false.
+An AbortSignal reaches GET transport, and ensuing source closure interrupts
+pending upstream work rather than assuming socket closure did so.
+
+Eight new integration cases cover normal completion, read/source-close failure,
+forced reader exit, pre-abort, abort during pending history, and two actual
+LiveSource/ReadonlyRpcClient subprocess sessions over loopback HTTP. The native
+normal case closes both children and listener with zero remaining sessions; the
+stubborn-bootstrap case closes its sole child and never spawns a replacement.
+Full suite: 141 passed on Node 24.19.0; typecheck passed on Node 22.23.1;
+git diff --check passed. Production source/UI unchanged. No Mac, browser/build,
+exact Node 24.20.0 or independent review was run in this follow-up.
+
+This is a one-cycle owned-resource runner, not the complete live supervisor.
+It does not start/admit an application artifact, establish matching resource
+identity, persist owner state, or register real production child spawns. The
+trusted caller is responsible for those relationships. Local Auth login is not
+a test of remote login or Secure-cookie browser handling. It waits for cleanup
+promises rather than abandoning them: a defective/hung source or app close can
+still prevent return. Whole-run/startup/cleanup watchdogs and process-signal
+wiring therefore remain required in the outer supervisor, alongside artifact
+audit, listener admission, raw-target parity and full C06 scheduling. Do not
+interpret this short integrated run as live-use approval or a performance pass.
