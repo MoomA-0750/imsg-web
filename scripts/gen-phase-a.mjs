@@ -219,9 +219,16 @@ function commandSegments(code) {
       let segment = rawSegment.trim();
 
       // A segment that is only an assignment runs nothing.
+      // A pure assignment runs nothing. Anchored at the end on purpose: the
+      // unanchored form let the `\S*` alternative backtrack into a quoted value
+      // containing a space, so `BASE='/…/Application Support/…'` was parsed as a
+      // command named `BASE='/…/Application`. It never matched a forbidden name,
+      // so it failed silently -- the parser simply stopped seeing the real
+      // command on any line whose assignment value had a space in it.
+      if (/^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|"[^"]*"|\S*)$/.test(segment)) continue;
       if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(segment) && !/\s/.test(segment.split('=')[0])) {
-        const rest = segment.match(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|\S*))\s+(.*)$/);
-        if (!rest) continue;
+        const rest = segment.match(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"))\s+(.*)$/);
+        if (rest) segment = rest[1].trim();
       }
 
       for (let guard = 0; guard < 8; guard += 1) {
