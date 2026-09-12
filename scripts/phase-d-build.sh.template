@@ -7,7 +7,12 @@
 #
 # Contract, enforced by the Phase D generator:
 #   - every write names a path under the build root
-#   - no rm, no sudo, no launchctl, no tailscale, no brew, no kill, no network
+#   - no rm, no sudo, no launchctl, no tailscale, no brew, no kill
+#   - no network TOOLS (curl/scp/ssh/nc). SwiftPM's dependency fetch is the one
+#     approved network step: the revisions are pinned and git verifies every
+#     object against its hash, so a tampered remote fails closed. Saying "no
+#     network" here would have been false, and someone reading only this header
+#     would have recorded it as fact.
 #   - imsg and node are never executed; the build's PRODUCTS are never executed
 #   - stock imsg, the dedicated Node runtimes, existing build trees and retained
 #     releases are not touched, not reused and not deleted
