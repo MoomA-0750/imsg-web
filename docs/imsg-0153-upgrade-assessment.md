@@ -119,3 +119,84 @@ CLI is a Phase C/E question, not answered here.
 Behavioural equivalence between 0.15.1 and 0.15.3 has **not** been demonstrated.
 Demonstrating it would require executing imsg, which the admission chain still
 gates.
+
+---
+
+# Correction: how the "byte-identical" claim was originally checked
+
+The claim above — that all nine audited files are unchanged between v0.15.1 and
+v0.15.3 — **is correct, but the check that produced it was not.** Two defects,
+found while extending this assessment to 0.15.4:
+
+1. **Four of the nine paths did not exist.** The check used
+   `Sources/imsg/RpcCommand.swift`, `Sources/IMsgCore/RPCServer.swift`,
+   `Sources/IMsgCore/RPCServer+Handlers.swift` and
+   `Sources/IMsgCore/RPCServer+StatusHandlers.swift`. The real paths are
+   `Sources/imsg/Commands/RpcCommand.swift` and `Sources/imsg/RPCServer*.swift`.
+   `git diff --name-only <range> -- <nonexistent path>` prints nothing, which the
+   check read as "unchanged". Four of the nine results were vacuous.
+2. **The loop did not iterate.** The file list was held in a plain shell
+   variable and iterated in `zsh`, which does not word-split unquoted parameters
+   by default, so the entire list was treated as a single path. Every result was
+   the same vacuous "unchanged".
+
+Re-checked with the correct paths and an array:
+
+- **v0.15.1 → v0.15.3: all nine genuinely unchanged.** The conclusion stands.
+- **v0.15.1 → v0.15.4: `Sources/imsg/RPCServer.swift` changed.** The broken
+  check reported it as unchanged. The defect was not hypothetical.
+
+A verification that cannot fail is not a verification. Both defects are the same
+species as the ones this project has been catching in the Mac scripts, and they
+occurred in the tooling used to check the source rather than in the source.
+
+# Extension to v0.15.4
+
+`v0.15.4` (`e2f5046`) is the latest release; `0.15.5` is open but unreleased.
+
+## The one audited file that changed
+
+`Sources/imsg/RPCServer.swift` gains a `stageAudioAttachment` stored property
+with a default of `AudioMessagePreparer.prepare`, assigned in both initializers.
+It is additive and follows the pattern the audit already recorded: **RPCServer
+stores action closures rather than invoking them.** It is on the send path, for
+inline-playable audio messages, and no read-only route this project uses reaches
+it. The audit's standing conclusions are unaffected; this closure simply joins
+the list of stored-but-uninvoked actions.
+
+The other 0.15.4 changes are `AudioMessagePreparer` (new), `MessageSender`,
+`BridgeAttachmentCommand`, `RPCServer+BridgeMessageHandlers`, and release
+plumbing — all send/attachment path.
+
+## Build inputs at v0.15.4
+
+| | SHA256 |
+|---|---|
+| `Package.swift` | `0785085f66d192c871b9cd145a0a65b0aa2765cbce6ee576bd70aa609d3442d4` |
+| `Package.resolved` | `61a6573a5e5bee68be9cc8c562e55ca39662033877ec611176734b5af59056c8` |
+
+Pins: `commander` 0.2.4, `csqlite` 3.53.3, `phonenumberkit` 5.0.9,
+`sqlite.swift` 0.16.0. The lock moved from 0.15.3 only by the PhoneNumberKit
+bump (5.0.8 → 5.0.9, "refresh phone metadata").
+
+**This lock is complete**, unlike 0.14.2's. `CSQLite` is a declared direct
+dependency from 0.15.x onward, and `Package.swift` links it only
+`.when(platforms: [.linux])` — which is why a macOS build of 0.14.2 succeeded
+despite the pin being absent from that version's committed lock, and why
+resolution adds it anyway: SwiftPM resolves the whole graph regardless of
+platform conditions.
+
+The stored 0.15.1 patch **applies cleanly to v0.15.4**, verified against a
+detached worktree at `e2f5046`.
+
+## Platform feasibility on both hosts
+
+Both v0.14.2 and v0.15.4 declare `swift-tools-version: 6.0` and
+`platforms: [.macOS(.v14)]`. Both hosts satisfy the deployment target. Whether
+each host has a Swift 6.0 toolchain is **not established** and becomes a pass 2
+item: the Intel host demonstrably built this package before, but its toolchain
+version was never recorded, and the two hosts are now on very different macOS
+releases.
+
+Swift is not installed on this workstation, so no dependency resolution can be
+performed here. Any resolution happens on a Mac, during Phase D.
