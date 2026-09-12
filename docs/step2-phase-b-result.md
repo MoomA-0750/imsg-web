@@ -93,6 +93,13 @@ Two things keep this from being alarming, and one keeps it open:
   resolutions of overlapping graphs disagreed about whether that package belongs
   in the lock. Why is **not established**, and this record does not guess.
 
+**Established in Phase D.** Resolving v0.15.4 on the Intel host reproduced it
+exactly: the same package at the same revision was added, and `originHash` was
+recomputed as the manifest digest. The disagreement is between **SwiftPM
+versions**, not between machines or between this project and upstream's intent.
+The historical lock was normal for the toolchain that produced it. See
+`docs/step2-phase-d-result.md`.
+
 This matters less going forward than it would have: the go-forward pin is
 v0.15.4 with its own complete, upstream-committed lock, so the historical lock
 describes historical evidence only. It does mean Phase D must record the lock
