@@ -50,6 +50,7 @@ function checkBase(base) {
 
 const args = parseArgs(process.argv.slice(2));
 const pass = args.pass ?? '1';
+const tmpd = args.tmpd ?? 'NONE';
 const role = args.role;
 const base = args.base;
 const out = args.out;
@@ -57,17 +58,24 @@ const out = args.out;
 const TEMPLATES = new Map([
   ['1', 'phase-a-pass1.sh.template'],
   ['1b', 'phase-a-pass1b.sh.template'],
+  ['2', 'phase-a-pass2.sh.template'],
 ]);
-if (!TEMPLATES.has(pass)) fail('--pass must be 1 or 1b; pass 2 is built from pass 1 output');
+if (!TEMPLATES.has(pass)) fail('--pass must be 1, 1b or 2');
 if (role !== 'intel' && role !== 'm1') fail('--role must be intel or m1');
 if (!base) fail('--base is required');
 if (!out) fail('--out is required');
 checkBase(base);
+// The build-tree root is substituted the same way and gets the same scrutiny.
+// 'NONE' is the explicit "this host has no such tree" value.
+if (tmpd !== 'NONE') checkBase(tmpd);
 
 const templatePath = resolve(dirname(new URL(import.meta.url).pathname), TEMPLATES.get(pass));
 const template = readFileSync(templatePath, 'utf8');
 
-const script = template.replaceAll('@@BASE@@', base).replaceAll('@@ROLE@@', role);
+const script = template
+  .replaceAll('@@BASE@@', base)
+  .replaceAll('@@TMPD@@', tmpd)
+  .replaceAll('@@ROLE@@', role);
 
 // A surviving marker would hit `set -u` remotely, but catching it here is
 // cheaper and unambiguous.
@@ -124,13 +132,35 @@ const FORBIDDEN_COMMANDS = new Set([
   'imsg', 'node', 'npm', 'npx', 'sudo', 'rm', 'rmdir', 'kill', 'killall',
   'chmod', 'chown', 'chflags', 'mv', 'cp', 'mkdir', 'touch', 'ln', 'dd',
   'mdfind', 'mdutil', 'osascript', 'open', 'defaults', 'csrutil', 'tccutil',
-  'softwareupdate', 'installer', 'brew', 'git',
+  'softwareupdate', 'installer', 'brew',
+  // 'git' is deliberately NOT here: it is handled by checkGit below, which is
+  // an allow-list of exact non-locking read-only forms. Listing it here as well
+  // would reject it before that check ever ran.
   // Indirect execution: each of these can run anything, so allowing them would
   // make every entry above decorative. `-exec sh -c` was rejected during the
   // first review; without `sh` here, the generator would not have stopped it.
   'eval', 'exec', 'sh', 'bash', 'zsh', 'dash', 'env', 'xargs', 'tee',
   'nohup', 'caffeinate', 'script', 'perl', 'python', 'python3', 'ruby',
 ]);
+
+// `git` is not forbidden outright, because pass 2 needs it, but plain
+// `git status` writes .git/index and can spawn a resident fsmonitor daemon.
+// Only these exact non-locking read-only forms are accepted, spelled out in
+// full on one line so this check sees them -- assigning the prefix to a shell
+// variable would hide the command behind a `$` and skip the check entirely.
+const GIT_PREFIX =
+  'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C ';
+const GIT_ALLOWED_SUBCOMMANDS = /^(rev-parse|status --porcelain)(\s|$)/;
+
+function checkGit(text, origin) {
+  if (!text.startsWith(GIT_PREFIX)) {
+    fail(`git invocation in ${origin} is not the approved non-locking form: ${text}`);
+  }
+  const afterPath = text.slice(GIT_PREFIX.length).replace(/^("[^"]*"|\S+)\s*/, '');
+  if (!GIT_ALLOWED_SUBCOMMANDS.test(afterPath)) {
+    fail(`git subcommand in ${origin} is not allow-listed: ${afterPath}`);
+  }
+}
 
 // `find` can execute and delete. `-exec` is needed for the symlink listing, so
 // it is allowed only with a read-only command and only in the `+` / `\;` forms.
@@ -139,7 +169,12 @@ const FIND_EXEC_ALLOWED = new Set(['ls', 'stat', 'file', 'shasum', 'cat']);
 // Roots a bounded search may start from. `-maxdepth 4` on the wrong tree is
 // still a scan of the wrong tree, so the root is checked as well as the depth.
 const ALLOWED_FIND_ROOTS = [
+  // BASE and TMPD are substituted literals that this generator validated with
+  // checkBase, so a root written against them is checkable. A loop variable is
+  // not: the generator cannot know what it holds, so templates unroll loops
+  // that contain a find rather than hiding the root behind one.
   '"${BASE}',
+  '"${TMPD}',
   '/private/tmp',
   '"${HOME}/Library/LaunchAgents"',
 ];
@@ -206,6 +241,8 @@ function auditCode(code, origin) {
     if (command && FORBIDDEN_COMMANDS.has(command)) {
       fail(`generated script runs a forbidden command in ${origin}: ${command}`);
     }
+
+    if (command === 'git') checkGit(text, origin);
 
     // Checked in command position, so `echo "find tree exit: $?"` is not a find.
     if (command === 'find') {

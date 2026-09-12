@@ -49,6 +49,41 @@ test('the unmodified template generates', () => {
   assert.equal(result.ok, true, `control generation failed: ${result.output}`);
 });
 
+// Pass 2 is the template that actually uses git, so its own generation is the
+// real control for the allow-list.
+test('the pass 2 template generates, including its git invocations', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-phase-a-test-'));
+  try {
+    copyFileSync(GENERATOR, join(dir, 'gen-phase-a.mjs'));
+    copyFileSync(join(here, 'phase-a-pass2.sh.template'), join(dir, 'phase-a-pass2.sh.template'));
+    const stdout = execFileSync(
+      process.execPath,
+      [join(dir, 'gen-phase-a.mjs'), '--pass', '2', '--role', 'intel',
+       '--base', BASE, '--tmpd', '/private/tmp/example', '--out', join(dir, 'out.sh')],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    assert.match(stdout, /wrote out\.sh/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('refuses an unsafe build-tree root', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-phase-a-test-'));
+  try {
+    copyFileSync(GENERATOR, join(dir, 'gen-phase-a.mjs'));
+    copyFileSync(join(here, 'phase-a-pass2.sh.template'), join(dir, 'phase-a-pass2.sh.template'));
+    assert.throws(() => execFileSync(
+      process.execPath,
+      [join(dir, 'gen-phase-a.mjs'), '--pass', '2', '--role', 'intel',
+       '--base', BASE, '--tmpd', '/private/tmp/$(whoami)', '--out', join(dir, 'out.sh')],
+      { stdio: 'pipe' },
+    ));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 const REFUSALS = [
   ['node hidden in a command substitution', 'V="$(node --version)"', 'node'],
   ['imsg invoked directly', 'imsg chats list', 'imsg'],
@@ -68,6 +103,12 @@ const REFUSALS = [
   ['xargs', 'echo x | xargs rm', 'xargs'],
   // A line-based scan misses this: `\s` does not span a backslash-newline.
   ['a mutation hidden behind a line continuation', 'launchctl \\\n  bootout gui/501', 'launchctl verb'],
+  // git is allow-listed to exact non-locking read-only forms, not forbidden:
+  // pass 2 needs it, and plain `git status` writes .git/index.
+  ['plain git status', 'git status --porcelain', 'not the approved non-locking form'],
+  ['git without the fsmonitor override', 'git --no-optional-locks -C /t status --porcelain', 'not the approved non-locking form'],
+  ['a non-allow-listed git subcommand', 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C /t log --oneline', 'not allow-listed'],
+  ['a writing git subcommand', 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C /t checkout main', 'not allow-listed'],
 ];
 
 for (const [name, line, expected] of REFUSALS) {
