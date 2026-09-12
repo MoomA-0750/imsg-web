@@ -47,6 +47,17 @@ window at measurement time. Serve is empty on both hosts (pass 1's
 "unestablished" on Intel was a probe error, since withdrawn). The M1 build tree
 was not found. See `docs/step2-phase-a-result.md`.
 
+Phase B pass 2 completed 2026-09-12, read-only, imsg and Node still not executed.
+Both Node runtimes are now bound to their official release images by digest. The
+published Intel candidate digests turned out to come from the tree named
+`candidate-r3`, not `candidate`; the latter is a superseded dead end. None of the
+Intel trees is a git repository, so binding is by file content only. The
+re-resolved 0.14.2 lock's contents were read for the first time and add csqlite
+plus sqlcipher.swift, the latter absent from upstream's own complete lock at
+0.15.4 for reasons not established. Toolchains differ (Intel Swift 6.1.2 on CLT;
+M1 Swift 6.4 on an Xcode 27 beta) and both hosts have room for fresh build
+trees. See `docs/step2-phase-b-result.md`.
+
 Step2 remaining: read-only inventory of both Macs after owner authorization;
 source/build-to-binary, architecture/signature/linked-library/helper verification;
 explicit trusted cwd/environment and import closure; fresh current application
@@ -84,7 +95,8 @@ the next task are superseded by this file and the handoff.
 - Step2 checkpoint: `docs/nonlaunch-source-runtime-audit.md`
 - Step2 Phase A plan: `docs/step2-phase-a-inventory-plan.md`
 - Step2 Phase A result: `docs/step2-phase-a-result.md`
-- imsg 0.15.3 assessment: `docs/imsg-0153-upgrade-assessment.md`
+- imsg 0.15.3/0.15.4 assessment: `docs/imsg-0153-upgrade-assessment.md`
+- Step2 Phase B plan and result: `docs/step2-phase-b-provenance-plan.md`, `docs/step2-phase-b-result.md`
 - Workload/process boundaries: `docs/nonlaunch-api-workload.md`,
   `docs/nonlaunch-worker-watchdog.md`, `docs/nonlaunch-residue.md`
 - Artifact verifier: `docs/nonlaunch-bundle.md`
