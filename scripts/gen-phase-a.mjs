@@ -82,13 +82,22 @@ const codeOnly = script
   .join('\n');
 
 // Patterns that are unambiguous wherever they appear in code.
+//
+// launchctl and tailscale are allow-listed rather than deny-listed: a deny list
+// has to enumerate `start`, `stop`, `kill`, `setenv`, `submit`, `attach`,
+// `debug`, ... and silently permits whatever it forgets. Only the read-only
+// verbs this plan actually uses are accepted.
 const FORBIDDEN_PATTERNS = [
-  [/launchctl\s+(load|unload|bootout|bootstrap|kickstart|remove|enable|disable)\b/, 'launchctl mutation'],
-  [/2>\s*\/dev\/null/, 'discarded stderr'],
-  [/\bserve\s+(set|reset|clear)\b/, 'serve mutation'],
+  [/launchctl\s+(?!list\b|print\b)\S/, 'launchctl verb that is not list/print'],
+  [/\bserve\s+(?!status\b)\S/, 'tailscale serve verb that is not status'],
   [/\bfunnel\b/, 'funnel'],
+  [/2>\s*\/dev\/null/, 'discarded stderr'],
   // A real redirect writes. `"%N -> %Y"` in a stat format string does not, so
-  // a `>` preceded by `-` is not a redirect.
+  // a `>` preceded by `-` is not a redirect. `>>` and `&>` must be matched
+  // explicitly: in the single-`>` pattern below, `>>` slips through because the
+  // first `>` is excluded by the lookahead and the second by the prefix class.
+  [/>>/, 'append redirection'],
+  [/&>/, 'combined redirection'],
   [/(^|[^-&>])>(?![&>])/m, 'output redirection'],
 ];
 
@@ -105,12 +114,36 @@ const FORBIDDEN_COMMANDS = new Set([
   'chmod', 'chown', 'chflags', 'mv', 'cp', 'mkdir', 'touch', 'ln', 'dd',
   'mdfind', 'mdutil', 'osascript', 'open', 'defaults', 'csrutil', 'tccutil',
   'softwareupdate', 'installer', 'brew', 'git',
+  // Indirect execution: each of these can run anything, so allowing them would
+  // make every entry above decorative. `-exec sh -c` was rejected during the
+  // first review; without `sh` here, the generator would not have stopped it.
+  'eval', 'exec', 'sh', 'bash', 'zsh', 'dash', 'env', 'xargs', 'tee',
+  'nohup', 'caffeinate', 'script', 'perl', 'python', 'python3', 'ruby',
 ]);
+
+// `find` can execute and delete. `-exec` is needed for the symlink listing, so
+// it is allowed only with a read-only command and only in the `+` / `\;` forms.
+const FIND_EXEC_ALLOWED = new Set(['ls', 'stat', 'file', 'shasum']);
 
 const SHELL_KEYWORDS = new Set([
   'if', 'then', 'else', 'elif', 'fi', 'while', 'until', 'do', 'done',
   'case', 'esac', 'for', 'in', '!', '{', '}', '(', ')', 'time',
 ]);
+
+// A command substitution is command position too. Scanning only the outer text
+// lets `V="$(node --version)"` through, because the segment's first word starts
+// with `$` and is skipped -- which would defeat the single most important rule
+// in this phase, that neither imsg nor node is executed.
+function expandSubstitutions(code) {
+  const inner = [];
+  const pattern = /\$\(([^()]*)\)|`([^`]*)`/g;
+  let match = pattern.exec(code);
+  while (match) {
+    inner.push(match[1] ?? match[2] ?? '');
+    match = pattern.exec(code);
+  }
+  return inner;
+}
 
 function commandSegments(code) {
   const segments = [];
@@ -119,6 +152,13 @@ function commandSegments(code) {
     if (!line) continue;
     for (const rawSegment of line.split(/\|\||&&|[;|&]/)) {
       let segment = rawSegment.trim();
+
+      // A segment that is only an assignment runs nothing.
+      if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(segment) && !/\s/.test(segment.split('=')[0])) {
+        const rest = segment.match(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|\S*))\s+(.*)$/);
+        if (!rest) continue;
+      }
+
       for (let guard = 0; guard < 8; guard += 1) {
         const stripped = segment.match(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"|\S*))\s+(.*)$/);
         if (stripped) {
@@ -139,18 +179,44 @@ function commandSegments(code) {
   return segments;
 }
 
-for (const { word, text } of commandSegments(codeOnly)) {
-  const bare = word.replace(/^["']|["']$/g, '');
-  const command = bare.includes('$') ? '' : bare.split('/').pop();
+function auditCode(code, origin) {
+  for (const { word, text } of commandSegments(code)) {
+    const bare = word.replace(/^["']|["']$/g, '');
+    const command = bare.includes('$') ? '' : bare.split('/').pop();
 
-  if (command && FORBIDDEN_COMMANDS.has(command)) {
-    fail(`generated script runs a forbidden command: ${command}`);
-  }
+    if (command && FORBIDDEN_COMMANDS.has(command)) {
+      fail(`generated script runs a forbidden command in ${origin}: ${command}`);
+    }
 
-  // Checked in command position, so `echo "find tree exit: $?"` is not a find.
-  if (command === 'find' && !/-maxdepth\s+\d/.test(text)) {
-    fail(`generated script has an unbounded find: ${text}`);
+    // Checked in command position, so `echo "find tree exit: $?"` is not a find.
+    if (command === 'find') {
+      if (!/-maxdepth\s+\d/.test(text)) {
+        fail(`generated script has an unbounded find in ${origin}: ${text}`);
+      }
+      for (const banned of ['-delete', '-ok', '-okdir', '-execdir']) {
+        if (text.includes(banned)) {
+          fail(`generated script has a mutating find in ${origin}: ${banned}`);
+        }
+      }
+      // `-maxdepth 4` on the wrong root is still a scan of the wrong tree.
+      const start = text.split(/\s+/)[1] ?? '';
+      if (!start.startsWith('"${BASE}') && !start.startsWith('/private/tmp')) {
+        fail(`generated script searches an unapproved root in ${origin}: ${start}`);
+      }
+      const execAt = text.indexOf('-exec ');
+      if (execAt !== -1) {
+        const execCommand = text.slice(execAt + 6).trim().split(/\s+/)[0] ?? '';
+        if (!FIND_EXEC_ALLOWED.has(execCommand.split('/').pop())) {
+          fail(`generated script has a find -exec running ${execCommand} in ${origin}`);
+        }
+      }
+    }
   }
+}
+
+auditCode(codeOnly, 'the script body');
+for (const inner of expandSubstitutions(codeOnly)) {
+  auditCode(inner, 'a command substitution');
 }
 
 
@@ -162,5 +228,7 @@ if (outPath.includes('/imsg-web/') || outPath.includes('/Obsidian-Vault/')) {
 writeFileSync(outPath, script, { mode: 0o600 });
 chmodSync(outPath, 0o600);
 
-console.log(`wrote ${outPath}`);
+// Only the file name: the directory is private and there is no reason to put it
+// into a transcript.
+console.log(`wrote ${outPath.split('/').pop()}`);
 console.log(`role=${role} pass=${pass} bytes=${script.length}`);

@@ -21,6 +21,15 @@
 
 set -u
 
+# sshd hands a non-interactive shell its own default PATH, and a login profile
+# is not sourced. Declaring it here removes the remaining dependence on remote
+# environment and matches the project's "direct absolute executables" rule.
+# Note what this means for A4: Homebrew's prefix is NOT on this PATH, so
+# `command -v imsg` is expected to fail and the absolute probes below are the
+# real discovery mechanism, not a fallback.
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+
 BASE='@@BASE@@'
 ROLE='@@ROLE@@'
 
@@ -65,8 +74,17 @@ launchctl list
 echo "launchctl list exit: $?"
 
 echo "== A3 launchctl print gui"
-launchctl print "gui/$(id -u)"
-echo "launchctl print exit: $?"
+# The domain dump carries an `environment = { ... }` block. If the owner ever
+# set a value there with `launchctl setenv` -- plausibly a key for the watcher's
+# AI-reply branch -- it would be written verbatim into the raw log. AGENTS.md
+# forbids logging owner keys, so the block is dropped before it is ever written.
+# What this section is for is the loaded-service list, not the environment.
+launchctl print "gui/$(id -u)" | awk '
+  tolower($0) ~ /environment[ \t]*=[ \t]*\{/ { skipping = 1; print "  [environment block withheld]"; next }
+  skipping == 1 { if ($0 ~ /^[ \t]*\}[ \t]*$/) { skipping = 0 } next }
+  { print }
+'
+echo "launchctl print pipeline exit (awk): $?"
 
 echo "== A3 launch agents on disk"
 ls -la "${HOME}/Library/LaunchAgents"
@@ -100,7 +118,10 @@ if [ "${ROLE}" = 'intel' ]; then
   # environment may carry credentials. comm alone cannot identify a Python
   # script, since comm is the interpreter.
   ps -axo pid=,ppid=,args= | awk '/watcher\.py/ { print $1, $2, $3, $4 }'
-  echo "watcher projection exit: $?"
+  # This is the awk exit status, not ps's: a pipeline reports its last element.
+  # A ps failure would show as empty output plus its own stderr, not as a
+  # non-zero code here.
+  echo "watcher pipeline exit (awk): $?"
 fi
 
 # ------------------------------------------------------------------ A2 tree
@@ -147,42 +168,52 @@ echo "find node archive exit: $?"
 
 echo "== A2 releases"
 find "${BASE}" -maxdepth 1 -type d -name releases -print
+echo "find releases dir exit: $?"
 find "${BASE}/releases" -mindepth 1 -maxdepth 1 -type d -print
-echo "find releases exit: $?"
+echo "find release entries exit: $?"
 
 # ------------------------------------------------------- A4 imsg resolution
 echo "== A4 imsg path"
-IMSG_PATH="$(command -v imsg)"
+# command -v is recorded for completeness but is NOT expected to find anything:
+# the PATH declared at the top of this script deliberately excludes Homebrew's
+# prefix. Discovery is done by probing absolute paths, so a miss here is a fact
+# about PATH, never evidence that imsg is absent.
+IMSG_ON_PATH="$(command -v imsg)"
 echo "command -v exit: $?"
-echo "resolved: ${IMSG_PATH}"
+echo "command -v result: ${IMSG_ON_PATH}"
 
-if [ -n "${IMSG_PATH}" ]; then
-  type -a imsg
-  ls -l "${IMSG_PATH}"
-  # stat %Y prints the link target. readlink -f is macOS 12.3+ only and would
-  # fail silently on an older host.
-  stat -f "%N -> %Y" "${IMSG_PATH}"
-  echo "stat link exit: $?"
-  IMSG_TYPE="$(file -b "${IMSG_PATH}")"
-  echo "file: ${IMSG_TYPE}"
-  shasum -a 256 "${IMSG_PATH}"
-  stat -f "%Sp %Su:%Sg %z %N" "${IMSG_PATH}"
+echo "== A4 absolute probes"
+for candidate in /usr/local/bin/imsg /opt/homebrew/bin/imsg; do
+  echo "-- probe: ${candidate}"
+  if [ -e "${candidate}" ]; then
+    # -L forces each of these through the symlink. Without it, Homebrew's
+    # bin entry reports "symbolic link to ../Cellar/..." and every type,
+    # size and mode below describes the link rather than the image.
+    ls -l "${candidate}"
+    ls -lL "${candidate}"
+    stat -f "%N -> %Y" "${candidate}"
+    echo "stat link exit: $?"
+    stat -L -f "%Sp %Su:%Sg %z %N" "${candidate}"
+    file -bL "${candidate}"
+    shasum -a 256 "${candidate}"
 
-  echo "== A4 wrapper body"
-  case "${IMSG_TYPE}" in
-    *text*)
-      # Read only to discover the versioned libexec target. Recorded in the
-      # Vault note only; the wrapper path is never written into a manifest as
-      # if it were the executable image.
-      head -c 4096 "${IMSG_PATH}"
-      ;;
-    *)
-      echo "not a text file; wrapper body not read"
-      ;;
-  esac
-else
-  echo "imsg not on PATH"
-fi
+    echo "-- wrapper body: ${candidate}"
+    CANDIDATE_TYPE="$(file -bL "${candidate}")"
+    case "${CANDIDATE_TYPE}" in
+      *text*)
+        # Read only to discover the versioned libexec target. Recorded in the
+        # Vault note only; the wrapper path is never written into a manifest
+        # as if it were the executable image.
+        head -c 4096 "${candidate}"
+        ;;
+      *)
+        echo "not a text file after following links; wrapper body not read"
+        ;;
+    esac
+  else
+    echo "absent"
+  fi
+done
 
 # --------------------------------------------------- A5 temporary discovery
 # On M1 this locates the build tree whose path was never recorded, and its
@@ -197,8 +228,9 @@ echo "== A5 package manifests"
 # Depth 4, not 2: the comparable audit tree places Package.resolved three
 # levels below the temporary root.
 find /private/tmp -maxdepth 4 -name 'Package.resolved' -print
+echo "find Package.resolved exit: $?"
 find /private/tmp -maxdepth 4 -name 'Package.swift' -print
-echo "find manifests exit: $?"
+echo "find Package.swift exit: $?"
 
 echo "== A5 build dirs"
 find /private/tmp -maxdepth 4 -type d -name '.build' -print

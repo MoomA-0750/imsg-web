@@ -210,9 +210,21 @@ be presented as representing a LaunchAgent context, and SSH variables are never
 fabricated or cleared to change behaviour.
 
 `xcode-select -p` reports the selected developer directory without requesting an
-install. A non-zero exit means the Command Line Tools are unavailable: `otool`,
-`lipo` and `git` are then **skipped entirely** and their sections recorded as
-"not established", rather than risking a desktop install dialog.
+install. **Pass 1 records this result and does not branch on it**, because Pass 1
+contains no `xcrun` shim at all — no `otool`, `lipo`, `git` or `swift`. The gate
+is *consumed* when Pass 2 is generated: a non-zero exit there means those tools
+are unavailable, their sections are omitted from the generated script, and the
+corresponding rows are recorded as "not established" rather than risking a
+desktop install dialog.
+
+The script also sets `PATH=/usr/bin:/bin:/usr/sbin:/sbin` explicitly. `sshd`
+gives a non-interactive shell its own default `PATH` and sources no login
+profile, so leaving it implicit would make the inventory depend on remote
+environment — the same failure class as the placeholder problem. One consequence
+must be read correctly: **Homebrew's prefix is not on that `PATH`, so
+`command -v imsg` is expected to fail on Intel.** A4 therefore probes absolute
+paths, and a `command -v` miss is a fact about `PATH`, never evidence that
+`imsg` is absent.
 
 Abort for that host if: the user or hostname is not expected; the architecture
 contradicts the record; `base-missing`; or the base directory's mode is not
@@ -262,6 +274,14 @@ from there is macOS-version dependent and unverified. If the domain is not
 reachable, the non-zero exit is recorded as "not established" rather than read
 as "no agents". Output is verbose and includes unrelated third-party agents, so
 it goes to the Vault log only.
+
+Its `environment = { ... }` block is **filtered out before anything is written**.
+If the owner ever used `launchctl setenv` — plausibly for the watcher's AI-reply
+branch — that block would carry the value verbatim into the raw log, which
+`AGENTS.md` forbids. The section exists for the loaded-service list, not the
+environment, so dropping the block costs nothing this phase needs. The filter is
+read-only and the withheld block is marked in place rather than silently
+removed.
 
 Serve state, read-only, only if the CLI already exists:
 
@@ -468,6 +488,12 @@ Phase A stops for the affected host, and the owner is told, if:
 - The start/end `ps` diff, or the `xcode-select` check, indicates a process was
   spawned or state was modified.
 - Ownership or current use of a retained artifact is uncertain.
+- **A log does not end with the `== phase-a pass1 end` marker.** Because the
+  script is fed to `/bin/sh -s` on stdin, any command that reads stdin would
+  consume the rest of the script, and the run would end with exit 0 and a
+  truncated log that looks complete. `set -u` aborting mid-script produces the
+  same shape. The marker is the only reliable completeness check, and its
+  absence is treated as failure, never as "that section found nothing".
 
 Uncertainty is preserved as failure and the state is left exactly as found.
 
@@ -506,6 +532,38 @@ independently reproduced locally before adoption — a review is not a test.
 The review found **no path that invokes `imsg`, Messages.app or the bridge
 helper**, no SIP/TCC or permission change, no signal to the watcher, no Serve
 mutation and no stale lock removal, in either version.
+
+## F1 focused re-review dispositions (the executable artifact)
+
+`AGENTS.md` requires a focused re-review after adopted fixes, so the actual
+shell template and its generator were reviewed, not just the prose. No
+destructive blocker: the reviewer enumerated every command in the template and
+found no write, signal, `sudo`, `launchctl` mutation, Serve mutation, discarded
+stderr, shell glob, `-exec sh -c`, `imsg`/`node` invocation or temporary file.
+Seven findings, all adopted.
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | `command -v imsg` depends on the remote `PATH`; `sshd`'s default excludes Homebrew's prefix, so Intel would have recorded "imsg not on PATH" and Pass 2 would have had no wrapper to resolve | **Adopt.** Explicit `PATH` declared; A4 rewritten to probe `/usr/local/bin/imsg` and `/opt/homebrew/bin/imsg` as the real discovery mechanism |
+| 2 | `file -b` does not follow symlinks, so the `*text*` gate would be false for Homebrew's link and the wrapper body would never be read — while `shasum` read through the link, mixing link and target in one record | **Adopt.** `file -bL`, `stat -L -f`, `ls -lL` added, with the link itself still recorded separately |
+| 3 | `launchctl print gui/<uid>` emits an `environment` block that would carry any `launchctl setenv` value, including a watcher credential, into the raw log | **Adopt.** Block filtered before writing and marked as withheld. Presented as an owner decision by the reviewer; the safer option is taken by default because `AGENTS.md` forbids logging owner keys, and re-running unfiltered remains possible if the owner wants it |
+| 4 | Generator guards were bypassable: `$(...)` was not command position, `>>` and `&>` evaded the redirect check, indirect execution (`sh`, `eval`, `xargs`, …) was unlisted, `launchctl`/`serve` used deny-lists, and `find` roots were unchecked | **Adopt.** Substitutions are now audited recursively; append/combined redirects matched explicitly; indirect-execution commands added; `launchctl` and `serve` inverted to allow-lists (`list`/`print`, `status`); `find` roots restricted and `-delete`/`-ok`/`-execdir` rejected; `-exec` allowed only with read-only commands. Sixteen refusals are now covered by `scripts/gen-phase-a.test.mjs`, which also asserts the unmodified template still generates |
+| 5 | Three `$?` echoes reported the wrong command: two `find`s sharing one echo (twice), and a pipeline reporting `awk` rather than `ps` | **Adopt.** Each `find` got its own echo; the pipeline echo is relabelled to say which element's status it is |
+| 6 | With `/bin/sh -s`, a stdin-reading command would swallow the rest of the script and exit 0 with a truncated log that looks complete | **Adopt.** Absence of the `== phase-a pass1 end` marker is now an abort condition |
+| 7 | The prose claimed `xcode-select` gates `otool`/`lipo`/`git`, but Pass 1 only records it and contains no such tool | **Adopt.** Prose corrected: Pass 1 records, Pass 2 generation consumes |
+
+Run the generator's guard tests with:
+
+```sh
+node --test scripts/gen-phase-a.test.mjs
+```
+
+Still unverified, and recorded as such rather than assumed: the remote `/bin/sh`
+implementation, Command Line Tools presence, macOS versions, whether
+`launchctl list` covers the `gui` domain, whether `tailscale serve status`
+launches a GUI helper on an App Store install, and every value behind a
+placeholder. The template is syntax-checked with `sh -n` and **has never been
+executed anywhere**.
 
 Unverified by that review, and therefore still assumed rather than established:
 the remote login shell, Command Line Tools presence, macOS versions, whether
