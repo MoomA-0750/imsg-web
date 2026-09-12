@@ -347,5 +347,13 @@ fails for the wrong reason is worse, because it looks like evidence.
   require the executable to sit under the base. Deferred until Phase D produces
   the artifact, since the path being validated does not exist yet.
 - Process-group and `ExitTimeOut` interaction with the Agent's shutdown
-  sequence, and `imsg rpc`'s behaviour on stdin EOF versus SIGTERM, are checked
-  against the real binary in Phase D's non-launch tests.
+  sequence, and `imsg rpc`'s behaviour on stdin EOF versus SIGTERM, require
+  **executing** a built binary.
+
+  **Corrected:** an earlier version of this line said they would be checked "in
+  Phase D's non-launch tests", while the Phase D plan said nothing may be
+  executed until Phase C's remaining items were done. That is circular, and the
+  failure mode of a circular dependency here is specific: whichever side relaxes
+  its reading first causes the first execution of `imsg` to happen without any
+  approval point having been passed. Phase D builds only. These checks move to a
+  separate first-execution phase with its own authorization.

@@ -275,3 +275,66 @@ by `swift build` and is deliberately not produced.
    artifacts were linker-signed on M1 and **unsigned** on Intel. Signing changes
    bytes, so it cannot be added after a digest is recorded. Recommendation:
    **do not sign in Phase D**; record whatever `codesign` reports.
+
+---
+
+# Decisions taken, and the dependency pre-check (2026-09-12)
+
+All three owner decisions went to the recommendation:
+
+1. **Dependencies may be fetched on the Mac.** Revisions are pinned and git
+   verifies every received object against its hash, so a tampered remote fails
+   closed rather than substituting content. Content is pinned after the fact by
+   recording each checkout's tree hash.
+2. **Phase D builds only.** First execution of `imsg` becomes its own phase with
+   its own authorization. The circular reference in the Phase C plan is
+   corrected.
+3. **Nothing is signed in Phase D.** Whatever `codesign` reports is recorded.
+
+## Dependency pre-check: no plugins, and the bundle problem is real
+
+Performed on this workstation before touching either Mac. All four dependencies
+fetched with plain `git` at the exact pinned revisions, which also gives the
+independent content pins F4 asked for:
+
+| Dependency | Revision | Tree hash | `Package.swift` SHA256 |
+|---|---|---|---|
+| commander 0.2.4 | `bd219c4e…` | `2814612c71b97ac93978073dd128a0fb8984f7c6` | `fa735819a9f278fabf2dd8f919f38ce55f8de7e2bc7b08f40e3ea5cda371006a` |
+| csqlite 3.53.3 | `8ad83035…` | `bfd936184d29e7c2a85fd7ddd088ee81286e0585` | `ef86ba3e2559088995194414f5c2a6232fb02e19ae996e57b6cb1776e869a8e4` |
+| phonenumberkit 5.0.9 | `15c27dbf…` | `a811a05da7173ecf90977b34bc14deb8a429e39d` | `59ee8e3d158a8d65538a07d499bc7e9478fa41b5b229678dde6891697c3f1da3` |
+| sqlite.swift 0.16.0 | `964c300f…` | `aa747675b7c6229ee4320ce55ca3f01be7d07eb6` | `877bc3bd5013d595b8ef4be61989fbe1df8ed6b074ebb9bbdd8921a67d1f3afe` |
+
+**No plugins in any of them** — no `.plugin(`, no `plugins:`, no
+`PackagePlugin` import, no `Plugins/` directory. So the only project code the
+build executes is the five package manifests, under SwiftPM's sandbox, exactly
+as the corrected claim states.
+
+### What happens without `patch-deps.sh`, precisely
+
+`PhoneNumberKit/Sources/PhoneNumberKit/Bundle+Resources.swift` gates its whole
+candidate search on `#if DEBUG && SWIFT_PACKAGE`. In a **release** build that
+block is compiled out and resolution falls through to:
+
+```swift
+#if SWIFT_PACKAGE
+return Bundle.module
+```
+
+`Bundle.module` is SwiftPM's synthesized accessor, and it **`fatalError`s when
+the bundle is not found**. So a release build without the upstream patch does
+not degrade when the metadata bundle is missing or sits behind a symlink — the
+process dies, on the contact path, in the arm whose contact behaviour is the
+thing being measured.
+
+That is why `patch-deps.sh` both widens the search to release builds and adds
+`Bundle.main.bundleURL.resolvingSymlinksInPath()`. And the symlink half is not
+incidental: `.build/release` is itself a symlink to `.build/<triple>/release`.
+
+This settles the disposition. Phase D applies `patch-deps.sh` because the
+alternative is an artifact that can crash where upstream's does not, and it
+records each checkout's tree hash before and after the patch so the mutation is
+pinned by content rather than trusted.
+
+It also raises the priority of keeping the `.bundle` beside the executable
+wherever the artifact is later placed — a detail that, left to a later phase,
+would have surfaced as a crash rather than as a missing file.
