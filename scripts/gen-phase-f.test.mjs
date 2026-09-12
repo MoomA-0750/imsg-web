@@ -57,6 +57,23 @@ for (const [name, line, expected] of REFUSALS) {
   });
 }
 
+test('refuses a kill aimed at anything but the child it started', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-phase-f-test-'));
+  try {
+    copyFileSync(GEN, join(dir, 'gen-phase-f.mjs'));
+    const tpl = readFileSync(join(here, 'phase-f-f3.sh.template'), 'utf8');
+    for (const bad of ['kill -TERM 57487', 'kill -9 "${CHILD}"', 'kill -TERM -"${CHILD}"', 'killall imsg']) {
+      writeFileSync(join(dir, 'phase-f-f3.sh.template'), `${tpl}\n${bad}\n`);
+      assert.throws(() => execFileSync(process.execPath, [
+        join(dir, 'gen-phase-f.mjs'), '--pass', 'f3', ...OPTS.slice(0, 2),
+        '--product', `${BASE}/phase-d/baseline/.build/release/imsg`,
+        '--home', '/Users/example', '--tmp', `${BASE}/phase-d/tmp`, '--cwd', `${BASE}/phase-d`,
+        '--fixture', `${BASE}/phase-d/f.db`, '--out', join(dir, 'o.sh'),
+      ], { stdio: 'pipe' }), undefined, `should have refused: ${bad}`);
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('refuses a cwd inside a build tree', () => {
   const dir = mkdtempSync(join(tmpdir(), 'gen-phase-f-test-'));
   try {

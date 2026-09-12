@@ -39,7 +39,11 @@ function checkPath(value, label) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const { role, product, home, tmp, cwd, out } = args;
+const { role, product, home, tmp, cwd, out, fixture } = args;
+const pass = args.pass ?? 'f1';
+if (!['f1', 'f2', 'f3'].includes(pass)) fail('--pass must be f1, f2 or f3');
+if (pass !== 'f1') checkPath(fixture, '--fixture');
+if (pass === 'f1' && fixture) fail('--fixture is meaningless for f1');
 if (role !== 'intel' && role !== 'm1') fail('--role must be intel or m1');
 for (const [v, l] of [[product, '--product'], [home, '--home'], [tmp, '--tmp'], [cwd, '--cwd'], [out, '--out']]) checkPath(v, l);
 
@@ -48,8 +52,9 @@ for (const [v, l] of [[product, '--product'], [home, '--home'], [tmp, '--tmp'], 
 if (/(^|\/)\.build(\/|$)/.test(cwd)) fail('--cwd must not be inside a build tree');
 if (!product.includes('/imsg-web/')) fail('--product must be a project-owned artifact');
 
-const templatePath = resolve(dirname(new URL(import.meta.url).pathname), 'phase-f-f1.sh.template');
+const templatePath = resolve(dirname(new URL(import.meta.url).pathname), `phase-f-${pass}.sh.template`);
 const script = readFileSync(templatePath, 'utf8')
+  .replaceAll('@@FIXTURE@@', fixture ?? '')
   .replaceAll('@@PRODUCT@@', product)
   .replaceAll('@@RUNHOME@@', home)
   .replaceAll('@@RUNTMP@@', tmp)
@@ -70,24 +75,36 @@ for (const [pattern, label] of [
   [/(^|[^-&>])([0-9]?)>>?\s*[^\s&]/m, 'any output redirection'],
   [/\blaunchctl\b|\btailscale\b|\bbrew\b|\bsudo\b/, 'forbidden tool'],
   [/2>\s*\/dev\/null/, 'discarded stderr'],
-  [/\brpc\b|--db\b/, 'a rung beyond F1'],
+  ...(pass === 'f1' ? [[/\brpc\b|--db\b/, 'a rung beyond F1']] : []),
 ]) if (pattern.test(codeOnly)) fail(`generated script contains ${label}`);
 
 const ALLOWED = new Set([
   'echo', 'date', 'stat', 'shasum', 'file', 'xattr', 'codesign', 'ps', 'ls',
   'log', 'test', '[', 'set', 'export', 'exit',
+  // F3 only: holding stdin open, signalling the child this script started, and
+  // reaping it. `kill` is forbidden by every other generator in this project.
+  ...(pass === 'f3' ? ['sleep', 'kill', 'wait'] : []),
 ]);
+// The here-document body is JSON, not commands. Skipping it is safe because the
+// generator pins the exact request shape through RUN_SHAPE above.
+const HEREDOC = /<<'REQUEST'\n[\s\S]*?\nREQUEST\n/g;
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'fi', 'for', 'in', 'do', 'done', 'case', 'esac', 'while', '!']);
 
 // Exactly one execution is permitted, and only in this exact shape.
-const RUN_SHAPE = new RegExp(
+const ENV_PREFIX =
   '^/usr/bin/env -i HOME="\\$\\{RUNHOME\\}" PATH=/usr/bin:/bin:/usr/sbin:/sbin '
-  + 'TMPDIR="\\$\\{RUNTMP\\}" LANG=en_US\\.UTF-8 LC_ALL=en_US\\.UTF-8 '
-  + '"\\$\\{PRODUCT\\}" --version < /dev/null$',
-);
+  + 'TMPDIR="\\$\\{RUNTMP\\}" LANG=en_US\\.UTF-8 LC_ALL=en_US\\.UTF-8 ';
+// F2 is fed by a here-document, which is both the request and the guarantee
+// that stdin is not a terminal.
+const SHAPES = {
+  f1: `${ENV_PREFIX}"\\$\\{PRODUCT\\}" --version < /dev/null$`,
+  f2: `${ENV_PREFIX}"\\$\\{PRODUCT\\}" rpc --db "\\$\\{FIXTURE\\}" <<'REQUEST'$`,
+  f3: `${ENV_PREFIX}"\\$\\{PRODUCT\\}" rpc --db "\\$\\{FIXTURE\\}"$`,
+};
+const RUN_SHAPE = new RegExp(SHAPES[pass]);
 
 let runs = 0;
-for (const rawLine of codeOnly.split('\n')) {
+for (const rawLine of codeOnly.replace(HEREDOC, "<<'REQUEST'\n").split('\n')) {
   const line = rawLine.trim();
   if (!line) continue;
   for (const rawSegment of line.split(/\|\||&&|[;|]|(?<!>)&/)) {
@@ -106,6 +123,13 @@ for (const rawLine of codeOnly.split('\n')) {
       continue;
     }
     const bare = word.replace(/^["']|["']$/g, '');
+    // Signalling is permitted only in this exact shape, and only at a PID this
+    // script started. A signal to anything else -- the foreign imsg, Messages,
+    // a process group -- cannot be written.
+    if (bare === 'kill') {
+      if (segment !== 'kill -TERM "${CHILD}"') fail(`kill is not the approved shape: ${segment}`);
+      continue;
+    }
     if (bare.includes('$')) fail(`command name comes from a variable: ${segment}`);
     if (bare.includes('/')) fail(`command executed by path: ${bare}`);
     if (!ALLOWED.has(bare)) fail(`command not on the allow-list: ${bare}`);
