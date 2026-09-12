@@ -24,6 +24,14 @@ rechecked; RPC no-launch path and its IPC writes documented; SSH-vs-Agent Contac
 source difference identified; official Linux Node24.20.0 checksum matched. Exact
 Node24.20.0 fresh build, typecheck,59 nonlaunch tests and149 app tests passed.
 
+Re-verified independently by Claude Code on 2026-09-12 on this Linux workstation,
+with no Mac access and no live data: pinned Node24.20.0 archive still matches the
+official SHA256; `npm ci --ignore-scripts` from the exact lock, typecheck,149 app
+tests and59 nonlaunch tests all pass; the pinned upstream worktrees are still at
+c99e6d0/646ea7a and both stored contact-batch patches still apply. The predecessor's
+step2 completion claims are confirmed rather than assumed. `npm run test:browser`
+was not rerun in this session.
+
 Step2 remaining: read-only inventory of both Macs after owner authorization;
 source/build-to-binary, architecture/signature/linked-library/helper verification;
 explicit trusted cwd/environment and import closure; fresh current application

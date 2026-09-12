@@ -2,7 +2,7 @@
 
 ## Review decisions
 
-Two independent reviewers received the neutral persistent-history-review.md and then code/tests. No edits or Mac access were delegated. Lead owns the protocol/lifecycle integration. Both reviewers found no concrete runtime blocker in the reviewed implementation; one independently ran the then-current36 tests successfully. Direct Claude review is unavailable; the neutral packet remains the handoff.
+Two independent reviewers received the neutral persistent-history-review.md and then code/tests. No edits or Mac access were delegated. Lead owns the protocol/lifecycle integration. Both reviewers found no concrete runtime blocker in the reviewed implementation; one independently ran the then-current36 tests successfully. Direct Claude review was unavailable when this experiment was recorded; the neutral packet remains this experiment's handoff. Superseded 2026-09-12: direct Claude review is available and was used for step1; see `STATUS.md`.
 
 | Finding | Disposition and reason |
 |---|---|

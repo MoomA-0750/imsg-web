@@ -46,4 +46,4 @@ Lead owns LiveSource/capabilities/contracts changes and integration (cross-cutti
 
 Read only. Search for contradictions, missing requirements, failure conditions, reasons to reject, simpler alternatives, security/operations and testability. Do not edit files or access Macs. Determine whether unknown advanced status is compatible with readonly P0 and whether any caller/test contract was overlooked. No implementation has begun.
 
-This file is also a standalone Claude Opus/Sonnet review request: use one tool-free nonpersistent session with only this packet on stdin; no Fable or automatic routing. Direct Claude is unavailable in the recorded environment; do not infer a review occurred.
+This file is also a standalone Claude Opus/Sonnet review request: use one tool-free nonpersistent session with only this packet on stdin; no Fable or automatic routing. Direct Claude was unavailable in the recorded environment; do not infer that a review occurred from this packet. Superseded 2026-09-12: direct Claude review is available; see `STATUS.md`.
