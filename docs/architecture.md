@@ -1,5 +1,13 @@
 # P0a contract foundation
 
+> **Scope note (2026-09-12).** This file describes the P0a milestone and is kept
+> as that record. Two of its statements are no longer true of the integrated
+> product: P0b added a loopback HTTP listener and owner-key authentication, and
+> P0c produced a LaunchAgent generator (no production agent is installed and
+> production remains stopped). Database writes and Messages mutations are still
+> absent. The checked imsg versions are now 0.14.2 (Intel) and **0.15.3** (M1);
+> see `docs/imsg-0153-upgrade-assessment.md`. For current state read `STATUS.md`.
+
 Scope: Node24 TypeScript, persistent local read-only `imsg rpc`, typed adapter, capability diagnostics, non-content doctor output, synthetic tests. Build output is portable JavaScript; the Node executable is architecture-specific. No runtime npm dependencies. No HTTP listener, database writes, Messages mutations, authentication claim, or deployed LaunchAgent.
 
 ## Interfaces
@@ -32,7 +40,7 @@ Close rejects new work synchronously, sends EOF, then SIGTERM after 2 seconds an
 | SIP disabled + individual flag + method | diagnostic available / SUPPORTED |
 | Individual flag false | unavailable / FEATURE_UNAVAILABLE |
 
-Unknown CLI SIP/flag combinations remain unknown. A single bridge selector or a compiled method list is never sufficient. Initial checked versions: imsg0.14.2 and0.15.1.
+Unknown CLI SIP/flag combinations remain unknown. A single bridge selector or a compiled method list is never sufficient. Initial checked versions: imsg0.14.2 and0.15.1. The M1 host's stock imsg is now 0.15.3; every audited call-path file is byte-identical to 0.15.1.
 
 ## Decisions and alternatives
 
