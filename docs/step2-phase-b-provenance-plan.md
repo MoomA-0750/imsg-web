@@ -404,40 +404,41 @@ and was not consulted.
    decision not to reuse an existing `.build`. Needs disk space and explicit
    permission to create directories, which no phase so far has had.
 
-
 ---
 
-# Owner decisions (2026-09-12)
+# Owner decisions, and what they changed
 
-1. **Production runs the stock imsg**, for now. The deployment generator already
-   assumes it (`generate-launch-agent.mjs` resolves the Homebrew symlink to its
-   canonical target). Consequence accepted: stock is an executable we intend to
-   run, so pass 2 adds the keg's `INSTALL_RECEIPT.json` and `.brew/imsg.rb` as
-   file reads, plus a digest inventory of the keg's helpers, so the image can be
-   compared against a published upstream asset and classified U-bound or
-   U-unbound. `brew` is never invoked. The contact-batch fork stays experimental
-   and is not adopted by this decision.
-2. **Pin option (a):** review the contents of the already-recorded re-resolved
-   0.14.2 lock, and fall back to a fresh resolution only if its transitive
-   choices are unacceptable. Pass 2 collects that file's content.
-3. **Phase D may create fresh build directories on the Macs.** Approved. This is
-   the project's first write to either machine. Before creating anything, pass 2
-   measures free space and the size of the existing build trees, and the numbers
-   are reported. Existing trees are neither reused nor deleted.
+| Decision | Effect |
+|---|---|
+| **Production runs a build of ours, not stock imsg** | Stock drops out of the binding work entirely: it becomes what the owner runs by hand. The owner keeps `brew upgrade` freedom precisely because production no longer depends on it. Pass 2 records the stock images for the record, not to bind them. |
+| **Pin both hosts at the latest release, `v0.15.4`** | The 0.14.2/0.15.x split existed only because that is what each machine's Homebrew had. Building ourselves removes it: one version, one patch, one lock, and host differences stop being confounded by version differences. |
+| **Lock at that version** | `v0.15.4`'s committed lock is **complete** (4 pins), unlike 0.14.2's, so the upstream lock is used as-is. This is better than resolving fresh: the lock binds to reviewed upstream source rather than to a machine. |
+| **Fresh build directories on the Macs are permitted** | Phase D builds in new directories and neither reuses nor deletes the existing `.build`. |
 
-## Operational consequence of decision 1, recorded deliberately
+A new standing requirement comes with the first decision: **each time this
+project's code is updated, re-check whether to adopt the latest imsg.** The
+owner's reason is to avoid silently sitting on an old version years from now.
+The check is the same one performed for 0.15.3 and 0.15.4 — diff the audited
+files, confirm the patch still applies, and compare the lock — and it must be
+written so that it *can fail*, which the first attempt at it did not.
 
-The app pins no imsg version at run time. It spawns whatever absolute path is
-configured and validates the **shape** of each response: `ReadonlyAdapter`
-requires exact field names (`is_group`, `unread_count`, `last_message_at`,
-`chat_id`, `is_from_me`, `created_at`) and rejects anything else with
-`RPC_PROTOCOL_INVALID`.
+## Reference tree hashes for pass 2
 
-So a `brew upgrade` cannot corrupt data, and it cannot silently change results:
-if upstream renames or reshapes a field, the app **fails closed** and the UI
-shows an error. It also means an upgrade can break the UI at any time, with no
-warning, and that re-checking after an upgrade is now an operating cost the
-owner has accepted in exchange for being able to upgrade freely.
+Content-addressed, reconstructed on this workstation. Pass 2 collects
+`rev-parse HEAD^{tree}` from each Mac tree and compares against these.
 
-`0.15.1 -> 0.15.3` did not exercise this: the five methods on the allowlist and
-every audited call-path file were unchanged.
+| State | Tree hash |
+|---|---|
+| v0.14.2 pinned | `c255fa93d930a1974aebfc8209fa317b03ebe373` |
+| v0.14.2 pinned + stored patch | `0ada14a4517d31bfe3648905544ce71a5f7e6940` |
+| v0.15.4 pinned | `3b9a33155dc66a2c2992a47c53f2c6d89928efb7` |
+| v0.15.4 pinned + stored patch | `b7822478d09654ba06a3ecbeb127448234be793e` |
+
+The Intel trees are **not** expected to match these exactly: they carry the
+re-resolved lock, which the pinned states do not. If a tree differs from
+"pinned + patch" only by `Package.resolved`, that is confirmable once pass 2
+returns the lock's content — a third state can then be constructed and the
+hashes compared. A difference anywhere else is a finding.
+
+This is also why the comparison is worth doing at all. "The directory is called
+candidate" is not evidence; a tree hash is.
