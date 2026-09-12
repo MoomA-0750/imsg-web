@@ -201,3 +201,90 @@ Pre-agreed review point for the launcher and environment packet:
   Homebrew path was getting?
 - Do the C7 tests actually fail against current code, or are any of them
   vacuous in the way the earlier source check was?
+
+---
+
+# F3 review dispositions
+
+Pre-agreed review point for the launcher and environment packet. No reason to
+reject the approach: an allow-listed child environment, an explicit cwd and a
+parent-context gate all stand. But three findings say **the plan's stated
+guarantees do not actually hold as written**, and those are settled here before
+any code changes.
+
+Every claim below was re-verified directly against the pinned v0.15.4 source or
+this repository, not taken on the reviewer's word.
+
+## The complete list of environment variables imsg reads
+
+Verified by enumerating every `ProcessInfo.processInfo.environment` and
+`getenv` in the pinned source. This is the real input to the allow-list, and it
+was previously assumed rather than enumerated:
+
+| Variable | Read at | On our read-only path? |
+|---|---|---|
+| `SSH_CONNECTION`, `SSH_CLIENT` | `ContactResolver.swift:111-112` | **Yes** — selects the AddressBook fallback |
+| `HOMEBREW_PREFIX` | `BridgeHelperLocator.swift:31` | Yes — helper search order |
+| `IMSG_BRIDGE_LEGACY_IPC` | `IMsgBridgeClient.swift:34` | Yes, but `invokeWithoutLaunching` refuses legacy IPC |
+| `DYLD_INSERT_LIBRARIES` | `MessagesLauncher.swift:307-308` | Launch path only |
+| `IMSG_LAUNCH_READY_TIMEOUT` | `LaunchReadinessTimeout.swift:22` | Launch path only |
+| `PATH` | `AttachmentResolver.swift:204` | Attachment path only |
+| `IMSG_VERSION` | `CommandRouter.swift:146` | Display only |
+
+`MessagesLauncher` reading `DYLD_INSERT_LIBRARIES` is worth stating plainly: it
+is how the helper gets injected into Messages. A `DYLD_INSERT_LIBRARIES`
+inherited from the domain would therefore be carried into a launch. This project
+does not launch — but that is the single strongest argument for the allow-list
+existing at all.
+
+**`HOME` does not appear.** `MessageStore` derives its default database path
+from `homeDirectoryForCurrentUser`, and whether Foundation honours `$HOME` there
+is **not established**. That changes finding 1's fix from "pass the right HOME"
+to "verify the path that comes back", which is the stronger form anyway.
+
+## Dispositions
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | An allow-list drops stray variables; it does not prove the right value was passed. A wrong `HOME` makes imsg open a different `chat.db` and **succeed** | **Adopt.** Take the home directory from `os.userInfo().homedir` (passwd), never `os.homedir()`, which prefers `$HOME`. Add a **positive check**: the `database.path` returned by status must equal the expected path or the source fails. `live-source.ts:77` currently only checks that it is absolute. This converts "reads the wrong data" into "fails". |
+| 2 | `cli-status.ts:11` spawns with no env or cwd too — the same defect — and it is the CLI `status` path that can launch and repair Messages | **Adopt; owner decision below.** Verified. The plan's claim that `IMSG_LAUNCH_READY_TIMEOUT` has "nothing to act on" was justified by the wrong reason: it is omitted because we choose the default deliberately, not because no launch path exists in the codebase. |
+| 3 | The C7 startup-refusal test is vacuous: `main.ts` funnels **every** failure into one catch, one message, `exitCode = 1` | **Adopt.** Verified by reading `src/main.ts:33`. A poisoned-environment test would pass today against unmodified code — the same species as the source check that could not fail. The refusal gets its own fixed-category message, and every test needs a **control**: same config unpoisoned must reach `Read-only server ready`. |
+| 4 | `TMPDIR` was left undetermined | **Resolved from source; owner decision below.** imsg's own `temporaryDirectory` use is confined to `RichLinkPreparer`, `AppleScriptSendTransport` and `AttachmentResolver` — all send/attachment paths, none of them ours. But macOS links the **system** libsqlite3, whose temp-file location follows `SQLITE_TMPDIR`/`TMPDIR`. Dropping it would silently move SQLite spill files from a per-user `0700` directory to a shared one. Set it explicitly rather than omit it. |
+| 5 | C3 is a tripwire, not a boundary: a module loaded by `NODE_OPTIONS=--require` runs first and can delete the variable before the check sees it | **Adopt.** The wording is corrected: C3 catches a setting left lying around, not an adversary. Variables are matched by **prefix** (`NODE_`, `DYLD_`, `UV_`, `SQLITE_`) plus a named set, rather than enumerated. The guard becomes an import-free module placed as the **first import statement** of every entry point, since ESM evaluates static imports before the body — `main.ts`, `doctor.ts` and the two probe scripts. |
+| 6 | `safeTree(imsg, uid, true)` passes `allowAdminGroup=true`, a relaxation for Homebrew's group-writable prefix, and the plan did not say to undo it. Separately, `safeTree` runs only at plist-generation time — **nothing checks the executable at spawn time** | **Adopt.** Set `allowAdminGroup=false` for a project-owned path, add `within(base, imsg)` to `validateConfig`, and add a spawn-time check in the builder: regular file, owner match, not group/other-writable, no symlink component, digest matching what Phase D recorded. TOCTOU remains; "checks nothing" is a different category. |
+| 7 | C5 looks only at the environment and ignores TCC attribution; and the locale claim overstates | **Adopt.** Under SSH the responsible process is sshd; under the Agent it is the Node binary, so sanitising the child's environment does not make an SSH measurement an Agent measurement. Darwin Foundation takes locale from user preferences rather than `LANG`, and SQLite collation is BINARY, so fixing `LANG`/`LC_ALL` is harmless but is **not** the basis of a parity claim. Both corrected. |
+| 8 | `env`/`cwd` required is right, but `env: process.env` would type-check and defeat it | **Adopt.** The field takes a branded type constructible only by the builder. |
+| 9 | `launchctl setenv` from an SSH session lands in `user/<uid>`, which may not be the `gui/<uid>` domain the Agent loads into | **Adopt.** The C8 probe must state which domain it read, and Phase A's record must say which domain its withheld dictionary came from. |
+| 10 | Unaddressed: fd inheritance, process group, umask, resource limits, and `imsg rpc`'s SIGTERM/EOF behaviour | **Adopt as scope.** Added, with one test asserting the child sees only fds 0-2. |
+
+Also adopted from finding 6, and independently verified: `BridgeHelperLocator`
+searches `.build/release/<helper>` and `.build/debug/<helper>` **relative to the
+current working directory**. So the cwd chosen in C2 is not cosmetic — a cwd
+containing a build tree could change which helper is found. The cwd must be a
+directory with no `.build`, and C4's "we have moved away from Homebrew" needs
+the caveat that helper resolution can still reach a Homebrew path.
+
+Finding 3 also breaks existing tests, and that is the correct outcome:
+`tests/fixtures/fake-doctor.mjs` reads `DOCTOR_TEST_MODE` and
+`DOCTOR_TEST_MARKER` from the **inherited** environment, so the doctor tests
+fail the moment doctor uses an allow-list. They move to argv, as `fake-imsg.mjs`
+already does. Passing those two variables through the allow-list "for tests"
+would be a hole punched in the thing being built.
+
+## Owner decisions
+
+1. **`doctor` / `cliStatus`.** This is the CLI `status` path that upstream may
+   use to launch or repair Messages, and `npm run doctor` is already forbidden
+   as a preflight. Options: bring it under the same env/cwd contract, or place
+   it explicitly out of scope and guarantee by construction that it is never
+   reachable under the Agent. Recommendation: **bring it under the contract**,
+   because "never reachable" is a claim that has to stay true forever.
+2. **Where `TMPDIR` points.** Either a project-owned `0700` directory under the
+   base — which uses the directory-creation permission already given — or the
+   per-user value launchd provides, validated at startup (absolute, exists,
+   owned by us, `0700`, no symlink component). Recommendation: **the
+   project-owned directory**, because it is ours to reason about.
+3. **The GUI-domain environment dictionary.** Reading or clearing it is an
+   operation on the owner's session, not something this project does. The C8
+   probe will report matching **names only**, never values. Whether to then
+   clear anything it finds is the owner's call.
