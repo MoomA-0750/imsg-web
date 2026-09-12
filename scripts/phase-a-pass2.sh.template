@@ -39,7 +39,8 @@ ps -axo pid,ppid,user,etime,comm
 
 echo "== P0 toolchain"
 if [ -x /usr/bin/swift ]; then
-  /usr/bin/swift --version
+  # stdin is the rest of this script; keep every tool away from it.
+  /usr/bin/swift --version < /dev/null
   echo "swift --version exit: $?"
 else
   echo "no /usr/bin/swift"
@@ -61,7 +62,7 @@ else
   NODEBIN="${BASE}/runtime/node-v24.20.0-darwin-arm64/bin/node"
 fi
 echo "-- ${NODEBIN}"
-if [ -e "${NODEBIN}" ]; then
+if [ -f "${NODEBIN}" ]; then
   # Not executed. Identity comes from the digest, which is compared against the
   # official archive member computed on the workstation.
   shasum -a 256 "${NODEBIN}"
@@ -86,12 +87,12 @@ else
   IMSGBIN='/opt/homebrew/Cellar/imsg/0.15.3/libexec/imsg'
 fi
 echo "-- ${IMSGBIN}"
-if [ -e "${IMSGBIN}" ]; then
+if [ -f "${IMSGBIN}" ]; then
   # Production will run a build of ours, so this image is recorded for the
   # record rather than bound. It is what the owner runs by hand.
   codesign -dvvv "${IMSGBIN}" 2>&1
   echo "codesign exit: $?"
-  codesign -d --entitlements - "${IMSGBIN}" 2>&1
+  codesign -d --entitlements :- "${IMSGBIN}" 2>&1
   echo "entitlements exit: $?"
   otool -L "${IMSGBIN}"
   echo "otool exit: $?"
@@ -156,8 +157,18 @@ else
     # Resolve the real git directory first. A linked worktree keeps its index
     # lock under the main repository, so checking <tree>/.git/index.lock would
     # always report "absent" and prove nothing.
-    git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/baseline" rev-parse --git-dir
+    GITDIR="$(git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/baseline" rev-parse --absolute-git-dir)"
     echo "git-dir exit: $?"
+    echo "git-dir: ${GITDIR}"
+    # The plan aborts a tree whose index is already locked. A linked worktree
+    # keeps that lock under the main repository, so the resolved git dir is
+    # what must be checked -- not <tree>/.git/index.lock, which for a worktree
+    # is always absent and proves nothing.
+    if [ -e "${GITDIR}/index.lock" ]; then
+      echo "index.lock PRESENT - this tree aborts"
+    else
+      echo "index.lock absent"
+    fi
     git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/baseline" rev-parse HEAD
     echo "rev-parse HEAD exit: $?"
     # Content-addressed, so it binds regardless of how commits were arranged.
@@ -179,7 +190,7 @@ else
     # shasum would block forever and take the session with it.
     for product in "${TMPD}/baseline/.build/release/imsg" "${TMPD}/baseline/.build/debug/imsg"; do
       echo "-- product ${product}"
-      if [ -e "${product}" ]; then
+      if [ -f "${product}" ]; then
         stat -L -f "%Sp %Su:%Sg %z %Sm %N" "${product}"
         file -bL "${product}"
         shasum -a 256 "${product}"
@@ -206,8 +217,18 @@ else
     # Resolve the real git directory first. A linked worktree keeps its index
     # lock under the main repository, so checking <tree>/.git/index.lock would
     # always report "absent" and prove nothing.
-    git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/candidate" rev-parse --git-dir
+    GITDIR="$(git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/candidate" rev-parse --absolute-git-dir)"
     echo "git-dir exit: $?"
+    echo "git-dir: ${GITDIR}"
+    # The plan aborts a tree whose index is already locked. A linked worktree
+    # keeps that lock under the main repository, so the resolved git dir is
+    # what must be checked -- not <tree>/.git/index.lock, which for a worktree
+    # is always absent and proves nothing.
+    if [ -e "${GITDIR}/index.lock" ]; then
+      echo "index.lock PRESENT - this tree aborts"
+    else
+      echo "index.lock absent"
+    fi
     git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/candidate" rev-parse HEAD
     echo "rev-parse HEAD exit: $?"
     # Content-addressed, so it binds regardless of how commits were arranged.
@@ -229,7 +250,7 @@ else
     # shasum would block forever and take the session with it.
     for product in "${TMPD}/candidate/.build/release/imsg" "${TMPD}/candidate/.build/debug/imsg"; do
       echo "-- product ${product}"
-      if [ -e "${product}" ]; then
+      if [ -f "${product}" ]; then
         stat -L -f "%Sp %Su:%Sg %z %Sm %N" "${product}"
         file -bL "${product}"
         shasum -a 256 "${product}"
@@ -256,8 +277,18 @@ else
     # Resolve the real git directory first. A linked worktree keeps its index
     # lock under the main repository, so checking <tree>/.git/index.lock would
     # always report "absent" and prove nothing.
-    git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/candidate-r3" rev-parse --git-dir
+    GITDIR="$(git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/candidate-r3" rev-parse --absolute-git-dir)"
     echo "git-dir exit: $?"
+    echo "git-dir: ${GITDIR}"
+    # The plan aborts a tree whose index is already locked. A linked worktree
+    # keeps that lock under the main repository, so the resolved git dir is
+    # what must be checked -- not <tree>/.git/index.lock, which for a worktree
+    # is always absent and proves nothing.
+    if [ -e "${GITDIR}/index.lock" ]; then
+      echo "index.lock PRESENT - this tree aborts"
+    else
+      echo "index.lock absent"
+    fi
     git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C "${TMPD}/candidate-r3" rev-parse HEAD
     echo "rev-parse HEAD exit: $?"
     # Content-addressed, so it binds regardless of how commits were arranged.
@@ -279,7 +310,7 @@ else
     # shasum would block forever and take the session with it.
     for product in "${TMPD}/candidate-r3/.build/release/imsg" "${TMPD}/candidate-r3/.build/debug/imsg"; do
       echo "-- product ${product}"
-      if [ -e "${product}" ]; then
+      if [ -f "${product}" ]; then
         stat -L -f "%Sp %Su:%Sg %z %Sm %N" "${product}"
         file -bL "${product}"
         shasum -a 256 "${product}"

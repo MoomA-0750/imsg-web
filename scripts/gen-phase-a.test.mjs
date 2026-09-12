@@ -109,6 +109,13 @@ const REFUSALS = [
   ['git without the fsmonitor override', 'git --no-optional-locks -C /t status --porcelain', 'not the approved non-locking form'],
   ['a non-allow-listed git subcommand', 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C /t log --oneline', 'not allow-listed'],
   ['a writing git subcommand', 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C /t checkout main', 'not allow-listed'],
+  // rev-parse --parseopt reads its spec from stdin, which under /bin/sh -s is
+  // the rest of the script.
+  ['git rev-parse --parseopt', 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C /t rev-parse --parseopt', 'not allow-listed'],
+  ['git rev-parse with an unlisted option', 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C /t rev-parse --show-toplevel', 'not allow-listed'],
+  // A first-match check passes this: the second utility is not in command
+  // position either, so nothing else would catch it.
+  ['a second find -exec after an allowed one', 'find "${BASE}" -maxdepth 1 -exec stat {} + -exec sh -c "id" \\;', 'find -exec running sh'],
 ];
 
 for (const [name, line, expected] of REFUSALS) {

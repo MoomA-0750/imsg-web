@@ -39,18 +39,18 @@ function parseArgs(argv) {
 // argument, so the generator refuses rather than trying to escape them.
 const FORBIDDEN = /['"`$;\\\n\r&|<>()*?[\]{}!#]/;
 
-function checkBase(base) {
-  if (!base.startsWith('/')) fail('--base must be an absolute path');
-  if (base.length > 512) fail('--base is implausibly long');
-  if (FORBIDDEN.test(base)) fail('--base contains a character that is unsafe to substitute');
-  if (base.endsWith('/') && base !== '/') fail('--base must not have a trailing slash');
-  if (base === '/') fail('--base must not be the filesystem root');
-  if (base.includes('/..')) fail('--base must not contain ..');
+function checkBase(base, label = '--base') {
+  if (!base.startsWith('/')) fail(`${label} must be an absolute path`);
+  if (base.length > 512) fail(`${label} is implausibly long`);
+  if (FORBIDDEN.test(base)) fail(`${label} contains a character that is unsafe to substitute`);
+  if (base.endsWith('/') && base !== '/') fail(`${label} must not have a trailing slash`);
+  if (base === '/') fail(`${label} must not be the filesystem root`);
+  if (base.includes('/..')) fail(`${label} must not contain ..`);
 }
 
 const args = parseArgs(process.argv.slice(2));
 const pass = args.pass ?? '1';
-const tmpd = args.tmpd ?? 'NONE';
+const tmpd = args.tmpd;
 const role = args.role;
 const base = args.base;
 const out = args.out;
@@ -67,14 +67,20 @@ if (!out) fail('--out is required');
 checkBase(base);
 // The build-tree root is substituted the same way and gets the same scrutiny.
 // 'NONE' is the explicit "this host has no such tree" value.
-if (tmpd !== 'NONE') checkBase(tmpd);
+// Required for pass 2, and "this host has no such tree" must be written out as
+// --tmpd NONE. Defaulting it silently would let a forgotten flag produce a
+// clean run that skipped the whole point of the pass.
+if (pass === '2') {
+  if (!tmpd) fail('--pass 2 requires --tmpd (use NONE when the host has no build tree)');
+  if (tmpd !== 'NONE') checkBase(tmpd, '--tmpd');
+}
 
 const templatePath = resolve(dirname(new URL(import.meta.url).pathname), TEMPLATES.get(pass));
 const template = readFileSync(templatePath, 'utf8');
 
 const script = template
   .replaceAll('@@BASE@@', base)
-  .replaceAll('@@TMPD@@', tmpd)
+  .replaceAll('@@TMPD@@', tmpd ?? 'NONE')
   .replaceAll('@@ROLE@@', role);
 
 // A surviving marker would hit `set -u` remotely, but catching it here is
@@ -150,13 +156,17 @@ const FORBIDDEN_COMMANDS = new Set([
 // variable would hide the command behind a `$` and skip the check entirely.
 const GIT_PREFIX =
   'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C ';
-const GIT_ALLOWED_SUBCOMMANDS = /^(rev-parse|status --porcelain)(\s|$)/;
+// Exact forms only. An open-ended `rev-parse` would admit `--parseopt`, which
+// reads its specification from stdin -- and under `/bin/sh -s` stdin is the
+// rest of this script, so it would silently swallow the remaining commands.
+const GIT_ALLOWED_SUBCOMMANDS =
+  /^(rev-parse (--absolute-git-dir|HEAD|"HEAD\^\{tree\}")|status --porcelain)$/;
 
 function checkGit(text, origin) {
   if (!text.startsWith(GIT_PREFIX)) {
     fail(`git invocation in ${origin} is not the approved non-locking form: ${text}`);
   }
-  const afterPath = text.slice(GIT_PREFIX.length).replace(/^("[^"]*"|\S+)\s*/, '');
+  const afterPath = text.slice(GIT_PREFIX.length).replace(/^("[^"]*"|\S+)\s*/, '').trim();
   if (!GIT_ALLOWED_SUBCOMMANDS.test(afterPath)) {
     fail(`git subcommand in ${origin} is not allow-listed: ${afterPath}`);
   }
@@ -259,9 +269,11 @@ function auditCode(code, origin) {
       if (!ALLOWED_FIND_ROOTS.some((root) => start.startsWith(root))) {
         fail(`generated script searches an unapproved root in ${origin}: ${start}`);
       }
-      const execAt = text.indexOf('-exec ');
-      if (execAt !== -1) {
-        const execCommand = text.slice(execAt + 6).trim().split(/\s+/)[0] ?? '';
+      // Every occurrence: `-exec stat {} + -exec sh -c '...' \;` passes a
+      // first-match check, and the second utility is not in command position
+      // so the forbidden-command scan never sees it either.
+      for (const chunk of text.split('-exec ').slice(1)) {
+        const execCommand = chunk.trim().split(/\s+/)[0] ?? '';
         if (!FIND_EXEC_ALLOWED.has(execCommand.split('/').pop())) {
           fail(`generated script has a find -exec running ${execCommand} in ${origin}`);
         }
