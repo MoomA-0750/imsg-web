@@ -1,6 +1,7 @@
 # Step2 Phase B — source-to-artifact provenance plan
 
-Status: **proposed, not executed.** Phase A pass 1 and 1b are complete; the
+Status: **B1 not executed; B2 and B3 executed on this workstation only.** No
+Mac has been contacted for this phase. Phase A pass 1 and 1b are complete; the
 owner has decided the four open questions. This plan covers what Phase A
 deliberately deferred (per-artifact detail) and the binding work that is Phase
 B proper.
@@ -124,17 +125,32 @@ On this workstation, from the existing pinned upstream clone:
 Then compare those against what B1 collected from the Intel build trees. This
 comparison is the actual binding test available to us:
 
-- If an Intel tree's `Package.resolved` matches the pinned source's, that tree's
-  dependency graph is the reviewed one.
-- If its `git rev-parse HEAD` is the pinned commit **and** `status --porcelain`
-  is empty except for the patch's own changes, that tree's source is the
-  reviewed source.
-- Neither of those binds the **binary** in that tree's `.build` to that source.
-  Nothing available to us does. A built product is bound to its inputs only by
-  having watched the build happen, which is Phase D.
+**Corrected after F2.** The first draft proposed to bind a tree by checking that
+`git rev-parse HEAD` equals the pinned commit and `status --porcelain` is empty.
+That rule is wrong for the trees we actually have. `experiments/contact-batch/README.md`
+records that the candidate trees carry the patch **as commits** (`08b50a7` then
+`6ded519` for 0.14.2), so a candidate tree's `HEAD` is by definition *not* the
+pinned commit and its working tree is *clean*. The rule would have failed to
+bind the one tree that matters, leaving only "the directory is called
+candidate" — which is precisely the promotion-by-familiarity this phase forbids.
+Those candidate commits are local to the Mac and do not exist in this
+workstation's clone, so comparing commit IDs binds nothing either.
 
-`Package.resolved` for `0.15.3` will differ from the published `0.15.1` value.
-That is a **new pin**, not a divergence, and is recorded as such.
+The binding is done on **tree hashes** instead, which are content-addressed and
+carry no commit metadata:
+
+1. On the workstation, construct each candidate state in a scratch worktree —
+   pinned commit, pinned commit + stored patch, and pinned commit + patch +
+   the resolved lock — and record `git write-tree` for each.
+2. Pass 2 collects `git rev-parse HEAD^{tree}` from each Mac tree (read-only).
+3. A tree-hash match binds that tree's **contents** to a state we constructed
+   from reviewed inputs, regardless of how the commits were arranged.
+
+Two limits stay explicit. A `Package.resolved` match means the lock file is
+identical to the pinned one; it does not mean the dependency graph was reviewed.
+And none of this binds the **binary** under that tree's `.build` to that source.
+Nothing available to us does: a built product is bound to its inputs only by
+watching the build happen, which is Phase D.
 
 ## B4 — Classify every artifact
 
@@ -142,7 +158,7 @@ Each artifact lands in exactly one class, with a stated ceiling:
 
 | Class | Meaning | May be used for |
 |---|---|---|
-| **R — Reproducible** | Rebuildable in Phase D from pinned upstream + stored patch + pinned lock, on a recorded toolchain | Measurement, after Phase C and D |
+| **R — Rebuilt under observation** | Built in Phase D, in a fresh directory, from pinned upstream + stored patch + a reviewed lock, on a recorded toolchain. **R does not mean bit-reproducible**: Swift release builds are not. | Measurement, after Phase C and D |
 | **U — Upstream binary** | Third-party image we cannot build: Homebrew bottles, the Node runtimes | Running the app (Node) or as the *user-visible* stock CLI. **Not** as a measurement baseline |
 | **H — Historical** | Retained artifact whose digest matches a published record | Evidence that a past result was taken on those bytes. **Never** a measurement artifact |
 | **X — Unresolved** | No prior record and not reproducible | Nothing, until resolved or excluded |
@@ -155,8 +171,11 @@ Expected placements, to be confirmed rather than assumed:
   measurement artifact because it predates the current no-launch and sample
   fixes and can reach unsafe diagnostics.
 - `9b64d36-p0c1` → **H**.
-- Intel `baseline` / `candidate` trees → sources likely **R**; their built
-  products **H** at best.
+- Intel `baseline` / `candidate` trees → **H or X**, never R. R is reserved for
+  artifacts Phase D builds itself. Calling an existing tree "R" invites reusing
+  its `.build`, where SwiftPM's incremental build can carry objects from a
+  different source state into the output. Phase D builds in a **fresh
+  directory**; the existing `.build` is neither reused nor deleted.
 - Intel `candidate-r3` → **X** until identified. An unrecorded third tree is
   exactly the kind of artifact that gets quietly promoted to "verified" by
   familiarity.
@@ -300,20 +319,87 @@ compared to the source it was supposed to come from.
 
 The pinned commit is not the explanation: `c99e6d0` is `v0.14.2` exactly.
 
-Hypotheses, none of them yet tested:
+### Correction: this was already explained in this repository, and I did not look
 
-1. SwiftPM rewrote the lock during resolution on that machine — a different
-   toolchain, a moved dependency, or a lock-format change.
-2. The trees were seeded from a release tarball or another ref rather than from
-   the pinned commit.
-3. The recorded digest was taken after a build rather than before.
+The section above originally listed three untested hypotheses. That was a
+research failure, not a discovery. `experiments/contact-batch/README.md` states
+it plainly:
 
-**Amendment to B1:** pass 2 must collect the Intel trees' `Package.resolved`
-**content**, not only its digest, so it can be diffed against upstream. The file
-is a small JSON of dependency URLs, revisions and versions; it carries nothing
-private and its diff can be published.
+> The 0.14.2 pinned lock lacked transitive entries and required isolated
+> resolution preserving direct pins; the exact resulting lock digest is recorded
+> in the preflight evidence.
 
-Until that diff exists, the Intel candidate and baseline binaries must be
-treated as built against an **unverified dependency graph**, and the recorded
-"tracked inputs matched" claim must not be read as "matched the reviewed
-source". It never said that; it was read that way.
+So `119d9373…` is the **re-resolved** lock, and `docs/custom-read-preflight-record.md`
+is the preflight evidence that records it. Hypothesis 1 was not a hypothesis; it
+was a recorded fact, four directories away, found by reading the repository
+rather than by reasoning about it. The lesson is the same one this phase keeps
+producing: check what is already written down before treating a mismatch as an
+anomaly.
+
+### The real remaining gap
+
+Knowing *why* the lock differs does not close anything. What the records contain
+is a **digest** of the re-resolved lock; what they do not contain is any review
+of its **contents**. Isolated resolution that "preserves direct pins" still
+chooses transitive versions, and nobody has checked which ones it chose.
+
+So the accurate statement is narrower and sharper than the original finding: the
+Intel builds used a dependency graph that was resolved on that machine, recorded
+by digest, and **never reviewed**. The recorded "tracked inputs matched" claim
+means baseline and candidate matched each other. It never claimed agreement with
+upstream, and must not be read as such.
+
+**Amendment to B1:** pass 2 collects the Intel trees' `Package.resolved`
+**content**, not only its digest, so its transitive choices can be diffed
+against upstream and reviewed. The file is a small JSON of dependency URLs,
+revisions and versions; it carries nothing private and its diff can be
+published.
+
+---
+
+# F2 review dispositions
+
+Pre-agreed review point for the provenance-binding logic, run on the plan
+including the B2/B3 results (the reviewer noted the document grew mid-review;
+the reviewed version is the one ending at the B3 section above). Ten findings.
+No path to a destructive Mac operation, an imsg or node execution, or a secret
+read was found in the plan.
+
+Two blockers, both "the plan cannot execute as written" rather than safety:
+
+| # | Finding | Disposition |
+|---|---|---|
+| 1 | Pass 2 cannot be generated by the Phase A generator: `git` is in its forbidden-command list, `--pass 2` is rejected, and the find-root allow-list excludes release and Cellar paths | **Adopt. Blocker.** Add a pass-2 mode with `git` allow-listed to the exact non-locking read-only forms (`rev-parse`, `status --porcelain`), extend the find-root allow-list to the literal paths pass 1 found, add refusal tests, and run a focused re-review of the changed generator before B1 |
+| 2 | The tree-binding rule is wrong for the trees that exist: the README records that candidate trees carry the patch **as commits**, so `HEAD` is not the pinned commit and the working tree is clean | **Adopt. Blocker.** Verified: the four candidate commits named in the README are absent from this clone, so commit IDs bind nothing. Binding switched to content-addressed tree hashes, reconstructed locally with `write-tree` and collected from the Macs with `rev-parse HEAD^{tree}` |
+| 3 | Stock imsg enters class U on assertion alone, while Node had to earn it by digest match; and "Homebrew bottle" is itself unverified — a universal binary is unusual for a locally built bottle | **Adopt, with an owner decision.** Pass 2 will read the keg's `INSTALL_RECEIPT.json` and `.brew/imsg.rb` (file reads only; `brew` stays forbidden) and inventory the keg's helpers with digests. U splits into **U-bound** (digest matches a published upstream asset) and **U-unbound** (origin asserted only), with U-unbound capped at X. Whether stock imsg must be bound at all depends on the production-executable decision below |
+| 4 | Which lock is the 0.14.2 pin is undecided, yet R's definition and the Phase D rebuild list depend on it. The upstream lock lacks transitive entries | **Adopt, with an owner decision.** Added a B3 step to choose and review the 0.14.2 pin lock explicitly |
+| 5 | Sealing class H is a declaration with no mechanism | **Adopt.** The sealed digests go into a fail-closed deny-list in the launch-agent generator, the bundle verifier and the measurement harness, with tests. Recorded as typo-prevention, not a defence: one changed byte evades it. Also recorded: H artifacts under the temporary root are not guaranteed to persist |
+| 6 | Pass 2 hygiene: `shasum` on a FIFO blocks forever; the `index.lock` check misses linked worktrees; the start/end `ps` diff spans two sessions and is meaningless; `.build` hashing is unbounded; `xattr` can surface a download URL | **Adopt all five.** Hash only `-type f`; resolve the git dir with `rev-parse --git-dir`; take `ps` at both ends of pass 2 itself; name the product paths explicitly and record symlink targets with `stat -L`; never surface xattr values in extraction |
+| 7 | The document's status line contradicted the executed sections | **Adopt.** Status corrected |
+| 8 | B2 is sound and its ceiling accurate; optionally verify `SHASUMS256.txt.sig`, and cap U's "running the app" with "after Phase C" | **Adopt.** Both are cheap and correct |
+| 9 | B5's reasoning is valid, but "R — Reproducible" overstates it, and calling the existing Intel trees R invites reusing a `.build` that can carry objects from another source state | **Adopt.** R renamed to "Rebuilt under observation" and explicitly not bit-reproducible; existing trees demoted to H/X; Phase D builds in a fresh directory. Also recorded: a self-built binary has a different cdhash and does not share the stock binary's TCC grant, so a baseline/candidate pair is internally consistent but is not measuring the owner's actual configuration |
+| 10 | `candidate-r3` is fenced but "identified" is undefined | **Adopt.** Defined as a tree-hash match against one of the constructed states plus a product-digest match against a published value; anything else stays X. Its products are not used in Phase D either way |
+
+Finding 2's underlying cause is recorded above in its own section: the
+explanation for the Intel lock mismatch was already written in this repository
+and was not consulted.
+
+## Owner decisions required before B1
+
+1. **Does production run the stock imsg, or one we build?** The app selects its
+   executable by path (`IMSG_WEB_IMSG_PATH`, set by the launch-agent generator),
+   so whatever that path points at is an executable we intend to run, and
+   therefore a Phase B subject. If production is to run stock, the stock image
+   needs binding work it does not currently have. If production is to run a
+   build of ours, stock drops to "what the owner runs by hand" and the binding
+   burden disappears.
+2. **Which lock is the 0.14.2 pin?** The upstream lock lacks transitive entries.
+   The choice is between reviewing the contents of the re-resolved lock already
+   recorded by digest, or resolving fresh on this workstation and reviewing
+   that. Recommendation: review the recorded one first, since it is what the
+   existing evidence was produced with; fall back to a fresh resolution only if
+   its transitive choices are unacceptable. Either way the contents get read,
+   not just the digest.
+3. **May Phase D create fresh build directories on the Macs?** Required by the
+   decision not to reuse an existing `.build`. Needs disk space and explicit
+   permission to create directories, which no phase so far has had.
