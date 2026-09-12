@@ -290,8 +290,13 @@ Both patch digests re-match their published values.
 | v0.15.1 (`646ea7a`) | — | `be55852d84140bb12cbf4c58bb67f8260337878837e80d6ddeef41f259a3ae00` |
 | v0.15.3 (`f2455d9`) | `b3fa12d78aeadf6d1a1ce8872ebe6ad9c54af75bdfe815307402323a9a1ff769` | `be55852d84140bb12cbf4c58bb67f8260337878837e80d6ddeef41f259a3ae00` |
 
-In each file, SwiftPM's `originHash` equals this table's `Package.swift` digest,
-which is a useful internal consistency check.
+In each file, SwiftPM's `originHash` equals this table's `Package.swift` digest.
+
+**Corrected later:** that is a coincidence of these two versions, not a rule. At
+v0.15.4 the lock's `originHash` is `1668c8b5…` while `Package.swift` hashes to
+`0785085f…`. Treating it as a consistency check would have been wrong, and the
+difference matters: a host whose SwiftPM computes a different `originHash` will
+treat the lock as stale and rewrite it. See `docs/step2-phase-d-build-plan.md`.
 
 ### Correction: the 0.15.3 lock is not a new pin
 
