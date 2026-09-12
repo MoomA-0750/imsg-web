@@ -1,3 +1,4 @@
+import { closeSync, openSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -24,7 +25,7 @@ async function childSees(context: ChildContext) {
   });
   try {
     const result = await client.request('status', {});
-    return result as { names: string[]; cwd: string };
+    return result as { names: string[]; cwd: string; fds: number[] };
   } finally {
     await client.close();
   }
@@ -47,6 +48,25 @@ describe('child environment contract', () => {
       delete process.env.NODE_OPTIONS;
       delete process.env.SSH_CONNECTION;
       delete process.env.HOMEBREW_PREFIX;
+    }
+  });
+
+  it('does not hand the child descriptors the parent happens to hold', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'child-fd-'));
+    const context = buildChildEnv({ tmpDir: dir, cwd: dir, home: dir });
+
+    // Counting the child's own descriptors proves nothing: a fresh Node process
+    // already holds around twenty for libuv's event loop, so an absolute
+    // assertion measures the runtime rather than inheritance. The difference
+    // across a parent that has opened more is what actually answers it.
+    const before = (await childSees(context)).fds.length;
+    const opened: number[] = [];
+    try {
+      for (let i = 0; i < 12; i += 1) opened.push(openSync(fileURLToPath(import.meta.url), 'r'));
+      const after = (await childSees(context)).fds.length;
+      expect(after - before).toBe(0);
+    } finally {
+      for (const fd of opened) closeSync(fd);
     }
   });
 

@@ -288,3 +288,64 @@ would be a hole punched in the thing being built.
    operation on the owner's session, not something this project does. The C8
    probe will report matching **names only**, never values. Whether to then
    clear anything it finds is the owner's call.
+
+---
+
+# C8 result and implementation record (2026-09-12)
+
+## C8 — the launch context was not already carrying anything
+
+Read-only probe of both launchd domains on both hosts, reporting **names only**
+for entries matching a dangerous pattern and counting the rest without naming
+them.
+
+| Host | `gui/<uid>` matched | `user/<uid>` matched | withheld |
+|---|---|---|---|
+| Intel | **0** | **0** | 1 in `gui`, 0 in `user` |
+| M1 | **0** | **0** | 1 in `gui`, 0 in `user` |
+
+No `NODE_*`, `DYLD_*`, `UV_*`, `SQLITE_*`, `IMSG_*`, `SSH_CONNECTION`,
+`HOMEBREW_PREFIX`, `CFFIXED_USER_HOME` or TLS-path override in either domain.
+Nothing to clear, and the owner's decision to be told names rather than have
+anything cleared stands unused.
+
+Both domains were read because `launchctl setenv` from an SSH session lands in
+`user/<uid>` while an Agent with `LimitLoadToSessionType=Aqua` loads into
+`gui/<uid>`; reporting one without saying which would have been misleading.
+
+This does not change the defence. The child environment is an allow-list, so the
+contents of these dictionaries no longer reach `imsg` either way. What it
+establishes is narrower and worth having: the context was **not** already
+compromised, so the historical measurements were not taken under an injected
+loader.
+
+## Implementation, and one test that had to be thrown away
+
+The contract is implemented and the leak was demonstrated before the fix: with
+the parent poisoned, the child died reading a `NODE_OPTIONS --require` that did
+not exist, and the cwd assertion returned the parent's directory verbatim.
+Removing the two lines that pass `env` and `cwd` makes those tests fail again.
+
+One test was written, run, and discarded as the wrong instrument. It asserted
+that the child held no descriptor above its own stdio, and it failed — the child
+reported roughly twenty. That looked like a finding and was not: **a fresh Node
+process already holds that many for libuv's event loop**, and a parent process
+shows exactly the same count. The assertion was measuring the runtime, not
+inheritance, and would have reported a leak that does not exist.
+
+Replaced with a differential: count the child's descriptors, open twelve more in
+the parent, count again. The difference is zero, on both a plain parent and
+through the client. That is the form that answers the question.
+
+Recording this because the failure mode is the mirror image of the one this
+project keeps catching. A check that cannot fail proves nothing; a check that
+fails for the wrong reason is worse, because it looks like evidence.
+
+## Remaining Phase C work
+
+- `safeTree(imsg, uid, true)` must become `false`, and `validateConfig` must
+  require the executable to sit under the base. Deferred until Phase D produces
+  the artifact, since the path being validated does not exist yet.
+- Process-group and `ExitTimeOut` interaction with the Agent's shutdown
+  sequence, and `imsg rpc`'s behaviour on stdin EOF versus SIGTERM, are checked
+  against the real binary in Phase D's non-launch tests.

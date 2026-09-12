@@ -59,8 +59,9 @@ const TEMPLATES = new Map([
   ['1', 'phase-a-pass1.sh.template'],
   ['1b', 'phase-a-pass1b.sh.template'],
   ['2', 'phase-a-pass2.sh.template'],
+  ['c8', 'phase-c-c8.sh.template'],
 ]);
-if (!TEMPLATES.has(pass)) fail('--pass must be 1, 1b or 2');
+if (!TEMPLATES.has(pass)) fail('--pass must be 1, 1b, 2 or c8');
 if (role !== 'intel' && role !== 'm1') fail('--role must be intel or m1');
 if (!base) fail('--base is required');
 if (!out) fail('--out is required');
