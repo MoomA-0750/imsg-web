@@ -88,44 +88,63 @@ for (const [pattern, label] of FORBIDDEN_PATTERNS) {
   if (pattern.test(codeOnly)) fail(`generated script contains a forbidden construct: ${label}`);
 }
 
-// Nothing is ever deleted, and nothing outside the root is modified. `rm` is
-// absent entirely rather than restricted: this phase has no reason to remove
-// anything, and AGENTS.md forbids clearing retained state automatically.
-const FORBIDDEN_COMMANDS = new Set([
-  'imsg', 'node', 'npm', 'npx', 'sudo', 'rm', 'rmdir', 'kill', 'killall',
-  'chown', 'chflags', 'mv', 'ln', 'dd', 'mdfind', 'mdutil', 'osascript',
-  'open', 'defaults', 'csrutil', 'tccutil', 'softwareupdate', 'installer',
-  'brew', 'eval', 'exec', 'xargs', 'tee', 'nohup', 'caffeinate', 'curl', 'scp',
-  'ssh', 'nc', 'ftp',
+// An allow-list, not a deny-list. The deny-list version passed
+// `"${PRODUCT}" --version`: the word contains `$`, so the command name was
+// blanked and every check skipped -- which would have executed the artifact
+// this phase is forbidden to run. Anything not named here is refused.
+const ALLOWED_COMMANDS = new Set([
+  'echo', 'printf', 'date', 'stat', 'df', 'shasum', 'cut', 'grep', 'tar',
+  'mkdir', 'touch', 'find', 'git', 'file', 'lipo', 'codesign', 'otool',
+  'xcode-select', 'xcrun', 'sw_vers', 'uname', 'test', '[', 'cd', 'return',
+  'exit', 'set', 'export',
 ]);
+
+// Executed by absolute or explicit relative path, and only these two.
+const ALLOWED_PATHS = new Set(['/usr/bin/swift', './scripts/patch-deps.sh']);
 
 const SHELL_KEYWORDS = new Set([
   'if', 'then', 'else', 'elif', 'fi', 'while', 'until', 'do', 'done',
-  'case', 'esac', 'for', 'in', '!', '{', '}', '(', ')', 'time', 'return',
+  'case', 'esac', 'for', 'in', '!', '{', '}', '(', ')', 'time',
 ]);
 
-// Writes are allowed, but each one must name a path under the root. A write
-// whose destination the generator cannot see is not a confined write.
-const WRITE_COMMANDS = new Set(['mkdir', 'touch', 'chmod', 'tar', 'cd']);
+// Writes must name one of these. Deliberately narrower than the roots a read
+// may start from: the earlier version shared one list, so `mkdir "${HOME}/x"`
+// counted as confined.
+const WRITE_ROOTS = ['"${ROOT}', '"${dir}'];
+const READ_ROOTS = ['"${ROOT}', '"${dir}', '"${ARCHIVE}"', '"${outside}"', '"${PRODUCT}"', '"${HOME}'];
+const WRITE_COMMANDS = new Set(['mkdir', 'touch', 'tar']);
+
+const GIT_PREFIX = 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C ';
+const GIT_ALLOWED = /^(rev-parse (HEAD|"HEAD\^\{tree\}")|status --porcelain)$/;
+
+// swift is allowed three shapes only. `swift run` executes the product and
+// `swift package clean|reset|purge-cache` deletes; both would have passed an
+// unchecked `swift`.
+const SWIFT_ALLOWED = /^\/usr\/bin\/swift (--version|package .*resolve|build .*-c release .*--force-resolved-versions)/;
 
 function segments(code) {
   const found = [];
   for (const rawLine of code.split('\n')) {
     const line = rawLine.trim();
     if (!line) continue;
-    for (const rawSegment of line.split(/\|\||&&|[;|&]/)) {
+    // `(?<!>)&` so that `2>&1` is not split into `... 2>` and `1`, which made
+    // the redirection's target look like a command named `1`.
+    for (const rawSegment of line.split(/\|\||&&|[;|]|(?<!>)&/)) {
       let segment = rawSegment.trim();
-      // A pure assignment runs nothing. Anchored at the end on purpose: the
-      // unanchored form let the `\S*` alternative backtrack into a quoted value
-      // containing a space, so `BASE='/…/Application Support/…'` was parsed as a
-      // command named `BASE='/…/Application`. It never matched a forbidden name,
-      // so it failed silently -- the parser simply stopped seeing the real
-      // command on any line whose assignment value had a space in it.
       if (/^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|"[^"]*"|\S*)$/.test(segment)) continue;
+      // NAME=$(cmd ...): the assignment runs nothing and the substitution is
+      // audited separately by inner(). Without this the leading word is
+      // `NAME=$(cmd`, which contains `$` and is refused as an unknown command.
+      if (/^[A-Za-z_][A-Za-z0-9_]*=(\$\(|`)/.test(segment)) continue;
       if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(segment) && !/\s/.test(segment.split('=')[0])) {
         const rest = segment.match(/^(?:[A-Za-z_][A-Za-z0-9_]*=(?:'[^']*'|"[^"]*"))\s+(.*)$/);
         if (rest) segment = rest[1].trim();
       }
+      // `for NAME in <list>` is a binding and a word list, not a command. The
+      // loop body arrives as its own segment, so skipping this one audits the
+      // body without treating the first list item as a command name.
+      if (/^for\s+[A-Za-z_][A-Za-z0-9_]*\s+in\b/.test(segment)) continue;
+      if (/^case\s+\S+\s+in\b/.test(segment)) continue;
       for (let guard = 0; guard < 8; guard += 1) {
         const word = segment.split(/\s/)[0];
         if (word && SHELL_KEYWORDS.has(word)) { segment = segment.slice(word.length).trim(); continue; }
@@ -140,54 +159,90 @@ function segments(code) {
 
 function inner(code) {
   const out = [];
-  const pattern = /\$\(([^()]*)\)|`([^`]*)`/g;
-  let match = pattern.exec(code);
-  while (match) { out.push(match[1] ?? match[2] ?? ''); match = pattern.exec(code); }
+  let rest = code;
+  for (let depth = 0; depth < 4; depth += 1) {
+    const pattern = /\$\(([^()]*)\)|`([^`]*)`/g;
+    const found = [];
+    let match = pattern.exec(rest);
+    while (match) { found.push(match[1] ?? match[2] ?? ''); match = pattern.exec(rest); }
+    if (found.length === 0) break;
+    out.push(...found);
+    // Strip the innermost level so a nested substitution's outer command is
+    // seen on the next pass rather than skipped.
+    rest = rest.replace(/\$\([^()]*\)|`[^`]*`/g, ' X ');
+  }
   return out;
 }
 
-const ROOT_REFS = ['"${ROOT}', '"${dir}', '"${ARCHIVE}"', '"${outside}"', '"${PRODUCT}"', '"${HOME}'];
-const GIT_PREFIX = 'git --no-optional-locks -c core.fsmonitor=false -c core.untrackedCache=false -C ';
-const GIT_ALLOWED = /^(rev-parse (HEAD|"HEAD\^\{tree\}")|status --porcelain)$/;
+// Shell functions defined by this same template. Collected rather than
+// hardcoded, so a renamed function does not silently become an unknown command
+// and a function defined elsewhere is still refused.
+function definedFunctions(code) {
+  const names = new Set();
+  for (const match of code.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\)/gm)) {
+    names.add(match[1]);
+    names.add(`${match[1]}()`);
+  }
+  return names;
+}
+
+let LOCAL_FUNCTIONS = new Set();
 
 function audit(code, origin) {
   for (const { word, text } of segments(code)) {
     const bare = word.replace(/^["']|["']$/g, '');
-    const command = bare.includes('$') ? '' : bare.split('/').pop();
 
-    if (command && FORBIDDEN_COMMANDS.has(command)) {
-      fail(`forbidden command in ${origin}: ${command}`);
-    }
+    // A command whose name comes from a variable cannot be checked, so it is
+    // refused rather than skipped.
+    if (bare.includes('$')) fail(`command name comes from a variable in ${origin}: ${text}`);
 
-    // Running a script by path is how upstream's patch-deps.sh gets applied,
-    // and it is the one such invocation this phase makes. Left unrestricted,
-    // the command allow-list above would be decorative: any path could be run.
-    if (bare.includes('/') && !bare.startsWith('/usr/bin/') && !bare.startsWith('/bin/')) {
-      if (bare !== './scripts/patch-deps.sh') {
-        fail(`script executed by path in ${origin}, and it is not the approved one: ${bare}`);
+    if (bare.includes('/')) {
+      if (!ALLOWED_PATHS.has(bare)) fail(`script or binary executed by path in ${origin}: ${bare}`);
+      if (bare === '/usr/bin/swift' && !SWIFT_ALLOWED.test(text)) {
+        fail(`swift invocation not allow-listed in ${origin}: ${text}`);
       }
+      if (bare === '/usr/bin/swift') {
+        for (const m of text.matchAll(/--(cache|config|security|scratch)-path\s+(\S+)/g)) {
+          if (!WRITE_ROOTS.some(r => m[2].startsWith(r))) {
+            fail(`swift ${m[1]}-path outside the build root in ${origin}: ${m[2]}`);
+          }
+        }
+        for (const m of text.matchAll(/--([a-z-]*path)\s/g)) {
+          if (!['cache-path', 'config-path', 'security-path', 'scratch-path'].includes(m[1])) {
+            fail(`unrecognised swift path option in ${origin}: --${m[1]}`);
+          }
+        }
+      }
+      continue;
     }
 
-    if (command === 'git') {
+    if (!ALLOWED_COMMANDS.has(bare) && !LOCAL_FUNCTIONS.has(bare)) fail(`command not on the allow-list in ${origin}: ${bare}`);
+
+    if (bare === 'git') {
       if (!text.startsWith(GIT_PREFIX)) fail(`git is not the approved non-locking form in ${origin}`);
       const after = text.slice(GIT_PREFIX.length).replace(/^("[^"]*"|\S+)\s*/, '').trim();
       if (!GIT_ALLOWED.test(after)) fail(`git subcommand not allow-listed in ${origin}: ${after}`);
     }
 
-    if (command && WRITE_COMMANDS.has(command)) {
-      const target = text.split(/\s+/).slice(1).find(a => !a.startsWith('-'));
-      if (!target || !ROOT_REFS.some(ref => target.startsWith(ref))) {
-        fail(`write outside the build root in ${origin}: ${text}`);
+    if (WRITE_COMMANDS.has(bare)) {
+      if (bare === 'tar') {
+        if (!/-C\s+"\$\{ROOT\}"/.test(text)) fail(`tar without -C into the build root in ${origin}: ${text}`);
+        if (/\s-P\b/.test(text)) fail(`tar -P in ${origin}`);
+      } else {
+        const target = text.split(/\s+/).slice(1).find(a => !a.startsWith('-'));
+        if (!target || !WRITE_ROOTS.some(r => target.startsWith(r))) {
+          fail(`write outside the build root in ${origin}: ${text}`);
+        }
       }
     }
 
-    if (command === 'find') {
+    if (bare === 'find') {
       if (!/-maxdepth\s+\d/.test(text)) fail(`unbounded find in ${origin}: ${text}`);
       for (const banned of ['-delete', '-ok', '-okdir', '-execdir']) {
         if (text.includes(banned)) fail(`mutating find in ${origin}: ${banned}`);
       }
       const start = text.split(/\s+/)[1] ?? '';
-      if (!ROOT_REFS.some(ref => start.startsWith(ref))) fail(`find outside approved roots in ${origin}: ${start}`);
+      if (!READ_ROOTS.some(r => start.startsWith(r))) fail(`find outside approved roots in ${origin}: ${start}`);
       for (const chunk of text.split('-exec ').slice(1)) {
         const execCommand = (chunk.trim().split(/\s+/)[0] ?? '').split('/').pop();
         if (!['shasum', 'stat', 'ls', 'file'].includes(execCommand)) {
@@ -197,15 +252,17 @@ function audit(code, origin) {
     }
   }
 
-  // Redirections are permitted only into the root.
-  for (const match of code.matchAll(/(^|[^-&>0-9])>>?\s*(\S+)/gm)) {
-    const target = match[2];
-    if (!ROOT_REFS.some(ref => target.startsWith(ref)) && target !== '/dev/null') {
+  // Redirections, including the fd-numbered forms the previous pattern excluded
+  // in order to permit `2>&1`.
+  for (const match of code.matchAll(/(^|[^-&>])([0-9]?)>>?\s*([^\s&][^\s]*)/gm)) {
+    const target = match[3];
+    if (!WRITE_ROOTS.some(r => target.startsWith(r)) && target !== '/dev/null') {
       fail(`redirection outside the build root in ${origin}: ${target}`);
     }
   }
 }
 
+LOCAL_FUNCTIONS = definedFunctions(codeOnly);
 audit(codeOnly, 'the script body');
 for (const block of inner(codeOnly)) audit(block, 'a command substitution');
 

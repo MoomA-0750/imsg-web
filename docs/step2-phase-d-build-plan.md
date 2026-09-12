@@ -179,7 +179,10 @@ build, and that script rewrites files inside `.build/checkouts/`:
 - `PhoneNumberKit/.../Bundle+Resources.swift`: `#if DEBUG && SWIFT_PACKAGE`
   becomes `#if SWIFT_PACKAGE`, and `Bundle.main.bundleURL.resolvingSymlinksInPath()`
   is added to the search list.
-- `SQLite.swift/Package.swift` is also rewritten.
+- `SQLite.swift/Package.swift` adds `"PrivacyInfo.xcprivacy"` to an exclude
+  list — **but at the pinned 0.16.0 that file already declares it, so the script
+  exits early and this half is a no-op.** Corrected after checking the real
+  dependency source; the first version of this line said it was rewritten.
 
 Read plainly: **upstream's PhoneNumberKit searches next to the executable for its
 resource bundle only in DEBUG builds.** A plain release build without this patch
@@ -338,3 +341,90 @@ pinned by content rather than trusted.
 It also raises the priority of keeping the `.bundle` beside the executable
 wherever the artifact is later placed — a detail that, left to a later phase,
 would have surfaced as a crash rather than as a missing file.
+
+
+---
+
+# F4 stage 2 dispositions — the scripts themselves
+
+The first F4 pass reviewed the plan and said so: "this is a review of the plan;
+the scripts that actually run are unreviewed". This is that second pass, on the
+generated artifact. **Two blockers**, both verified before adoption.
+
+## Blocker: unquoted flag expansion would have written outside the root
+
+The template collected SwiftPM's path flags into one variable and expanded it
+unquoted. The build root contains a space. Verified under a POSIX shell:
+
+```
+--cache-path
+/Users/…/Library/Application
+Support/…/phase-d/swiftpm-cache
+```
+
+`--cache-path` would have pointed at `/Users/…/Library/Application` — **outside
+the build root, on the very first run**, which is precisely the contract this
+phase exists to keep. Every flag is now written inline and quoted, and the
+generator refuses a `--cache/config/security/scratch-path` whose value is not
+under the root, plus any other `--*-path`.
+
+This is the same failure as the parser bug fixed hours earlier — a quoted value
+containing a space — reintroduced in a different file. Finding it twice in one
+day is the argument for the review point existing.
+
+## Blocker: `mkdir -p` made a re-run silently reuse the previous one
+
+`mkdir -p` succeeds on an existing root, so a second run after a failure would
+have reused the previous `.build` and checkouts, shown the previous patch in the
+"before patch" status, and re-touched the marker so the earlier run's outside
+writes vanished from the sweep. `-p` also creates missing parents, so a mistyped
+root would quietly create a chain of directories.
+
+Now `mkdir "${ROOT}"` without `-p`: an existing root or a missing parent exits
+71. A re-run must use a new root name, which is also how "failed arms are left
+in place" is actually implemented — the plan claimed it while the generator
+forbade `mv`.
+
+## Also adopted
+
+- **`rev-parse HEAD^{tree}` cannot pin what `patch-deps` does.** A tree hash
+  comes from the commit and does not move when the working tree is edited, so
+  the plan's "pinned by content" was not implemented by what the template did.
+  The two patch targets now get file digests before and after.
+- **The script exited 0 on almost every failure.** Resolve failure, patch
+  failure, build failure and a missing product all fell through to the next
+  step and ended on `date`. Each stage now stops its arm, and a `SUMMARY`
+  reports per-arm status with exit 73 when either is not `ok`.
+- **A changed pin is now what stops an arm**, not a changed lock digest: the
+  four pinned revisions must still be present after resolve. The digest can move
+  for reasons other than a changed dependency, which is the whole originHash
+  problem.
+- `.bundle` manifest depth raised from 3 to 6 — the payload sits at
+  `Contents/Resources/<file>`, so depth 3 would have recorded `Info.plist` and
+  missed the phone-number metadata.
+- Marker written before the first toolchain query; sweep depth raised to 6.
+- The full `swift build` command line is echoed, since class R is defined by
+  process and an unrecorded process defines nothing.
+- `xcrun --show-sdk-build-version` added.
+
+## The generator became an allow-list
+
+`"${PRODUCT}" --version` **passed** the deny-list version: the word contains
+`$`, so the command name was blanked and every check skipped — which would have
+executed the artifact this phase is forbidden to run. A deny-list that blanks
+what it cannot parse is not a deny-list.
+
+Commands are now allow-listed; a command name coming from a variable is refused
+rather than skipped; write roots are separated from read roots (`mkdir
+"${HOME}/x"` previously counted as confined); `tar` must carry `-C "${ROOT}"`
+and may not use `-P`; fd-numbered redirections are checked; `swift` is limited
+to three shapes, since `swift run` executes the product and `swift package
+clean` deletes.
+
+Four segmentation bugs surfaced while doing this, each found because the
+control case failed rather than because a check passed: `NAME=$(cmd)`
+assignments, `for NAME in <list>`, locally defined shell functions, and `2>&1`
+being split on `&` so the redirection target looked like a command named `1`.
+
+Thirty-two guard cases now pass, twelve of them for bypasses that the earlier
+version accepted.
