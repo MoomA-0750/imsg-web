@@ -67,6 +67,7 @@ the next task are superseded by this file and the handoff.
 - Full handoff: `docs/CLAUDE-CODE-HANDOFF.md`
 - Step1: `docs/nonlaunch-rereview-2026-09-12.md`
 - Step2 checkpoint: `docs/nonlaunch-source-runtime-audit.md`
+- Step2 Phase A plan (proposed, not executed): `docs/step2-phase-a-inventory-plan.md`
 - Workload/process boundaries: `docs/nonlaunch-api-workload.md`,
   `docs/nonlaunch-worker-watchdog.md`, `docs/nonlaunch-residue.md`
 - Artifact verifier: `docs/nonlaunch-bundle.md`
