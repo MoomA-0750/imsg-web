@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
 vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 import { ReadonlyRpcClient } from '../src/server/rpc/readonly-client.js';
+import { testContext } from './helpers/child-context.js';
 afterEach(() => vi.useRealTimers());
 
 it('destroys all RPC pipe handles and unrefs only its own child at the hard shutdown deadline', async () => {
@@ -13,7 +14,7 @@ it('destroys all RPC pipe handles and unrefs only its own child at the hard shut
     kill: vi.fn(), unref: vi.fn(),
   });
   spawnMock.mockReturnValue(child);
-  const client = new ReadonlyRpcClient({ executable: '/synthetic/imsg' });
+  const client = new ReadonlyRpcClient({ context: testContext(), executable: '/synthetic/imsg' });
   const pending = client.request('status').catch(error => error);
   const closing = client.close();
   const assertion = expect(closing).rejects.toMatchObject({ code: 'SHUTDOWN_FAILED' });

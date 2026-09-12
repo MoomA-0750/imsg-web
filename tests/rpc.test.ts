@@ -6,11 +6,13 @@ import { describe, expect, it } from 'vitest';
 import { ReadonlyRpcClient, type ReadMethod } from '../src/server/rpc/readonly-client.js';
 import { RpcError } from '../src/server/rpc/errors.js';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
+import { testContext } from './helpers/child-context.js';
 
 const fixture = resolve(fileURLToPath(new URL('./fixtures/fake-imsg.mjs', import.meta.url)));
 const code = (error: unknown) => error instanceof RpcError ? error.code : undefined;
 const make = (mode: string, options: { timeoutMs?: number; shutdownGraceMs?: number; maxFrameBytes?: number; marker?: string } = {}) => {
   const config = {
+    context: testContext(),
     executable: process.execPath,
     args: [fixture, mode, ...(options.marker ? [options.marker] : [])],
     timeoutMs: options.timeoutMs ?? 1_000,
@@ -28,7 +30,7 @@ describe('ReadonlyRpcClient subprocess acceptance', () => {
   it('registers its actual child synchronously once before returning the client', async () => {
     let owned: ChildProcessWithoutNullStreams | undefined, called = 0;
     let closed!: Promise<void>;
-    const client = new ReadonlyRpcClient({ executable: process.execPath, args: [fixture, 'echo'], onChild: child => {
+    const client = new ReadonlyRpcClient({ context: testContext(), executable: process.execPath, args: [fixture, 'echo'], onChild: child => {
       called++; owned = child;
       closed = new Promise(resolve => child.once('close', () => resolve()));
     } });
@@ -42,7 +44,7 @@ describe('ReadonlyRpcClient subprocess acceptance', () => {
 
   it('redacts a throwing ownership observer and still closes its created child', async () => {
     let closed!: Promise<void>;
-    expect(() => new ReadonlyRpcClient({ executable: process.execPath, args: [fixture, 'echo'], shutdownGraceMs: 500,
+    expect(() => new ReadonlyRpcClient({ context: testContext(), executable: process.execPath, args: [fixture, 'echo'], shutdownGraceMs: 500,
       onChild: child => {
         closed = new Promise(resolve => child.once('close', () => resolve()));
         throw new Error('SYNTHETIC_PRIVATE_OBSERVER_ERROR');
@@ -53,7 +55,7 @@ describe('ReadonlyRpcClient subprocess acceptance', () => {
 
   it('registers failed-spawn handles so ownership cleanup can still observe close', async () => {
     let closed!: Promise<void>, called = 0;
-    const client = new ReadonlyRpcClient({ executable: '/synthetic/absent-imsg', onChild: child => {
+    const client = new ReadonlyRpcClient({ context: testContext(), executable: '/synthetic/absent-imsg', onChild: child => {
       called++; closed = new Promise(resolve => child.once('close', () => resolve()));
     } });
     await expect(client.request('status')).rejects.toMatchObject({ code: 'RPC_SPAWN_FAILED' });

@@ -7,6 +7,7 @@ import { Auth, hashKey } from '../src/server/auth.js';
 import { createApp } from '../src/server/http.js';
 import { LiveSource } from '../src/server/live-source.js';
 import { ReadonlyRpcClient, type ReadMethod } from '../src/server/rpc/readonly-client.js';
+import { testContext } from './helpers/child-context.js';
 
 // Record launch configuration without replacing the real subprocess transport.
 vi.mock('node:child_process', async importOriginal => {
@@ -32,7 +33,7 @@ async function fixture(sip: 'enabled' | 'disabled' = 'enabled', timeoutMs?: numb
   await chmod(executable, 0o700);
   await writeFile(join(dir, 'chat.db'), 'synthetic database identity');
   await writeFile(join(dir, 'config.json'), JSON.stringify({ sip, version: sip === 'enabled' ? '0.15.1' : '0.14.2', lateOnTerm: timeoutMs !== undefined }));
-  const source = new LiveSource({ executable, ...(timeoutMs === undefined ? {} : { factory: () => new ReadonlyRpcClient({ executable, timeoutMs, shutdownGraceMs: 250 }) }) });
+  const source = new LiveSource({ context: testContext(), executable, expectedDatabasePath: join(dir, 'chat.db'), ...(timeoutMs === undefined ? {} : { factory: () => new ReadonlyRpcClient({ context: testContext(), executable, timeoutMs, shutdownGraceMs: 250 }) }) });
   cleanups.push(async () => { await unlink(join(dir, 'hold')).catch(() => {}); await source.close(); });
   const audit = async (): Promise<Audit[]> => (await readFile(join(dir, 'audit.jsonl'), 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
   const historyCalls = async () => (await audit()).filter(row => row.kind === 'request' && row.method === 'messages.history');
@@ -71,7 +72,7 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
       expect(denied.statusCode).toBe(404); expect(denied.json()).toEqual({ code: 'NOT_FOUND' });
     }
     expect(await f.audit()).toEqual(beforeWrites);
-    const client = new ReadonlyRpcClient({ executable: f.executable });
+    const client = new ReadonlyRpcClient({ context: testContext(), executable: f.executable });
     try {
       for (const method of FORBIDDEN) await expect(client.request(method as ReadMethod, { text: BODY })).rejects.toMatchObject({ code: 'METHOD_FORBIDDEN' });
       await client.request('status');

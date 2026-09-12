@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { request } from 'node:http';
 import { OwnerStore } from '../dist/server/owner-store.js';
+import { buildChildEnv, ensureChildTmpDir } from '../dist/server/child-env.js';
 import { LiveSource } from '../dist/server/live-source.js';
 import { startRuntime } from '../dist/server/runtime.js';
 import { adminCommand } from '../dist/server/admin.js';
@@ -12,7 +13,9 @@ async function main() {
   if (process.env.IMSG_WEB_LIVE_PROBE !== 'readonly-approved' || !process.env.IMSG_WEB_IMSG_PATH) throw new Error();
   const root = await mkdtemp(join(tmpdir(), 'iw-live-'));
   const store = new OwnerStore(join(root, 'state')), key = await store.setup();
-  const runtime = await startRuntime({ store, source: new LiveSource({ executable: process.env.IMSG_WEB_IMSG_PATH }), origin: 'https://probe.invalid', port: 0, webDir: new URL('../dist/web', import.meta.url).pathname });
+  const tmpDir = await ensureChildTmpDir(process.env.IMSG_WEB_STATE_DIR);
+  const context = buildChildEnv({ tmpDir, cwd: tmpDir });
+  const runtime = await startRuntime({ store, source: new LiveSource({ executable: process.env.IMSG_WEB_IMSG_PATH, context, expectedDatabasePath: context.databasePath }), origin: 'https://probe.invalid', port: 0, webDir: new URL('../dist/web', import.meta.url).pathname });
   const port = runtime.app.server.address().port;
   const call = (path, method = 'GET', cookie, payload) => new Promise((resolve, reject) => {
     const req = request({ hostname: '127.0.0.1', port, path, method, headers: { host: 'probe.invalid', origin: 'https://probe.invalid', ...(cookie ? { cookie } : {}), ...(payload ? { 'content-type': 'application/json' } : {}) } }, res => {

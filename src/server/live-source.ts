@@ -4,6 +4,7 @@ import { isAbsolute } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot } from '../shared/web-types.js';
 import { ReadonlyAdapter } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
+import type { ChildContext } from './child-env.js';
 import { isObject } from './rpc/errors.js';
 import { capabilities } from './capabilities.js';
 import { WebError } from './web-error.js';
@@ -11,6 +12,16 @@ import { WebError } from './web-error.js';
 type Client = Pick<ReadonlyRpcClient, 'request' | 'close' | 'closed'>;
 export type SourceOptions = {
   executable: string;
+  /** The exact environment and cwd for every imsg child this source starts. */
+  context: ChildContext;
+  /**
+   * The database path imsg must report. Required, and it lives here rather than
+   * being derived inside, because the source is what verifies it: an
+   * allow-listed environment stops stray variables reaching the child but
+   * cannot prove the right HOME was passed, and a wrong one makes imsg open a
+   * different chat.db and succeed.
+   */
+  expectedDatabasePath: string;
   factory?: () => Client;
 };
 export function clip(text: string, length: number) {
@@ -68,13 +79,18 @@ export class LiveSource implements ReadSource {
     this.#ensureActive();
     const fresh = !this.#client;
     if (!this.#client) {
-      this.#client = this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable });
+      this.#client = this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context });
       this.#adapter = new ReadonlyAdapter(this.#client as ReadonlyRpcClient);
     }
     const { raw, parsed } = await this.#adapter!.status();
     this.#ensureActive();
     const db = isObject(raw) && isObject(raw.database) ? raw.database : undefined;
-    const path = typeof db?.path === 'string' && isAbsolute(db.path) ? db.path : undefined;
+    // Absolute is not enough. An allow-listed environment stops stray variables
+    // reaching the child; it cannot prove the right HOME was passed, and a wrong
+    // one makes imsg open a different chat.db and SUCCEED. Verifying the path it
+    // reports turns "reads the wrong data" into "fails".
+    const reported = typeof db?.path === 'string' && isAbsolute(db.path) ? db.path : undefined;
+    const path = reported === this.options.expectedDatabasePath ? reported : undefined;
     if (!path || !parsed.databaseReady) { const established = this.#identity !== undefined; await this.#retire(); throw new WebError(established ? 'DB_CHANGED' : 'DATABASE_UNAVAILABLE', established ? 409 : 503); }
     let identity: string;
     try { identity = `${path}:${await this.#fingerprint(path)}`; }
@@ -86,7 +102,7 @@ export class LiveSource implements ReadSource {
       // has been sampled, so an old handle cannot be labelled with a replacement inode.
       await this.#client!.close().catch(() => { this.#closeFailed = true; throw new WebError('READER_RECOVERY_REQUIRED'); });
       this.#ensureActive();
-      this.#client = this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable });
+      this.#client = this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context });
       this.#adapter = new ReadonlyAdapter(this.#client as ReadonlyRpcClient);
       this.#identity = identity;
       return this.#context();

@@ -27,6 +27,7 @@ import { createApp } from '../src/server/http.js';
 import { createOwnedReaderGate } from '../scripts/nonlaunch-owned-readers.mjs';
 // @ts-expect-error Experimental standalone JavaScript helper has no declarations.
 import { runApiSession } from '../scripts/nonlaunch-api-session.mjs';
+import { testContext } from './helpers/child-context.js';
 
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => {
@@ -45,12 +46,13 @@ async function fixture(modes: string[], gate?: ReturnType<typeof createOwnedRead
   const path = join(dir, 'synthetic.db'); await writeFile(path, 'synthetic');
   let count = 0;
   const create = (onChild?: (child: ChildProcess) => void) => new ReadonlyRpcClient({
+    context: testContext(),
     executable: process.execPath,
     args: [fileURLToPath(new URL('./fixtures/nonlaunch-source-rpc.mjs', import.meta.url)), path, modes[count++] ?? 'normal'],
     timeoutMs: 5000, shutdownGraceMs: 80,
     ...(onChild ? { onChild } : {}),
   });
-  const source = new LiveSource({ executable: process.execPath, factory: () => {
+  const source = new LiveSource({ context: testContext(), executable: process.execPath, expectedDatabasePath: path, factory: () => {
     if (!gate) return create();
     return gate.factory((register: (child: ChildProcess) => void) => create(register));
   } });

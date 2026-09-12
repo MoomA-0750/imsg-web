@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { isAbsolute } from 'node:path';
+import type { ChildContext } from '../child-env.js';
 import { RpcError, isObject } from './errors.js';
 
 const METHODS = ['status', 'chats.list', 'messages.history', 'watch.subscribe', 'watch.unsubscribe'] as const;
@@ -12,6 +13,13 @@ type Pending = {
 export type Notice = { method: string; params: unknown };
 type Options = {
   executable: string;
+  /**
+   * The exact environment and working directory for the child. Required, not
+   * optional: an optional field falls back to today's behaviour, and today's
+   * behaviour -- inheriting the parent's entire environment -- is the defect.
+   * The branded type means `env: process.env` cannot type-check.
+   */
+  context: ChildContext;
   // Fixed application configuration, NEVER browser input. Tests launch a fake with Node.
   args?: readonly string[];
   timeoutMs?: number;
@@ -43,6 +51,13 @@ export class ReadonlyRpcClient {
   constructor(options: Options) {
     if (!isAbsolute(options.executable) || options.executable.includes('\0')) throw new RpcError('CONFIG_INVALID');
     if (options.onChild !== undefined && typeof options.onChild !== 'function') throw new RpcError('CONFIG_INVALID');
+    // Callers that predate this contract -- including pinned historical scripts
+    // that must not be edited -- fail here by name instead of with a TypeError
+    // from inside spawn. Failing closed is the point.
+    const context = options.context as ChildContext | undefined;
+    if (!context || typeof context.cwd !== 'string' || !context.env || typeof context.env !== 'object') {
+      throw new RpcError('CONFIG_INVALID');
+    }
     this.#timeoutMs = options.timeoutMs ?? 10_000;
     this.#graceMs = options.shutdownGraceMs ?? 2_000;
     this.#maxFrame = options.maxFrameBytes ?? 4 * 1024 * 1024;
@@ -52,6 +67,7 @@ export class ReadonlyRpcClient {
     this.#exit = new Promise(resolve => { this.#resolveExit = resolve; });
     this.#child = spawn(options.executable, [...(options.args ?? ['rpc'])], {
       shell: false, stdio: 'pipe', windowsHide: true,
+      env: options.context.env, cwd: options.context.cwd,
     });
     this.#child.stdout.on('data', (chunk: Buffer) => this.#consume(chunk));
     // Drain without buffering or logging diagnostics that may contain private data.

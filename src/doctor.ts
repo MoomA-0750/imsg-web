@@ -1,5 +1,10 @@
 import { isAbsolute } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { refuseTaintedLaunch } from './server/launch-guard.js';
+import { buildChildEnv, type ChildContext } from './server/child-env.js';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { ReadonlyRpcClient } from './server/rpc/readonly-client.js';
 import { RpcError, isObject } from './server/rpc/errors.js';
 import { ReadonlyAdapter } from './server/readonly-adapter.js';
@@ -7,8 +12,8 @@ import { capabilities } from './server/capabilities.js';
 import { cliStatus } from './server/cli-status.js';
 
 type Check = { state: 'passed' | 'failed' | 'skipped'; reasonCode: string; count?: number; elapsedMs?: number };
-export async function doctor(executable: string) {
-  const client = new ReadonlyRpcClient({ executable });
+export async function doctor(executable: string, context: ChildContext) {
+  const client = new ReadonlyRpcClient({ executable, context });
   const adapter = new ReadonlyAdapter(client);
   const checks: Record<string, Check> = {};
   const run = async <T>(name: string, job: () => Promise<T>): Promise<T | undefined> => {
@@ -27,7 +32,7 @@ export async function doctor(executable: string) {
   let overflowCount = 0;
   try {
     [status, cli] = await Promise.all([
-      run('rpcStatus', () => adapter.status()), run('cliStatus', () => cliStatus(executable)),
+      run('rpcStatus', () => adapter.status()), run('cliStatus', () => cliStatus(executable, context)),
     ]);
     const caps = capabilities(status?.raw, cli);
     if (caps.chats.state === 'available') {
@@ -82,7 +87,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exitCode = 1;
   } else {
     try {
-      const result = await doctor(executable);
+      // Called here rather than at module scope: this module is also imported
+      // by tests, and a self-executing guard would fire on import. The cost is
+      // that it runs after this file's imports have been evaluated -- acceptable
+      // for a manual diagnostic, not acceptable for the server, which is why
+      // main.ts imports the guard first instead.
+      refuseTaintedLaunch();
+      // mkdtemp creates 0700. doctor is an explicit manual diagnostic with no
+      // state directory of its own, so it owns a fresh directory per run.
+      const dir = await mkdtemp(join(tmpdir(), 'imsg-web-doctor-'));
+      const result = await doctor(executable, buildChildEnv({ tmpDir: dir, cwd: dir }));
       process.stdout.write(JSON.stringify(result) + '\n');
       process.exitCode = result.ready ? 0 : 1;
     } catch {

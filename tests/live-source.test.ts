@@ -3,6 +3,7 @@ import { mkdtemp, open, rename, writeFile, rm, unlink, type FileHandle } from 'n
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LiveSource, clip } from '../src/server/live-source.js';
+import { testContext } from './helpers/child-context.js';
 const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn(), forbiddenSpawn: vi.fn() }));
 vi.mock('../src/server/cli-status.js', () => ({ cliStatus: forbiddenCli }));
 vi.mock('node:child_process', () => ({ spawn: forbiddenSpawn }));
@@ -39,7 +40,7 @@ async function setup() {
       throw new Error('unexpected method');
     } };
   };
-  const source = new LiveSource({ executable: '/synthetic/imsg', factory });
+  const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory });
   cleanups.push(async () => { failClose = false; hold?.resolve(); await source.close().catch(() => {}); for (const h of handles) await h.close().catch(() => {}); });
   const replace = async () => { await writeFile(join(dir, 'replacement'), 'new'); await rename(join(dir, 'replacement'), path); };
   return { source, calls, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };

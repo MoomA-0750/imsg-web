@@ -1,3 +1,8 @@
+// FIRST import on purpose: ES modules evaluate static imports before this
+// module's body, so a guard called inside main() would run only after every
+// import below had already been evaluated.
+import { refuseTaintedLaunch } from './server/launch-guard.js';
+import { buildChildEnv, ensureChildTmpDir } from './server/child-env.js';
 import { isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
@@ -6,6 +11,8 @@ import { LiveSource } from './server/live-source.js';
 import { startRuntime } from './server/runtime.js';
 
 // stdout contains a secret only for explicitly requested setup/rotation. No request logging.
+refuseTaintedLaunch();
+
 async function main() {
   const input = process.argv.slice(2), directory = process.env.IMSG_WEB_STATE_DIR;
   const command = input[0] === 'auth' && input.length === 2 ? input[1] === 'revoke-all' ? 'revoke' : input[1] : input.length === 1 ? input[0] : undefined;
@@ -20,7 +27,9 @@ async function main() {
   const executable = process.env.IMSG_WEB_IMSG_PATH, origin = process.env.IMSG_WEB_ORIGIN;
   const rawPort = process.env.IMSG_WEB_PORT ?? '8787';
   if (!executable || !isAbsolute(executable) || executable.includes('\0') || !origin || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
-  const runtime = await startRuntime({ store, source: new LiveSource({ executable }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  const tmpDir = await ensureChildTmpDir(directory);
+  const context = buildChildEnv({ tmpDir, cwd: tmpDir });
+  const runtime = await startRuntime({ store, source: new LiveSource({ executable, context, expectedDatabasePath: context.databasePath }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;

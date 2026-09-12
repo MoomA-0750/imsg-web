@@ -114,7 +114,7 @@ async function main() {
   const release = join(base, 'releases/a342425'); await safe(release);
   const clientPath = join(release, 'dist/server/rpc/readonly-client.js'); await safe(clientPath);
   const { ReadonlyRpcClient } = await import(pathToFileURL(clientPath).href);
-  const { client: c, child } = await captureChild(() => new ReadonlyRpcClient({ executable }), executable);
+  const { client: c, child } = await captureChild(() => new ReadonlyRpcClient({ executable, context: buildChildEnv({ tmpDir: directory, cwd: directory }) }), executable);
   const pid = child.pid; let completed = false, childClosed = false; const samplers = [];
   child.once('close', () => { childClosed = true; });
   process.stdout.write(JSON.stringify({ event: 'owned-child', parentPid: process.pid, childPid: pid ?? null }) + '\n');

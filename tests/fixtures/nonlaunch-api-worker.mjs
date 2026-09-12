@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Auth, hashKey } from '../../dist/server/auth.js';
 import { createApp } from '../../dist/server/http.js';
+import { buildChildEnv } from '../../dist/server/child-env.js';
 import { LiveSource } from '../../dist/server/live-source.js';
 import { ReadonlyRpcClient } from '../../dist/server/rpc/readonly-client.js';
 import { createOwnedReaderGate } from '../../scripts/nonlaunch-owned-readers.mjs';
@@ -24,8 +25,10 @@ const summary = await runApiWorker({
     const key = 'A'.repeat(43), origin = 'https://imsg.synthetic.test';
     auth = new Auth(hashKey(key));
     let count = 0;
-    source = new LiveSource({ executable: process.execPath, factory: () => readers.factory(register => new ReadonlyRpcClient({
+    const context = buildChildEnv({ tmpDir: dir, cwd: dir, home: dir });
+    source = new LiveSource({ executable: process.execPath, expectedDatabasePath: path, context, factory: () => readers.factory(register => new ReadonlyRpcClient({
       executable: process.execPath,
+      context,
       args: [fileURLToPath(new URL('./nonlaunch-source-rpc.mjs', import.meta.url)), path, count++ === 0 || mode !== 'hold' ? 'normal' : 'hold-history'],
       onChild: child => {
         register(child);

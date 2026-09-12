@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Synthetic protocol shapes only. Never connects to Messages.
 import { appendFileSync } from 'node:fs';
-const mode = process.env.DOCTOR_TEST_MODE ?? 'normal';
+const mode = globalThis.__doctorMode ?? 'normal';
 const secret = 'PRIVATE_DOCTOR_SENTINEL';
 const rpc = {
   version: '0.15.1', protocol_version: 1,
@@ -20,7 +20,7 @@ if (process.argv[2] === 'status') {
     while (input.includes('\n')) {
       const end = input.indexOf('\n');
       const request = JSON.parse(input.slice(0, end)); input = input.slice(end + 1);
-      if (process.env.DOCTOR_TEST_MARKER) appendFileSync(process.env.DOCTOR_TEST_MARKER, request.method + '\n');
+      if (globalThis.__doctorMarker) appendFileSync(globalThis.__doctorMarker, request.method + '\n');
       let result;
       switch (request.method) {
         case 'status': result = rpc; break;
