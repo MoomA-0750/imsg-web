@@ -60,13 +60,20 @@ assumed `0.15.1`:
 - the stored contact-batch patch, which applies to `646ea7a`;
 - the recorded `Package.resolved` and candidate/release digests for M1.
 
-None of that has been shown to hold for `0.15.3`. The upgrade was not performed
-by this work and its scope is unknown. Whether the `0.15.1` Cellar directory is
-still retained alongside it was not checked — Pass 1 probed the wrapper, not the
-Cellar — and that is now a required Pass 2 item, because it determines whether
-the pinned baseline is still reproducible on that machine at all.
+The upgrade was not performed by this work. **Assessed at source level in
+`docs/imsg-0153-upgrade-assessment.md`**, and the outcome is better than this
+section first assumed: all nine audited files are byte-identical between the two
+versions, the changes are confined to the launching path, and the stored
+contact-batch patch applies cleanly to 0.15.3. The one initializer change that
+could have added a write to the no-launch path was checked and is inert.
 
-Nothing was changed, downgraded or reinstalled in response.
+The recommendation is to re-pin the audit to 0.15.3. Reverting is unnecessary,
+and separately unavailable: pass 1b found the M1 Cellar retains only `0.15.3`,
+so `0.15.1` is no longer on that machine.
+
+Nothing was changed, downgraded or reinstalled in response. Source analysis is
+not provenance, and behavioural equivalence between the two versions has not
+been demonstrated — that would require executing imsg.
 
 ## Finding 2 — an imsg process is running on the Intel host
 
@@ -107,13 +114,49 @@ deleted, and nothing was removed, remounted or chmod-ed in response. The Intel
 host, by contrast, still has its build tree, containing `baseline`, `candidate`
 and a third `candidate-r3` tree that the records do not mention.
 
-## Finding 4 — Serve state is unestablished on the Intel host
+## Finding 4 — withdrawn: both hosts report no serve configuration
 
-The M1 host reports no serve configuration, matching the records. The Intel host
-**has no Tailscale CLI on the probed paths**, so its serve state could not be
-queried and is recorded as *not established* — not as "empty". The records'
-claim that both hosts had an empty serve configuration is therefore only
-half-confirmed.
+**Pass 1 was wrong about this, and the error was mine.** It concluded "no
+Tailscale CLI" on the Intel host from two probes, one of which (`command -v`)
+depends on the very `PATH` this plan deliberately narrows, and the other of
+which checked only the application bundle. A wider probe in pass 1b found the
+CLI immediately, under the Homebrew prefix.
+
+Queried with the resolved path, **both hosts report no serve configuration**,
+matching the records. Serve state is established and empty on both.
+
+The lesson is recorded rather than quietly fixed: a negative result from a probe
+whose failure mode is already known is not evidence of absence. The same
+reasoning that made `command -v imsg` untrustworthy applied to `tailscale` one
+section earlier, and pass 1 did not carry it across.
+
+## Pass 1b — follow-up answers
+
+Targeted read-only follow-up, same contract and same generator.
+
+- **Intel Tailscale CLI**: present under the Homebrew prefix. Finding 4 withdrawn.
+- **Retained imsg versions**: the Intel host's Cellar holds only `0.14.2`; the M1
+  host's holds only `0.15.3`. **`0.15.1` is gone** — Homebrew removed the
+  superseded version on upgrade — so a local downgrade on the M1 is not
+  available. See `docs/imsg-0153-upgrade-assessment.md`.
+- **Stock libexec images**: both are universal `x86_64` + `arm64` Mach-O images.
+  Their digests are recorded with `no prior record`; no stock image digest was
+  ever published here, only this project's own builds.
+- **The three Intel agents** are now identified. They belong to a separate
+  message-bridge system of the owner's: one injects the bridge into Messages at
+  login by running the stock CLI's launch path, one is a nightly scheduled job,
+  and one is a keep-alive watcher whose child is the long-lived imsg process
+  seen in Finding 2. Their plists were read so that stopping them can be offered
+  with an exact, reversible restore; the code they run was not read.
+
+Two consequences worth stating plainly:
+
+- Messages.app on the Intel host **already has a bridge helper injected**, by
+  that other system, at every login. This project's no-launch reasoning is about
+  what *this* code does; it never implied the host had no injected bridge.
+- Because the watcher is configured to be kept alive, stopping it must be done
+  by removing it from its domain, not by signalling the process, and must be
+  followed by confirming the child imsg exited.
 
 ## Digest comparison
 

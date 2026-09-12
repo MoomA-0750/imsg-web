@@ -54,13 +54,17 @@ const role = args.role;
 const base = args.base;
 const out = args.out;
 
-if (pass !== '1') fail('only pass 1 has a template; pass 2 is built from pass 1 output');
+const TEMPLATES = new Map([
+  ['1', 'phase-a-pass1.sh.template'],
+  ['1b', 'phase-a-pass1b.sh.template'],
+]);
+if (!TEMPLATES.has(pass)) fail('--pass must be 1 or 1b; pass 2 is built from pass 1 output');
 if (role !== 'intel' && role !== 'm1') fail('--role must be intel or m1');
 if (!base) fail('--base is required');
 if (!out) fail('--out is required');
 checkBase(base);
 
-const templatePath = resolve(dirname(new URL(import.meta.url).pathname), 'phase-a-pass1.sh.template');
+const templatePath = resolve(dirname(new URL(import.meta.url).pathname), TEMPLATES.get(pass));
 const template = readFileSync(templatePath, 'utf8');
 
 const script = template.replaceAll('@@BASE@@', base).replaceAll('@@ROLE@@', role);
@@ -76,10 +80,17 @@ if (script.includes('@@')) fail('an unsubstituted marker remains in the generate
 // comments ("no sudo", "no 2>/dev/null anywhere"), and a naive substring scan
 // matches that prose instead of a real command. Word boundaries matter too --
 // "confirm " contains "rm ".
+//
+// Line continuations are joined first. A line-based scan treats each physical
+// line as its own command, which both invents false positives (a continuation
+// line beginning with a path that ends in `imsg` looks like an imsg
+// invocation) and misses real ones: `launchctl \` + newline + `bootout` does
+// not match `launchctl\s+bootout`, because `\s` does not span the backslash.
 const codeOnly = script
   .split('\n')
   .filter((line) => !/^\s*#/.test(line))
-  .join('\n');
+  .join('\n')
+  .replace(/\\\n\s*/g, ' ');
 
 // Patterns that are unambiguous wherever they appear in code.
 //
@@ -123,7 +134,15 @@ const FORBIDDEN_COMMANDS = new Set([
 
 // `find` can execute and delete. `-exec` is needed for the symlink listing, so
 // it is allowed only with a read-only command and only in the `+` / `\;` forms.
-const FIND_EXEC_ALLOWED = new Set(['ls', 'stat', 'file', 'shasum']);
+const FIND_EXEC_ALLOWED = new Set(['ls', 'stat', 'file', 'shasum', 'cat']);
+
+// Roots a bounded search may start from. `-maxdepth 4` on the wrong tree is
+// still a scan of the wrong tree, so the root is checked as well as the depth.
+const ALLOWED_FIND_ROOTS = [
+  '"${BASE}',
+  '/private/tmp',
+  '"${HOME}/Library/LaunchAgents"',
+];
 
 const SHELL_KEYWORDS = new Set([
   'if', 'then', 'else', 'elif', 'fi', 'while', 'until', 'do', 'done',
@@ -200,7 +219,7 @@ function auditCode(code, origin) {
       }
       // `-maxdepth 4` on the wrong root is still a scan of the wrong tree.
       const start = text.split(/\s+/)[1] ?? '';
-      if (!start.startsWith('"${BASE}') && !start.startsWith('/private/tmp')) {
+      if (!ALLOWED_FIND_ROOTS.some((root) => start.startsWith(root))) {
         fail(`generated script searches an unapproved root in ${origin}: ${start}`);
       }
       const execAt = text.indexOf('-exec ');

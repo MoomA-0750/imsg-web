@@ -35,12 +35,17 @@ was not rerun in this session.
 Phase A pass 1 (read-only discovery on both Macs) ran on 2026-09-12 with owner
 authorization and **stopped on its own abort conditions**. imsg was not invoked
 and no dedicated Node was executed; nothing was created, moved, deleted or
-signalled. Two findings block progress: the M1 host's stock imsg is now
-**0.15.3**, not the audited 0.15.1, upgraded the day before the inventory; and
-the Intel host is running a foreign, long-lived imsg process owned by the
-separate AI-reply watcher system, whose three user agents are loaded. Serve
-state on Intel is unestablished (no Tailscale CLI) and the M1 build tree was not
-found. See `docs/step2-phase-a-result.md`; owner decisions are listed there.
+signalled. The M1 host's stock imsg is now **0.15.3**, not the
+audited 0.15.1. Source assessment in `docs/imsg-0153-upgrade-assessment.md`
+finds all nine audited files byte-identical, the changes confined to the
+launching path, and the stored patch still applying; re-pin to 0.15.3 rather
+than revert, which is also no longer locally possible. The Intel host runs a
+foreign long-lived imsg process belonging to a separate message-bridge system of
+the owner's, whose three agents are loaded and which injects the bridge into
+Messages at each login; the owner has authorized stopping it for a bounded
+window at measurement time. Serve is empty on both hosts (pass 1's
+"unestablished" on Intel was a probe error, since withdrawn). The M1 build tree
+was not found. See `docs/step2-phase-a-result.md`.
 
 Step2 remaining: read-only inventory of both Macs after owner authorization;
 source/build-to-binary, architecture/signature/linked-library/helper verification;
@@ -77,7 +82,9 @@ the next task are superseded by this file and the handoff.
 - Full handoff: `docs/CLAUDE-CODE-HANDOFF.md`
 - Step1: `docs/nonlaunch-rereview-2026-09-12.md`
 - Step2 checkpoint: `docs/nonlaunch-source-runtime-audit.md`
-- Step2 Phase A plan (proposed, not executed): `docs/step2-phase-a-inventory-plan.md`
+- Step2 Phase A plan: `docs/step2-phase-a-inventory-plan.md`
+- Step2 Phase A result: `docs/step2-phase-a-result.md`
+- imsg 0.15.3 assessment: `docs/imsg-0153-upgrade-assessment.md`
 - Workload/process boundaries: `docs/nonlaunch-api-workload.md`,
   `docs/nonlaunch-worker-watchdog.md`, `docs/nonlaunch-residue.md`
 - Artifact verifier: `docs/nonlaunch-bundle.md`

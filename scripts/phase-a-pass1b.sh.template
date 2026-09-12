@@ -1,0 +1,108 @@
+#!/bin/sh
+# Step2 Phase A, Pass 1b (targeted follow-up) — read-only.
+#
+# Answers the three questions pass 1 left open, at the owner's request:
+#   B1  Intel reported no Tailscale CLI on the two probed paths. Probe wider.
+#   B2  Is a pre-upgrade imsg Cellar version still retained on either host?
+#       This decides whether the audited 0.15.1 is still reachable on the M1.
+#   B3  What exactly are the three loaded agents on the Intel host, and how
+#       would stopping them be reversed?
+#
+# Same contract as pass 1: no imsg, no node, no sudo, no writes, no signals, no
+# launchctl or serve mutation, no discarded stderr, every path bounded.
+#
+# B3 reads plist files. That is a read, not an inspection of the watcher's
+# behaviour: the script text the agents run is NOT read here, and none of this
+# output goes into the repository.
+
+set -u
+
+PATH=/usr/bin:/bin:/usr/sbin:/sbin
+export PATH
+
+ROLE='@@ROLE@@'
+
+echo "== phase-a pass1b begin"
+echo "role: ${ROLE}"
+
+echo "== B1 tailscale candidates"
+for candidate in /usr/local/bin/tailscale /opt/homebrew/bin/tailscale \
+                 /usr/bin/tailscale /usr/sbin/tailscale \
+                 /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+  echo "-- ${candidate}"
+  if [ -e "${candidate}" ]; then
+    ls -l "${candidate}"
+    file -bL "${candidate}"
+  else
+    echo "absent"
+  fi
+done
+
+echo "== B1 user applications"
+if [ -d "${HOME}/Applications/Tailscale.app" ]; then
+  ls -l "${HOME}/Applications/Tailscale.app/Contents/MacOS"
+else
+  echo "no Tailscale.app under the user Applications directory"
+fi
+
+echo "== B1 applications inventory"
+ls -1 /Applications
+echo "ls /Applications exit: $?"
+
+echo "== B1 serve status"
+# Pass 1 concluded "no Tailscale CLI" on one host from only two probes, one of
+# which depended on PATH. That was wrong. Resolve from the wider candidate list
+# and query again. `serve status` is a query and changes no configuration.
+TS=''
+for candidate in /usr/local/bin/tailscale /opt/homebrew/bin/tailscale \
+                 /Applications/Tailscale.app/Contents/MacOS/Tailscale; do
+  if [ -x "${candidate}" ] && [ -z "${TS}" ]; then
+    TS="${candidate}"
+  fi
+done
+if [ -n "${TS}" ]; then
+  echo "using: ${TS}"
+  "${TS}" serve status
+  echo "serve status exit: $?"
+else
+  echo "no tailscale cli among the probed paths"
+fi
+
+echo "== B2 imsg cellar versions"
+for cellar in /usr/local/Cellar/imsg /opt/homebrew/Cellar/imsg; do
+  echo "-- ${cellar}"
+  if [ -d "${cellar}" ]; then
+    ls -la "${cellar}"
+  else
+    echo "absent"
+  fi
+done
+
+echo "== B2 retained libexec images"
+for image in /usr/local/Cellar/imsg/0.14.2/libexec/imsg \
+             /opt/homebrew/Cellar/imsg/0.15.1/libexec/imsg \
+             /opt/homebrew/Cellar/imsg/0.15.3/libexec/imsg; do
+  echo "-- ${image}"
+  if [ -e "${image}" ]; then
+    stat -L -f "%Sp %Su:%Sg %z %Sm %N" "${image}"
+    file -bL "${image}"
+    shasum -a 256 "${image}"
+  else
+    echo "absent"
+  fi
+done
+
+if [ "${ROLE}" = 'intel' ]; then
+  echo "== B3 agent plists"
+  # Bounded to one directory, one depth, and only entries naming this family.
+  find "${HOME}/Library/LaunchAgents" -maxdepth 1 -type f -name '*imsg*' -print
+  echo "find plists exit: $?"
+  find "${HOME}/Library/LaunchAgents" -maxdepth 1 -type f -name '*imsg*' -exec shasum -a 256 {} +
+  echo "shasum plists exit: $?"
+  # Read so that stopping these can be proposed with an exact, reversible
+  # restore. The programs they reference are not opened or executed.
+  find "${HOME}/Library/LaunchAgents" -maxdepth 1 -type f -name '*imsg*' -exec cat {} +
+  echo "cat plists exit: $?"
+fi
+
+echo "== phase-a pass1b end"

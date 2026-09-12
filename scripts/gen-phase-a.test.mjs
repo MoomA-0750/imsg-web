@@ -66,6 +66,8 @@ const REFUSALS = [
   ['sudo', 'sudo ls /var/db', 'sudo'],
   ['eval', 'eval "$CMD"', 'eval'],
   ['xargs', 'echo x | xargs rm', 'xargs'],
+  // A line-based scan misses this: `\s` does not span a backslash-newline.
+  ['a mutation hidden behind a line continuation', 'launchctl \\\n  bootout gui/501', 'launchctl verb'],
 ];
 
 for (const [name, line, expected] of REFUSALS) {
