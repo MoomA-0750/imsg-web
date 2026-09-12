@@ -58,11 +58,21 @@ plus sqlcipher.swift, the latter absent from upstream's own complete lock at
 M1 Swift 6.4 on an Xcode 27 beta) and both hosts have room for fresh build
 trees. See `docs/step2-phase-b-result.md`.
 
-Step2 remaining: read-only inventory of both Macs after owner authorization;
-source/build-to-binary, architecture/signature/linked-library/helper verification;
-explicit trusted cwd/environment and import closure; fresh current application
-bundles for both architectures with independently pinned complete-tree manifests;
-focused review of the exact launcher. Do not invoke imsg until these pass.
+Step2 Phases A through E are complete as of 2026-09-13. Read-only inventory of
+both Macs (A), provenance classification (B), the trusted environment contract
+implemented in code with tests that fail when it leaks (C), rebuild under
+observation of baseline and candidate at v0.15.4 on both hosts (D), and native
+/helper/IPC closure (E). **imsg has still never been executed by this project.**
+
+The four class-R products are the only artifacts that may be measured:
+Intel `f825229b…`/`52a23596…`, M1 `ed0ad126…`/`3207be3b…`. None may be run yet.
+
+What step2 leaves for later, deliberately: the first execution of a built
+product is its own phase with its own authorization, created because Phase C and
+Phase D had referred to each other in a way that could have let a first run
+happen with no approval point passed. A self-built binary does not inherit the
+stock binary's permission grants, so that phase may require the owner to grant
+access at the desktop by hand.
 
 ## Recent substantive commits
 
@@ -97,6 +107,9 @@ the next task are superseded by this file and the handoff.
 - Step2 Phase A result: `docs/step2-phase-a-result.md`
 - imsg 0.15.3/0.15.4 assessment: `docs/imsg-0153-upgrade-assessment.md`
 - Step2 Phase B plan and result: `docs/step2-phase-b-provenance-plan.md`, `docs/step2-phase-b-result.md`
+- Step2 Phase C launcher/environment: `docs/step2-phase-c-launcher-plan.md`
+- Step2 Phase D build plan and result: `docs/step2-phase-d-build-plan.md`, `docs/step2-phase-d-result.md`
+- Step2 Phase E closure: `docs/step2-phase-e-closure.md`
 - Workload/process boundaries: `docs/nonlaunch-api-workload.md`,
   `docs/nonlaunch-worker-watchdog.md`, `docs/nonlaunch-residue.md`
 - Artifact verifier: `docs/nonlaunch-bundle.md`
