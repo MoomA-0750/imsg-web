@@ -32,6 +32,16 @@ c99e6d0/646ea7a and both stored contact-batch patches still apply. The predecess
 step2 completion claims are confirmed rather than assumed. `npm run test:browser`
 was not rerun in this session.
 
+Phase A pass 1 (read-only discovery on both Macs) ran on 2026-09-12 with owner
+authorization and **stopped on its own abort conditions**. imsg was not invoked
+and no dedicated Node was executed; nothing was created, moved, deleted or
+signalled. Two findings block progress: the M1 host's stock imsg is now
+**0.15.3**, not the audited 0.15.1, upgraded the day before the inventory; and
+the Intel host is running a foreign, long-lived imsg process owned by the
+separate AI-reply watcher system, whose three user agents are loaded. Serve
+state on Intel is unestablished (no Tailscale CLI) and the M1 build tree was not
+found. See `docs/step2-phase-a-result.md`; owner decisions are listed there.
+
 Step2 remaining: read-only inventory of both Macs after owner authorization;
 source/build-to-binary, architecture/signature/linked-library/helper verification;
 explicit trusted cwd/environment and import closure; fresh current application
