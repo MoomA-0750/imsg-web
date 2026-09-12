@@ -6,7 +6,10 @@
 # Phases A, B and C8, and relaxing it would weaken every probe it has made.
 #
 # Contract, enforced by the Phase D generator:
-#   - every write names a path under the build root
+#   - every write from THIS script names a path under the build root, but
+#     "nothing outside the root is written" would be false: SwiftPM recreates
+#     ~/.swiftpm/security on every run, and on one host that also relaxed the
+#     link's mode. Observed by the sweep at the end rather than asserted here.
 #   - no rm, no sudo, no launchctl, no tailscale, no brew, no kill
 #   - no network TOOLS (curl/scp/ssh/nc). SwiftPM's dependency fetch is the one
 #     approved network step: the revisions are pinned and git verifies every
@@ -148,11 +151,23 @@ build_arm() {
   echo "-- ${arm} lock after resolve"
   shasum -a 256 "${dir}/Package.resolved"
 
-  echo "-- ${arm} pinned revisions still present"
+  echo "-- ${arm} pin set"
   # The lock digest can move for reasons other than a changed pin (originHash
-  # is recomputed by some toolchains). What must not move is the set of
-  # revisions, so that is what decides whether the arm continues.
+  # is recomputed by some toolchains). What must not move is the set of pins.
+  #
+  # Both directions. The first version checked only that the four expected
+  # revisions were still PRESENT, and it passed on a host whose older SwiftPM
+  # ADDED a fifth (sqlcipher.swift, fetched as a prebuilt xcframework and not
+  # linked into the product). Checking only for absence is the same shape of
+  # error as a check that cannot fail.
+  grep '"identity"' "${dir}/Package.resolved"
+  PIN_COUNT=$(grep -c '"identity"' "${dir}/Package.resolved")
+  echo "pin count: ${PIN_COUNT} (expected 4)"
   PINS_OK=1
+  if [ "${PIN_COUNT}" -ne 4 ]; then
+    echo "pin count differs - the resolved graph is not the committed one"
+    PINS_OK=0
+  fi
   for rev in bd219c4ee9032fee3e009856f81fcc6ec09a85f4 8ad83035460a3d1029a2c5a0cca4f980297a9ca2 15c27dbf811e96b9fe48525389ffe042adb9f8cb 964c300fb0736699ce945c9edb56ecd62eba27a3; do
     if grep -q "${rev}" "${dir}/Package.resolved"; then
       echo "pin present: ${rev}"
@@ -162,7 +177,7 @@ build_arm() {
     fi
   done
   if [ "${PINS_OK}" -ne 1 ]; then
-    echo "resolution changed a pin - stopping this arm"
+    echo "resolution changed the pin set - stopping this arm"
     ARM_STATUS=pins-changed
     return 0
   fi

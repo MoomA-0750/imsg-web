@@ -143,6 +143,13 @@ releases are ≈21 MB each on both hosts.
 | Intel `candidate-r3` tree and its products | **H** | Provenance of published release B and the debug candidate |
 | Intel `candidate` tree | **X** | Nothing. Superseded, no published product, not to be reused or renamed |
 | M1 published digests | **H, no surviving artifact** | Cannot even be re-matched |
+| Intel v0.15.4 baseline `f825229b…` / candidate `52a23596…` | **R** | Measurement, after the remaining gates |
+| M1 v0.15.4 baseline `ed0ad126…` / candidate `3207be3b…` | **R** | Measurement, after the remaining gates |
+
+The four class-R entries are the artifacts Phase D built under observation, with
+their adjacent resource bundles. They are the only artifacts this project may
+measure, and none of them may be **executed** yet: that is a separate phase with
+its own authorization. See `docs/step2-phase-d-result.md`.
 
 Nothing was deleted, and the deletion-candidate list remains a proposal.
 

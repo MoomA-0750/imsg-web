@@ -20,6 +20,10 @@ export function validateConfig(c) {
   if (!c || Object.keys(c).sort().join(',') !== 'base,imsg,label,node,origin,output,port,release,stateName') fail();
   absolute(c.base); absolute(c.output); absolute(c.imsg);
   within(join(c.base, 'runtime'), c.node); within(join(c.base, 'releases'), c.release);
+  // Production runs a build of ours, so the executable lives under the base
+  // this project owns rather than in a package-manager prefix that is
+  // group-writable by design and changes under `brew upgrade`.
+  within(c.base, c.imsg);
   if (!/^local\.imsg-web\.[a-z][a-z0-9-]{0,40}$/.test(c.label) || !/^[a-z][a-z0-9-]{0,31}$/.test(c.stateName)) fail();
   if (!Number.isInteger(c.port) || c.port < 1024 || c.port > 65535) fail();
   if (typeof c.origin !== 'string') fail();
@@ -78,7 +82,10 @@ export async function writeLaunchAgent(c, uid = process.getuid?.()) {
   const imsg = await realpath(c.imsg);
   // Homebrew parents can be admin(gid80)-writable on macOS. The approved
   // deployment trusts local administrators, not arbitrary world-writable dirs.
-  await safeTree(imsg, uid, true); await safeTree(dirname(c.imsg), uid, true);
+  // allowAdminGroup was a relaxation for Homebrew's gid-80-writable prefix. A
+  // project-owned path needs no such exception, and leaving it on would accept
+  // a group-writable directory in the resolved path.
+  await safeTree(imsg, uid); await safeTree(dirname(c.imsg), uid);
   await access(imsg, constants.X_OK); await access(c.node, constants.X_OK);
   for (const suffix of ['out', 'err']) {
     try {

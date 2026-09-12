@@ -4,7 +4,7 @@ import { join } from 'node:path';
 // Pure generator tests do not install an Agent or touch real Mac files.
 // @ts-expect-error build-independent mjs entrypoint
 import { renderLaunchAgent, validateConfig, writeLaunchAgent } from '../scripts/generate-launch-agent.mjs';
-const config = { base: '/Users/test/Library/imsg-web', node: '/Users/test/Library/imsg-web/runtime/node/bin/node', release: '/Users/test/Library/imsg-web/releases/abc', imsg: '/opt/homebrew/bin/imsg', origin: 'https://host.example.ts.net', port: 8787, label: 'local.imsg-web.readonly', stateName: 'state', output: '/Users/test/Library/LaunchAgents/local.imsg-web.readonly.plist' };
+const config = { base: '/Users/test/Library/imsg-web', node: '/Users/test/Library/imsg-web/runtime/node/bin/node', release: '/Users/test/Library/imsg-web/releases/abc', imsg: '/Users/test/Library/imsg-web/imsg/imsg', origin: 'https://host.example.ts.net', port: 8787, label: 'local.imsg-web.readonly', stateName: 'state', output: '/Users/test/Library/LaunchAgents/local.imsg-web.readonly.plist' };
 describe('C01 LaunchAgent generator', () => {
   it('renders fixed direct argv, private environment and bounded non-restarting lifecycle', () => {
     const xml = renderLaunchAgent(config);
@@ -16,9 +16,9 @@ describe('C01 LaunchAgent generator', () => {
     expect(xml).not.toMatch(/bash|zsh|Password|TOKEN|KEY/);
     expect(xml.match(/<key>IMSG_WEB_/g)).toHaveLength(4);
   });
-  it.each([{ port: 0 }, { port: 65536 }, { port: 8787.1 }, { origin: 'http://host' }, { origin: 'https://host/' }, { origin: 'https://a:b@host' }, { origin: 'https://host?q=1' }, { label: '../escape' }, { stateName: '..' }, { node: '/usr/local/bin/node' }, { release: '/outside' }, { release: config.release + '/../abc' }, { imsg: 'imsg' }, { output: 'relative' }, { base: '/Users/' + 'a'.repeat(100) }, { secret: 'bad' }])('rejects invalid configuration %j', change => { expect(() => validateConfig({ ...config, ...change })).toThrow(); });
+  it.each([{ port: 0 }, { port: 65536 }, { port: 8787.1 }, { origin: 'http://host' }, { origin: 'https://host/' }, { origin: 'https://a:b@host' }, { origin: 'https://host?q=1' }, { label: '../escape' }, { stateName: '..' }, { node: '/usr/local/bin/node' }, { release: '/outside' }, { release: config.release + '/../abc' }, { imsg: 'imsg' }, { imsg: '/opt/homebrew/bin/imsg' }, { imsg: '/usr/local/bin/imsg' }, { output: 'relative' }, { base: '/Users/' + 'a'.repeat(100) }, { secret: 'bad' }])('rejects invalid configuration %j', change => { expect(() => validateConfig({ ...config, ...change })).toThrow(); });
   it('escapes XML without shell interpolation', () => {
-    expect(renderLaunchAgent({ ...config, imsg: '/Applications/A&B<"\'>/imsg' })).toContain('A&amp;B&lt;&quot;&apos;&gt;');
+    expect(renderLaunchAgent({ ...config, imsg: '/Users/test/Library/imsg-web/A&B<"\'>/imsg' })).toContain('A&amp;B&lt;&quot;&apos;&gt;');
   });
 });
 const temporary: string[] = [];

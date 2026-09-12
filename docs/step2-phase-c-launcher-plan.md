@@ -343,9 +343,14 @@ fails for the wrong reason is worse, because it looks like evidence.
 
 ## Remaining Phase C work
 
-- `safeTree(imsg, uid, true)` must become `false`, and `validateConfig` must
-  require the executable to sit under the base. Deferred until Phase D produces
-  the artifact, since the path being validated does not exist yet.
+- ~~`safeTree(imsg, uid, true)` must become `false`, and `validateConfig` must
+  require the executable to sit under the base.~~ **Done.** `allowAdminGroup`
+  was a relaxation for Homebrew's gid-80-writable prefix; a project-owned path
+  needs no such exception, and leaving it on would have accepted a
+  group-writable directory in the resolved path. `within(c.base, c.imsg)` now
+  joins the existing constraints on `node` and `release`. Two launch-agent tests
+  failed on the change, correctly — they configured a Homebrew path — and a
+  Homebrew path is now an explicit rejection case.
 - Process-group and `ExitTimeOut` interaction with the Agent's shutdown
   sequence, and `imsg rpc`'s behaviour on stdin EOF versus SIGTERM, require
   **executing** a built binary.
