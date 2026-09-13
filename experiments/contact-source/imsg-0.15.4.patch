@@ -1,0 +1,91 @@
+diff --git a/Sources/IMsgCore/ContactResolver.swift b/Sources/IMsgCore/ContactResolver.swift
+index 449b106..045fdc0 100644
+--- a/Sources/IMsgCore/ContactResolver.swift
++++ b/Sources/IMsgCore/ContactResolver.swift
+@@ -104,23 +104,35 @@ public final class ContactResolver: ContactResolving, @unchecked Sendable {
+ 
+   public static func create(
+     region: String = "US",
+-    accessPolicy: ContactsAccessPolicy = .requestIfNeeded
++    accessPolicy: ContactsAccessPolicy = .requestIfNeeded,
++    forceAddressBook: Bool = false
+   ) async -> any ContactResolving {
+     #if os(macOS)
+       let store = CNContactStore()
+       let environment = ProcessInfo.processInfo.environment
+       let isSSH = environment["SSH_CONNECTION"] != nil || environment["SSH_CLIENT"] != nil
++      // The AddressBook reader needs file access, not a Contacts.framework
++      // grant. Selecting it was previously possible only by inference from
++      // SSH_CONNECTION, so a caller that knows it has file access but no grant
++      // -- a LaunchAgent whose runtime holds Full Disk Access -- had no way to
++      // say so. `forceAddressBook` says it directly instead of arranging for an
++      // environment variable to be read a particular way.
++      let useAddressBook = forceAddressBook || isSSH
+       let initialStatus = CNContactStore.authorizationStatus(for: .contacts)
+-      if initialStatus == .notDetermined, accessPolicy == .requestIfNeeded, !isSSH {
++      // Strictly no more prompting than before: useAddressBook is a superset of
++      // isSSH, so every case that did not prompt still does not.
++      if initialStatus == .notDetermined, accessPolicy == .requestIfNeeded, !useAddressBook {
+         _ = await requestAccess(store: store)
+       }
+       let nativeSource = contactSource(store: store)
+       let source =
+-        isSSH ? nativeSource.allowingAddressBook(at: AddressBookContacts.directory) : nativeSource
++        useAddressBook
++        ? nativeSource.allowingAddressBook(at: AddressBookContacts.directory) : nativeSource
+       return ContactResolver(region: region, source: source)
+     #else
+       _ = region
+       _ = accessPolicy
++      _ = forceAddressBook
+       return NoOpContactResolver(contactsUnavailable: true)
+     #endif
+   }
+diff --git a/Sources/imsg/Commands/RpcCommand.swift b/Sources/imsg/Commands/RpcCommand.swift
+index 0f66403..559e4e0 100644
+--- a/Sources/imsg/Commands/RpcCommand.swift
++++ b/Sources/imsg/Commands/RpcCommand.swift
+@@ -23,11 +23,22 @@ enum RpcCommand {
+     abstract: "Run JSON-RPC over stdin/stdout",
+     discussion: nil,
+     signature: CommandSignatures.withRuntimeFlags(
+-      CommandSignature(options: CommandSignatures.baseOptions())
++      CommandSignature(
++        options: CommandSignatures.baseOptions(),
++        flags: [
++          .make(
++            label: "contactsFromAddressBook",
++            names: [.long("contacts-from-address-book")],
++            help:
++              "read contacts from the local AddressBook store instead of Contacts.framework"
++          )
++        ]
++      )
+     ),
+     usageExamples: [
+       "imsg rpc",
+       "imsg rpc --db ~/Library/Messages/chat.db",
++      "imsg rpc --contacts-from-address-book",
+     ]
+   ) { values, runtime in
+     try await run(values: values, runtime: runtime)
+@@ -36,12 +47,16 @@ enum RpcCommand {
+   static func run(
+     values: ParsedValues,
+     runtime: RuntimeOptions,
+-    contactResolverFactory: @escaping () async -> any ContactResolving = {
+-      await ContactResolver.create(accessPolicy: startupContactsAccessPolicy)
++    contactResolverFactory: @escaping (Bool) async -> any ContactResolving = {
++      forceAddressBook in
++      await ContactResolver.create(
++        accessPolicy: startupContactsAccessPolicy,
++        forceAddressBook: forceAddressBook
++      )
+     }
+   ) async throws {
+     let dbPath = values.option("db") ?? MessageStore.defaultPath
+-    let contacts = await contactResolverFactory()
++    let contacts = await contactResolverFactory(values.flag("contactsFromAddressBook"))
+     let server = RPCServer(
+       databasePath: dbPath,
+       verbose: runtime.verbose,

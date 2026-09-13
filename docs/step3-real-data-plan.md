@@ -490,7 +490,33 @@ completed. The plan does not proceed to any rung before that decision.
 
 # Owner decisions, 2026-09-13
 
-## B1 → (a), one deliberate interactive grant
+## B1 → **superseded: the explicit-source patch, not the interactive grant**
+
+The owner first chose (a) and then, after the comparison below was laid out,
+chose the patch route instead. **The patch supersedes (a).** No Contacts grant
+will be requested, and no rung runs with TTY stdin to provoke a prompt.
+
+The patch is `experiments/contact-source/imsg-0.15.4.patch`: a
+`--contacts-from-address-book` flag on `imsg rpc`, applying cleanly to both the
+pristine tree and the contact-batch candidate tree. It has never been compiled.
+
+Consequences of the change of route:
+
+- Phase F's non-TTY rule stays a rule. Nothing needs an exception to it.
+- No grant exists to be destroyed by a re-pin, which removes the interaction
+  between the version policy's three-month trigger and the Contacts prompt.
+- The class-R product set must be rebuilt with the patch, on both hosts, before
+  any parity or C06 work. The four digests recorded in `STATUS.md` describe
+  products that will be superseded.
+- **The open question moves.** It is no longer "will the owner be prompted" but
+  "is the AddressBook store readable by our binary in the context the
+  measurement runs in". The patch selects the branch; it does not grant the file
+  access the branch needs.
+
+The record of (a) is kept below because the reasoning that led away from it is
+the useful part.
+
+## B1 → (a), one deliberate interactive grant *(superseded, see above)*
 
 One run with TTY stdin so `requestAccess` fires, and the prompt is accepted at
 the desktop. Consequences that follow from the choice rather than from the
