@@ -57,8 +57,20 @@ const args = parseArgs(process.argv.slice(2));
 const { role, product, home, tmp, cwd, fixture, out } = args;
 const pass = args.pass;
 
-if (pass !== 'decoy') fail('--pass must be decoy (the only rung implemented)');
-if (role !== 'm1') fail('--role must be m1: this rung exists to decide whether Intel can be run at all');
+if (!['decoy', 'contacts'].includes(pass)) fail('--pass must be decoy or contacts');
+if (role !== 'm1') fail('--role must be m1: Intel execution is not decided');
+
+// The `contacts` rung runs twice, once per arm of its own comparison. Without
+// the control arm a `false` cannot be told apart from a flag that does nothing.
+const contactsSource = args['contacts-source'];
+if (pass === 'contacts') {
+  if (!['auto', 'addressbook'].includes(contactsSource ?? '')) {
+    fail('--contacts-source must be auto (control) or addressbook');
+  }
+} else if (contactsSource !== undefined) {
+  fail('--contacts-source is meaningless outside the contacts pass');
+}
+const CONTACTS_FLAG = contactsSource === 'addressbook' ? ' --contacts-from-address-book' : '';
 for (const [v, l] of [[product, '--product'], [home, '--home'], [tmp, '--tmp'],
   [cwd, '--cwd'], [fixture, '--fixture'], [out, '--out']]) checkPath(v, l);
 
@@ -84,6 +96,8 @@ const script = readFileSync(templatePath, 'utf8')
   .replaceAll('@@RUNTMP@@', tmp)
   .replaceAll('@@RUNCWD@@', cwd)
   .replaceAll('@@FIXTURE@@', fixture)
+  .replaceAll('@@CONTACTS_FLAG@@', CONTACTS_FLAG)
+  .replaceAll('@@SOURCE_LABEL@@', contactsSource ?? '')
   .replaceAll('@@ROLE@@', role);
 
 if (script.includes('@@')) fail('an unsubstituted marker remains');
@@ -118,7 +132,8 @@ const WRITE_COMMANDS = new Set(['mkdir', 'touch']);
 // it is listed explicitly and the template's assignment of it is checked below.
 const WRITE_ROOTS = ['"${RUNHOME}', '"${DECOY}', '"${RUNTMP}'];
 
-if (!/^DECOY="\$\{RUNHOME\}\/Library\/Containers\/com\.apple\.MobileSMS\/Data"$/m.test(codeOnly)) {
+if (pass === 'decoy'
+  && !/^DECOY="\$\{RUNHOME\}\/Library\/Containers\/com\.apple\.MobileSMS\/Data"$/m.test(codeOnly)) {
   fail('DECOY must be assigned exactly the run-root container path');
 }
 
@@ -126,7 +141,9 @@ const HEREDOC = /<<'REQUEST'\n[\s\S]*?\nREQUEST\n/g;
 const RUN_SHAPE = new RegExp(
   '^/usr/bin/env -i HOME="\\$\\{RUNHOME\\}" PATH=/usr/bin:/bin:/usr/sbin:/sbin '
   + 'TMPDIR="\\$\\{RUNTMP\\}" LANG=en_US\\.UTF-8 LC_ALL=en_US\\.UTF-8 '
-  + '"\\$\\{PRODUCT\\}" rpc --db "\\$\\{FIXTURE\\}" <<\'REQUEST\'$'
+  + '"\\$\\{PRODUCT\\}" rpc --db "\\$\\{FIXTURE\\}"'
+  + CONTACTS_FLAG.replace(/-/g, '\\-')
+  + ' <<\'REQUEST\'$'
 );
 
 let runs = 0;
@@ -181,4 +198,4 @@ if (outPath.includes('/imsg-web/') || outPath.includes('/Obsidian-Vault/')) {
 
 writeFileSync(outPath, script, { mode: 0o600 });
 console.log(`wrote ${outPath.split('/').pop()}`);
-console.log(`pass=${pass} role=${role} executions=${runs} bytes=${script.length}`);
+console.log(`pass=${pass}${contactsSource ? `/${contactsSource}` : ''} role=${role} executions=${runs} bytes=${script.length}`);
