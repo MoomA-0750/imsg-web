@@ -71,6 +71,13 @@ export function createOwnedReaderGate({ graceMs = 500, killWaitMs = 1000 } = {})
   };
   return {
     factory,
+    // Read-only. The pids of children this gate registered itself and whose
+    // handles have not yet exited. Nothing here trusts a pid on its own: a pid
+    // is emitted only while its exact registered handle is still live, which is
+    // what makes it safe to sample memory against.
+    livePids() {
+      return records.filter(r => !r.exited && Number.isInteger(r.child?.pid)).map(r => r.child.pid);
+    },
     close() {
       stopped = true;
       shutdown ??= (async () => {

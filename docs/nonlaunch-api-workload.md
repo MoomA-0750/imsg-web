@@ -292,3 +292,51 @@ only checks one private-root executable's digest; it does not admit the app's
 whole import/dependency tree or attest source provenance. Production startRuntime
 uses owner lock/admin state and is not silently reused or weakened. No permanent
 Agent, Serve route, installed binary replacement or live measurement occurred.
+
+## C06 soak runner — 2026-09-13
+
+Added `scripts/nonlaunch-c06-soak.mjs`. `runApiSession` runs one cycle and closes
+the application, so it cannot express a soak; this is a separate module and does
+not replace or weaken it.
+
+Many cycles against **one long-lived owned application**, with memory sampled on
+an independent clock. The four recorded defects of the historical `a342425`
+probe are each a design constraint, with a test per defect:
+
+| Recorded defect | Constraint here |
+|---|---|
+| polling and RSS sampling "share a serial loop, so reads add scheduling jitter" | sampling runs on its own timer and never awaits a cycle |
+| "short-lived CLI children can be missed by RSS snapshots" | children are sampled by the pids the reader gate registered, and a miss is **reported as a miss** |
+| "did not persist the 20 raw cycle timings" | every cycle record is returned with per-stage timings; summaries are derived from them, never instead of them |
+| "the reported duration is the requested duration, not an independently saved actual elapsed time" | `actualElapsedMs` is measured and `requestedDurationMs` echoed separately |
+
+Slots are absolute rather than "wait `intervalMs` after the last one finished".
+A slot whose predecessor is still running is recorded as **skipped** and never
+queued, so a slow cycle cannot silently stretch the schedule.
+
+`reachedDuration` replaced an earlier `deadlineExceeded`, which was meaningless:
+for a soak, reaching the requested duration is the success case. Stopping short
+of it is what needs reporting, and it now is.
+
+`createOwnedReaderGate` gained a read-only `livePids()`. It emits a pid only
+while that pid's exact registered handle is still live, so nothing here trusts a
+numeric pid on its own.
+
+14 tests pass on the pinned Node 24.20.0, including: raw records retained and
+cold separated from warm; elapsed measured rather than echoed; sampling
+outpacing cycles at a ratio a shared loop could not produce; an unsampled
+registered child counted; slot skipping under an overrunning cycle; a failed
+cycle ending the run; abort not upgradable to `ok`; an application whose
+`close()` throws never reported clean; four invalid configurations; and a
+non-loopback listener refused.
+
+A fixture bug is worth recording: the fake application first used a short chat
+id, and the transport only permits history paths carrying the application's
+43-character token. Every cycle failed at the history stage and three tests
+failed for one reason that looked like three.
+
+**This runs no Mac, no imsg and no real data, and it is not C06 acceptance.**
+`gateMeasurement` stays `false`; the thresholds are a separate judgement this
+module does not know and must not apply. Still outstanding before a live run:
+artifact/digest admission, an isolated launcher that starts the application,
+OS-signal wiring, an outer watchdog, and cross-arm counterbalanced scheduling.
