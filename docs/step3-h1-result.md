@@ -16,6 +16,7 @@ generates both and requires the run lines to be equal after removing the flag.
 | process count before / after | 610 / 610 | 609 / 609 |
 | TCC lines naming `imsg` | 7 | 20 |
 | of those, any denial | **0** | **0** |
+| service they asked about | all `kTCCServiceAddressBook` | all `kTCCServiceAddressBook` |
 
 **The control arm is what makes this readable.** `true` alone would not
 distinguish a working flag from an address book that was always going to be
@@ -34,16 +35,24 @@ byte-identical before and after.
 ## Why it worked without any grant, and what that does not prove
 
 Every one of the 7 and 20 TCC lines naming `imsg` is an `AUTHREQ_ATTRIBUTION`
-record, and **not one line mentions both `imsg` and a denial**. The services
-appearing are `kTCCServiceAddressBook`, `kTCCServiceSystemPolicyAllFiles` and
-`kTCCServiceDeveloperTool`; the AddressBook ones are all `AUTHREQ_CTX` context
-entries, not verdicts.
+record, and **not one line mentions both `imsg` and a denial**.
+
+Correlating each `imsg` request's `msgID` against the `AUTHREQ_CTX` lines shows
+what it asked for, and the answer corrects a first reading of this run:
+**all 27 are `kTCCServiceAddressBook`** — Contacts-framework *authorization
+status queries* — and **none is `kTCCServiceSystemPolicyAllFiles`**. They are
+`CNContactStore.authorizationStatus` being consulted, which `allowingAddressBook`
+does before mapping `.notDetermined` to `.addressBook`.
+
+So the log says nothing about how the **file** read of the AddressBook store was
+permitted. A read allowed through an already-granted responsible process need
+not produce an `AUTHREQ` at all.
 
 The responsible process in every attribution is **`com.apple.sshd-keygen-wrapper`**,
-not `imsg`. That is the attribution question rung G was meant to answer, now
-observed rather than inferred: TCC attributes to the session leader, and the
-file access came from the SSH session, exactly as upstream's own comment
-predicts —
+not `imsg`. *That* is observed, and it answers the attribution question rung G
+was meant to answer. That the file access therefore came from the SSH session's
+own privileges is an **inference** from it — consistent with upstream's comment,
+but not something this run observed —
 
 ```swift
 // SSH can have Full Disk Access without a Contacts.framework grant.
