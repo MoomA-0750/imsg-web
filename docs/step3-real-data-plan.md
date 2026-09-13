@@ -512,6 +512,10 @@ Consequences of the change of route:
   "is the AddressBook store readable by our binary in the context the
   measurement runs in". The patch selects the branch; it does not grant the file
   access the branch needs.
+  — **Answered 2026-09-13, in both contexts.** H1: `true` over SSH, with a
+  control arm returning `false`. H2: `true` under a LaunchAgent, launchd →
+  dedicated Node → `imsg`, with the responsible process observed as `node`
+  rather than sshd. See `docs/step3-h1-result.md`, `docs/step3-h2-result.md`.
 
 The record of (a) is kept below because the reasoning that led away from it is
 the useful part.
