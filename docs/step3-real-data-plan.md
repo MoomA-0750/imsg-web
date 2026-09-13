@@ -485,3 +485,76 @@ B1 is not a wording defect. Until the owner decides between (a), (b) and (c),
 **there is no version of rung I that can pass its own absolute check**, and
 rungs G and H would be gathering evidence for a measurement that cannot be
 completed. The plan does not proceed to any rung before that decision.
+
+---
+
+# Owner decisions, 2026-09-13
+
+## B1 → (a), one deliberate interactive grant
+
+One run with TTY stdin so `requestAccess` fires, and the prompt is accepted at
+the desktop. Consequences that follow from the choice rather than from the
+plan, and that are therefore recorded here rather than argued again later:
+
+- The grant attaches to **code identity**, so it is per product. There are four
+  class-R products. It may be four prompts, not one.
+- Any rebuild — including adopting a newer upstream `imsg` — produces a new
+  identity and **discards the grant**. See the version-check policy.
+- This is the one rung that deliberately violates the non-TTY rule that Phase F
+  adopted as a structural guard. It therefore gets its own generator contract,
+  its own authorization, and is never combined with another rung.
+
+## N7 Intel → measure on M1, deploy on Intel, **conditional**
+
+Accepted by the owner *provided the final artifact runs on both Intel and Apple
+Silicon*. **That condition is not currently satisfied**, and the plan must not
+record it as if it were:
+
+Intel has executed `--version` and nothing else. F2 and F3 were skipped there
+because the bridge ready lock is present. So on Intel this project has never
+observed the RPC server start, the database open, the resource bundle resolve,
+or the process terminate.
+
+### The question that decides whether Intel can be exercised at all
+
+The ready lock is resolved through **`NSHomeDirectory()`**
+(`MessagesLauncher.swift`), while the default database path uses
+**`FileManager.default.homeDirectoryForCurrentUser`** (`MessageStore.swift`).
+Two different APIs, and whether either honours `$HOME` is undetermined — item
+N8, still open.
+
+It decides everything about Intel. The F rungs run under `env -i HOME=<private>`:
+
+- **If `$HOME` is honoured**, the product looks for the lock under the private
+  root, finds nothing, reports `bridge.ready: false`, performs no IPC — and
+  Intel F2/F3 are safe to run without ever approaching the foreign bridge.
+- **If it is not**, the product finds the real lock and performs IPC with the
+  0.14.2 dylib injected into a running Messages.app. That is exactly what was
+  refused.
+
+F2 on M1 could not discriminate: the lock was absent from both the real home and
+the private root, so both hypotheses predict the observed result.
+
+### A discriminating experiment that touches no real bridge
+
+On **M1**, which has no bridge and no foreign system: create a decoy container
+under the private root, containing a `.imsg-bridge-ready` file, and run the F2
+shape against it.
+
+`bridgeSnapshot()` distinguishes the two outcomes by error string:
+
+- not looked at the private root → `.unavailable` → *"The bridge is not started.
+  Run imsg launch explicitly before using bridge methods."*
+- looked, found the decoy, attempted IPC, timed out → `.probeFailed` → *"The
+  existing bridge did not answer a non-launching status probe."*
+
+Every write is inside the private root, the IPC attempt is against a directory
+this project created, and the host has no bridge to disturb. It converts an
+undetermined claim into an observation before anything depends on it, which is
+the pattern that has worked in every phase so far.
+
+A second, weaker signal is available at no cost: run the F2 shape **without**
+`--db` and read back the reported `database.path`. That probes
+`homeDirectoryForCurrentUser` rather than `NSHomeDirectory()`, so it does not
+answer the lock question — but a disagreement between the two would itself be a
+finding.
