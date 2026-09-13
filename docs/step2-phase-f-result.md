@@ -75,6 +75,15 @@ have changed.
 | exit on EOF | 0 | 0 |
 | fixture digest before / after | unchanged | unchanged |
 
+> **Correction, 2026-09-13.** The second fixture is named "rollback journal"
+> here, but `e3b0c442…` is the SHA-256 of the empty string: the file is 0
+> bytes. It was named for what I set out to build rather than for what the
+> digest in this table already said. SQLite opens a zero-length file read-only
+> as a valid empty database, which is why it returned `ready: true`. The WAL
+> diagnosis and the bundle-resolution conclusion are unaffected; the claim
+> that F2 exercised a database with content is withdrawn. See
+> `docs/step3-g0-result.md`.
+
 ### The first fixture failed because of how I made it
 
 I built the fixture in WAL mode deliberately, to see whether a read-only
