@@ -92,3 +92,41 @@ says: compiling proves the branch exists, not that `--contacts-from-address-book
 reaches `allowingAddressBook`. That the AddressBook store is readable by these
 binaries in any context. That question is unchanged by the rebuild and is what
 the next rung is for.
+
+## The product path traverses a SwiftPM symlink (found 2026-09-13)
+
+Admission refused all four products with `ADMISSION_SYMLINK`, and it was right to.
+
+```
+.build/release -> out/Products/Release
+```
+
+`.build/release` is a symlink SwiftPM maintains. So the path used by every
+phase so far — Phase D's digests, and every run in F, G0, H and I —
+
+```
+<root>/<arm>/.build/release/imsg
+```
+
+**is not a stable name for a file.** It names whatever `release` currently
+points at.
+
+What this does and does not affect:
+
+- **The measurements stand.** The digests were taken of the bytes reached
+  through that path, and the resolved file
+  `<root>/<arm>/.build/out/Products/Release/imsg` has exactly the digest
+  recorded for each arm. Nothing measured was a different file than reported.
+- **The name was never pinned.** A later build of a different configuration
+  would repoint `release`, and the same path string would then name different
+  bytes. Nothing in this project would have noticed, because nothing checked
+  the chain.
+
+Admission now takes the **resolved** paths, and with those all three artifacts
+(both products and the dedicated Node) are admitted. A deliberately wrong digest
+is still refused in the same run, so the pass is not vacuous.
+
+The general rule this is an instance of: checking a leaf with `stat` accepts a
+target that a swapped parent can change. `lstat` on every component up to the
+root is what catches it, and that is why the check walks the whole chain rather
+than looking at the file alone.
