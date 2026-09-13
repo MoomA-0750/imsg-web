@@ -30,10 +30,22 @@ This was found because the harness was built locally first. It would otherwise
 have appeared as a failed first cycle part-way through a 30-minute soak on the
 owner's machine.
 
-**No production code was changed in response.** Widening `TESTED_VERSIONS` is an
-assertion that 0.15.4 has been tested, and that is the owner's call, not a
-silent edit made to get a harness to go green. The test fixture reports 0.15.1
-instead, with a comment saying why, so the harness test tests the harness.
+**No production code was changed in response at the time.** Widening
+`TESTED_VERSIONS` is an assertion that 0.15.4 has been tested, and that is the
+owner's call, not a silent edit made to get a harness to go green. The test
+fixture reported 0.15.1 instead, with a comment saying why.
+
+### Resolved 2026-09-14 — the owner chose to widen the list
+
+`0.15.4` was added, with the evidence and the ordering caveat recorded in a
+comment on the constant itself rather than only in this file. Two tests now
+guard it in both directions: 0.15.4 must be usable, and 0.15.3, 0.15.5, 0.16.0
+and 1.2.3 must all still come back `VERSION_UNTESTED` — because widening a list
+without checking the other half is how widening quietly becomes removing. A
+third test confirms a tested version cannot rescue a wrong protocol version.
+
+The harness fixture now reports 0.15.4, which is what the class-R products
+report, so the end-to-end test exercises the real combination.
 
 What evidence exists today for such an assertion: parity EQUAL on real data,
 phone-derived contact resolution confirmed, RPC-level timing, a real read-only
@@ -78,7 +90,8 @@ honest one.
 
 ## Still outstanding before a live C06 run
 
-- **The `TESTED_VERSIONS` decision above.** Nothing else can start until it is made.
+- ~~The `TESTED_VERSIONS` decision above.~~ Made 2026-09-14; the list now
+  includes 0.15.4 and the harness runs end to end against it.
 - Counterbalanced cross-arm scheduling at the application level, which J1 showed
   matters: the baseline drifted 26% between passes while the candidate held flat.
 - A LaunchAgent to run it in the production context. This environment refuses to

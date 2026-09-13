@@ -1,6 +1,28 @@
 import { isObject } from './rpc/errors.js';
 
-export const TESTED_VERSIONS = ['0.14.2', '0.15.1'] as const;
+/**
+ * Versions of `imsg` this project has actually exercised. Widening this list is
+ * an assertion about testing, not a convenience: an untested version reports
+ * every read capability as `unknown`, and that is the behaviour protecting a
+ * user from a version whose reads have never been checked.
+ *
+ * `0.15.4` added 2026-09-14, on the owner's decision, against this evidence:
+ *   - real-data parity baseline vs candidate EQUAL over 25 chats and 125
+ *     messages, both arms reproducible on a static database
+ *     (docs/step3-i-parity-result.md);
+ *   - contact resolution confirmed including phone-number normalisation, in
+ *     both the SSH and LaunchAgent contexts (step3-h1, step3-h2);
+ *   - a read-only open of the real chat.db that modified nothing, not even an
+ *     mtime (docs/step3-h3-result.md);
+ *   - RPC-level timing across both arms (docs/step3-j1-timing-result.md).
+ *
+ * What that evidence does NOT yet include is C06 itself — the authenticated API
+ * cycle through this application, p95 and RSS over the defined window. C06 was
+ * blocked by this very list, so the list is being widened before the result
+ * that would most directly justify it. That ordering is deliberate and
+ * recorded; when C06 completes, its outcome belongs here.
+ */
+export const TESTED_VERSIONS = ['0.14.2', '0.15.1', '0.15.4'] as const;
 export type Reason = 'SUPPORTED' | 'RPC_STATUS_INVALID' | 'VERSION_UNTESTED'
   | 'DATABASE_UNAVAILABLE' | 'METHOD_UNAVAILABLE' | 'CONTACTS_UNAVAILABLE'
   | 'CLI_STATUS_INVALID' | 'STATUS_PROBE_DISABLED' | 'SIP_ENABLED' | 'FEATURE_UNAVAILABLE' | 'NOT_IMPLEMENTED';

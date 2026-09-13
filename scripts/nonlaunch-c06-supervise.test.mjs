@@ -32,12 +32,11 @@ createInterface({ input: process.stdin }).on('line', line => {
   if (!line.trim()) return;
   const r = JSON.parse(line);
   let result;
-  // 0.15.1 deliberately: capabilities.ts lists 0.14.2 and 0.15.1 as tested, so a
-  // fake reporting 0.15.4 makes every read capability VERSION_UNTESTED and the
-  // cycle fails at the capabilities stage. That is a real finding about the
-  // application -- see docs/step3-c06-harness.md -- and not something this test
-  // should paper over by being the only place the version list is widened.
-  if (r.method === 'status') result = { version: '0.15.1', protocol_version: 1,
+  // 0.15.4: what the class-R products actually report. Until 2026-09-14 this had
+  // to say 0.15.1, because capabilities.ts listed only 0.14.2 and 0.15.1 as
+  // tested and every read capability came back VERSION_UNTESTED. That finding,
+  // and the owner's decision to widen the list, are in docs/step3-c06-harness.md.
+  if (r.method === 'status') result = { version: '0.15.4', protocol_version: 1,
     database: { ready: true, path: db }, bridge: { ready: false },
     contacts: { available: false },
     methods: ['status','chats.list','messages.history','watch.subscribe','watch.unsubscribe'] };

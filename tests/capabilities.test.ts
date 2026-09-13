@@ -12,6 +12,30 @@ function rpc(version = '0.15.1') {
 }
 const m1 = { version: '0.15.1', sip: 'enabled', read_receipts: false, typing_indicators: false };
 const intel = { version: '0.14.2', sip: 'disabled', read_receipts: true, typing_indicators: true };
+describe('the tested-version list', () => {
+  // Widening this list is an assertion about testing. Both halves are checked:
+  // the version that was added must now be usable, and the guard must still
+  // refuse everything that was not added, or widening it would have quietly
+  // become removing it.
+  it('treats 0.15.4 as tested, which the class-R products report', () => {
+    const c = capabilities(rpc('0.15.4'));
+    expect(c.chats).toEqual({ state: 'available', reasonCode: 'SUPPORTED' });
+    expect(c.history).toEqual({ state: 'available', reasonCode: 'SUPPORTED' });
+  });
+
+  it('still refuses a version nobody tested, including neighbours of a tested one', () => {
+    for (const version of ['0.15.3', '0.15.5', '0.16.0', '1.2.3']) {
+      expect(capabilities(rpc(version)).chats)
+        .toEqual({ state: 'unknown', reasonCode: 'VERSION_UNTESTED' });
+    }
+  });
+
+  it('does not let a tested version rescue a wrong protocol version', () => {
+    expect(capabilities({ ...rpc('0.15.4'), protocol_version: 2 }).chats.reasonCode)
+      .toBe('VERSION_UNTESTED');
+  });
+});
+
 describe('P0a A03 fixed capability truth table', () => {
   it('preserves DB reads without a bridge, but rejects SIP-gated read/typing despite method advertisement', () => {
     const c = capabilities(rpc(), m1);
