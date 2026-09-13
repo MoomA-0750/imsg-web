@@ -83,6 +83,12 @@ const FORBIDDEN_PATTERNS = [
   [/--disable-sandbox/, 'SwiftPM sandbox disabled'],
   [/\bswift\s+test\b/, 'swift test'],
   [/--build-tests/, 'test targets built'],
+  // Hole 4: inner() audits $(...) and backticks. Process substitution is
+  // neither, so a command inside <(...) reached the shell unexamined.
+  [/[<>]\(/, 'process substitution'],
+  // Hole 9: a backgrounded command is never reaped, and the segmenter split it
+  // away into an empty segment rather than refusing it.
+  [/&\s*$/m, 'a backgrounded command'],
 ];
 for (const [pattern, label] of FORBIDDEN_PATTERNS) {
   if (pattern.test(codeOnly)) fail(`generated script contains a forbidden construct: ${label}`);
@@ -131,6 +137,12 @@ function segments(code) {
     // the redirection's target look like a command named `1`.
     for (const rawSegment of line.split(/\|\||&&|[;|]|(?<!>)&/)) {
       let segment = rawSegment.trim();
+      // Hole 3: the assignment skip below swallowed `PATH=/anything`, so the
+      // search path every unqualified command resolves through was settable
+      // without review. Only the one approved value passes.
+      if (/^PATH=/.test(segment) && segment !== 'PATH=/usr/bin:/bin:/usr/sbin:/sbin') {
+        fail(`PATH reassigned to an unapproved value: ${segment}`);
+      }
       if (/^[A-Za-z_][A-Za-z0-9_]*=('[^']*'|"[^"]*"|\S*)$/.test(segment)) continue;
       // NAME=$(cmd ...): the assignment runs nothing and the substitution is
       // audited separately by inner(). Without this the leading word is
@@ -202,12 +214,15 @@ function audit(code, origin) {
         fail(`swift invocation not allow-listed in ${origin}: ${text}`);
       }
       if (bare === '/usr/bin/swift') {
-        for (const m of text.matchAll(/--(cache|config|security|scratch)-path\s+(\S+)/g)) {
+        // Hole 6: `\s+` matched only the space-separated form, so
+        // `--cache-path=/elsewhere` was neither checked here nor rejected by
+        // the unrecognised-option loop below.
+        for (const m of text.matchAll(/--(cache|config|security|scratch)-path[=\s]+(\S+)/g)) {
           if (!WRITE_ROOTS.some(r => m[2].startsWith(r))) {
             fail(`swift ${m[1]}-path outside the build root in ${origin}: ${m[2]}`);
           }
         }
-        for (const m of text.matchAll(/--([a-z-]*path)\s/g)) {
+        for (const m of text.matchAll(/--([a-z-]*path)[=\s]/g)) {
           if (!['cache-path', 'config-path', 'security-path', 'scratch-path'].includes(m[1])) {
             fail(`unrecognised swift path option in ${origin}: --${m[1]}`);
           }
@@ -224,21 +239,49 @@ function audit(code, origin) {
       if (!GIT_ALLOWED.test(after)) fail(`git subcommand not allow-listed in ${origin}: ${after}`);
     }
 
+    // Hole 1: `cd` was allow-listed but its destination was never looked at, so
+    // the working directory every later relative path resolved against could be
+    // moved anywhere.
+    if (bare === 'cd') {
+      const target = text.split(/\s+/)[1] ?? '';
+      if (!WRITE_ROOTS.some(r => target.startsWith(r))) {
+        fail(`cd outside the build root in ${origin}: ${text}`);
+      }
+    }
+
+    // Hole 2: `xcrun` runs an arbitrary tool from the active developer
+    // directory. Allow-listed to the two read-only queries the template makes.
+    if (bare === 'xcrun') {
+      if (!/^xcrun --show-sdk-(version|build-version)( < \/dev\/null)?$/.test(text)) {
+        fail(`xcrun is not an allow-listed query in ${origin}: ${text}`);
+      }
+    }
+
     if (WRITE_COMMANDS.has(bare)) {
       if (bare === 'tar') {
         if (!/-C\s+"\$\{ROOT\}"/.test(text)) fail(`tar without -C into the build root in ${origin}: ${text}`);
         if (/\s-P\b/.test(text)) fail(`tar -P in ${origin}`);
+        // Hole 5: only extraction is permitted. `-C` constrains where an
+        // extract lands; it does not constrain where a `-c` archive is written.
+        if (/\s-[A-Za-z]*c/.test(text)) fail(`tar in create mode in ${origin}: ${text}`);
       } else {
-        const target = text.split(/\s+/).slice(1).find(a => !a.startsWith('-'));
-        if (!target || !WRITE_ROOTS.some(r => target.startsWith(r))) {
-          fail(`write outside the build root in ${origin}: ${text}`);
+        // Hole 7: `.find()` checked the FIRST non-flag argument only, so
+        // `mkdir "${ROOT}/a" /elsewhere` passed on the strength of its first.
+        const targets = text.split(/\s+/).slice(1).filter(a => !a.startsWith('-'));
+        if (targets.length === 0) fail(`write with no target in ${origin}: ${text}`);
+        for (const target of targets) {
+          if (!WRITE_ROOTS.some(r => target.startsWith(r))) {
+            fail(`write outside the build root in ${origin}: ${text}`);
+          }
         }
       }
     }
 
     if (bare === 'find') {
       if (!/-maxdepth\s+\d/.test(text)) fail(`unbounded find in ${origin}: ${text}`);
-      for (const banned of ['-delete', '-ok', '-okdir', '-execdir']) {
+      // Hole 8: -fprint/-fprint0/-fls write a file named by the expression, and
+      // none of them were in this list.
+      for (const banned of ['-delete', '-ok', '-okdir', '-execdir', '-fprint', '-fprint0', '-fls']) {
         if (text.includes(banned)) fail(`mutating find in ${origin}: ${banned}`);
       }
       const start = text.split(/\s+/)[1] ?? '';

@@ -173,9 +173,34 @@ Two lessons, recorded rather than smoothed over:
 
 - The pin gate checks only for **missing** pins. It passed on Intel while the
   graph gained one. It must compare the set in both directions.
+  — **Closed** in `8a1c312`; the gate now compares the set both ways.
 - The confinement contract must say what is actually true: the four path flags'
   targets stay inside the root, and SwiftPM writes one compatibility symlink in
   the home directory on every build.
 
 Neither is fixed yet; both are recorded here so the next revision does not have
 to rediscover them.
+
+## The nine generator holes — closed 2026-09-13
+
+A focused re-read of `gen-phase-d.mjs` after the build recorded nine constructs
+the generator would have accepted. They were deferred to "before the next
+template revision", and step3 is that revision.
+
+| Hole | What it would have allowed |
+|---|---|
+| `cd` destination unchecked | move the working directory every later relative path resolves against |
+| `xcrun` unconstrained | run an arbitrary tool from the active developer directory |
+| `PATH=` reassignment | the assignment-skip rule swallowed it, so the search path was settable |
+| process substitution | `inner()` audits `$(…)` and backticks; `<(…)` is neither |
+| `tar` create mode | `-C` constrains an extract's destination, not where a `-c` archive is written |
+| `--cache-path=VALUE` | the `\s+` form was checked; the `=` form matched neither check |
+| `mkdir`/`touch` multi-arg | only the **first** non-flag argument was tested |
+| `find -fprint` | writes a file named by the expression; absent from the mutating list |
+| trailing `&` | the segmenter split it away into an empty segment rather than refusing it |
+
+All nine are now refused, with a test each — 45 cases, up from 32.
+
+**Each was confirmed to be a real hole before being closed**, by running the
+line against the pre-fix generator from `HEAD` and observing it pass. A guard
+whose hole was never demonstrated is a guess about a hole.

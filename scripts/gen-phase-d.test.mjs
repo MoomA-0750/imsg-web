@@ -73,6 +73,24 @@ const REFUSALS = [
   ['indirect execution through python', 'python3 -c "import os"', 'command not on the allow-list'],
   ['copying', 'cp "${ROOT}/a" "${ROOT}/b"', 'command not on the allow-list'],
   ['in-place sed', 'sed -i "" s/a/b/ "${ROOT}/x"', 'command not on the allow-list'],
+  // The nine holes recorded as outstanding in docs/step2-phase-d-result.md and
+  // deferred to this revision. Each line below passed the generator before the
+  // corresponding fix, which is why each is here as its own case.
+  ['cd to an unchecked destination', 'cd "${HOME}"', 'cd outside the build root'],
+  ['cd to an absolute path', 'cd /', 'cd outside the build root'],
+  ['an unconstrained xcrun', 'xcrun swift build', 'xcrun is not an allow-listed query'],
+  ['xcrun running a tool by name', 'xcrun --find clang', 'xcrun is not an allow-listed query'],
+  ['reassigning PATH', 'PATH=/tmp/evil:/usr/bin', 'PATH reassigned'],
+  ['process substitution', 'shasum -a 256 <(echo x)', 'process substitution'],
+  ['tar in create mode', 'tar -czf /tmp/out.tgz -C "${ROOT}" .', 'tar in create mode'],
+  ['the equals form of a swift path option',
+    '/usr/bin/swift build --cache-path=/tmp/c -c release --force-resolved-versions',
+    'cache-path outside the build root'],
+  ['a second mkdir target outside the root', 'mkdir "${ROOT}/ok" /tmp/elsewhere', 'write outside the build root'],
+  ['a second touch target outside the root', 'touch "${ROOT}/ok" /tmp/elsewhere', 'write outside the build root'],
+  ['find -fprint, which writes a file', 'find "${ROOT}" -maxdepth 2 -fprint /tmp/list', 'mutating find'],
+  ['find -fls, which writes a file', 'find "${ROOT}" -maxdepth 2 -fls /tmp/list', 'mutating find'],
+  ['a backgrounded command', 'shasum -a 256 "${ROOT}/x" &', 'backgrounded command'],
 ];
 
 for (const [name, line, expected] of REFUSALS) {
