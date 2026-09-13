@@ -15,8 +15,15 @@ approval of final behavior/design or evidence about real Messages data.
 ## Four-step progress
 
 1. Independent cleanup/sample re-review: **complete for scoped synthetic code**.
-2. Exact app/Node/imsg and launch admission: **in progress; immediate next work**.
-3. New real-data parity and C06/API/Agent measurement: **not started**.
+2. Exact app/Node/imsg and launch admission: **complete** (Phases A-F).
+3. New real-data parity and C06/API/Agent measurement: **in progress**. Real
+   `chat.db` opened read-only with nothing modified; contact resolution working
+   in both the SSH and LaunchAgent contexts through a local explicit-source
+   patch; parity baseline-vs-candidate **EQUAL** on 25 chats and 125 messages
+   with phone-derived name resolution confirmed; RPC-level timing shows the
+   candidate **68% faster** on the warm cycle. C06 itself — the full
+   authenticated API cycle, p95 and RSS over 20 samples / 30 minutes — is
+   **not started**. See `docs/step3-*.md`.
 4. Owner report, fork/deployment decision and limited trial: **not started**.
 
 Step2 completed locally: fixed imsg0.14.2/0.15.1 source paths and stored patches
