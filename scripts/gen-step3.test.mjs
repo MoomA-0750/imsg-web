@@ -174,6 +174,83 @@ test('refuses a contacts arm whose run line carries the wrong flag', () => {
   assert.match(result.output, /not the approved shape|exactly one execution/);
 });
 
+// The real pass is the only one allowed to name the owner's database, and the
+// point of a separate pass is that the other passes' refusal is untouched.
+function runReal(overrides = {}, extraLine = null) {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-step3-test-'));
+  try {
+    copyFileSync(GENERATOR, join(dir, 'gen-step3.mjs'));
+    const template = readFileSync(join(here, 'step3-real.sh.template'), 'utf8');
+    writeFileSync(join(dir, 'step3-real.sh.template'),
+      extraLine === null ? template : `${template}\n${extraLine}\n`);
+    const { fixture, ...rest } = BASE;
+    const options = { ...rest, pass: 'real',
+      'real-db': '/Users/example/Library/Messages/chat.db', ...overrides, out: join(dir, 'out.sh') };
+    for (const k of Object.keys(options)) if (options[k] === undefined) delete options[k];
+    const argv = Object.entries(options).flatMap(([k, v]) => [`--${k}`, v]);
+    try {
+      execFileSync(process.execPath, [join(dir, 'gen-step3.mjs'), ...argv], { stdio: 'pipe' });
+      return { ok: true, script: readFileSync(join(dir, 'out.sh'), 'utf8') };
+    } catch (error) {
+      return { ok: false, output: `${error.stdout ?? ''}${error.stderr ?? ''}` };
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('the real pass generates and names the declared database', () => {
+  const result = runReal();
+  assert.equal(result.ok, true, result.output);
+  assert.match(result.script, /REALDB='\/Users\/example\/Library\/Messages\/chat\.db'/);
+  assert.match(result.script, /rpc --db "\$\{REALDB\}"/);
+});
+
+test('the real pass creates nothing: mkdir and touch are off its allow-list', () => {
+  const result = runReal({}, 'mkdir "${RUNHOME}/x"');
+  assert.equal(result.ok, false);
+  assert.match(result.output, /command not on the allow-list: mkdir/);
+});
+
+for (const [name, overrides, expected] of [
+  ['a database that is not the declared shape',
+    { 'real-db': '/Users/example/Library/Messages/other.db' }, '--real-db must be exactly'],
+  ['a path dressed up to look like the database',
+    { 'real-db': '/tmp/evil/Users/x/Library/Messages/chat.db' }, '--real-db must be exactly'],
+  ['the intel role', { role: 'intel' }, '--role must be m1'],
+  ['a contacts source, which is not part of this rung',
+    { 'contacts-source': 'addressbook' }, 'meaningless outside the contacts pass'],
+  ['a fixture, which this rung does not use', { fixture: '/Users/example/x.db' }, 'meaningless for the real pass'],
+]) {
+  test(`the real pass refuses ${name}`, () => {
+    const result = runReal(overrides);
+    assert.equal(result.ok, false, `expected refusal for ${JSON.stringify(overrides)}`);
+    assert.match(result.output, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+}
+
+test('the other passes still refuse to name the real database at all', () => {
+  const decoy = run({}, 'ls "${HOME}/Library/Messages"');
+  assert.equal(decoy.ok, false);
+  assert.match(decoy.output, /the real Messages directory/);
+  const viaArg = run({ fixture: '/Users/example/Library/Messages/chat.db' });
+  assert.equal(viaArg.ok, false);
+  assert.match(viaArg.output, /names the real Messages directory/);
+});
+
+test('--real-db is rejected outside the real pass', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-step3-test-'));
+  try {
+    copyFileSync(GENERATOR, join(dir, 'gen-step3.mjs'));
+    copyFileSync(TEMPLATE, join(dir, 'step3-decoy.sh.template'));
+    const argv = Object.entries({ ...BASE, 'real-db': '/Users/example/Library/Messages/chat.db',
+      out: join(dir, 'out.sh') }).flatMap(([k, v]) => [`--${k}`, v]);
+    assert.throws(() => execFileSync(process.execPath, [join(dir, 'gen-step3.mjs'), ...argv], { stdio: 'pipe' }));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // The decoy is the whole experiment. If it could be pointed at the real
 // container the rung would become the IPC exchange it exists to avoid.
 test('refuses a decoy pointed at the real container', () => {

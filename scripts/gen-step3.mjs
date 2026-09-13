@@ -57,7 +57,7 @@ const args = parseArgs(process.argv.slice(2));
 const { role, product, home, tmp, cwd, fixture, out } = args;
 const pass = args.pass;
 
-if (!['decoy', 'contacts'].includes(pass)) fail('--pass must be decoy or contacts');
+if (!['decoy', 'contacts', 'real'].includes(pass)) fail('--pass must be decoy, contacts or real');
 if (role !== 'm1') fail('--role must be m1: Intel execution is not decided');
 
 // The `contacts` rung runs twice, once per arm of its own comparison. Without
@@ -71,8 +71,23 @@ if (pass === 'contacts') {
   fail('--contacts-source is meaningless outside the contacts pass');
 }
 const CONTACTS_FLAG = contactsSource === 'addressbook' ? ' --contacts-from-address-book' : '';
-for (const [v, l] of [[product, '--product'], [home, '--home'], [tmp, '--tmp'],
-  [cwd, '--cwd'], [fixture, '--fixture'], [out, '--out']]) checkPath(v, l);
+
+// The `real` pass is the first that opens the owner's database. Every other
+// pass refuses to name it at all, and those refusals stay exactly as they are:
+// this pass DECLARES its target and the declaration is checked, rather than the
+// prohibition being loosened somewhere the other passes can reach.
+const realDb = args['real-db'];
+if (pass === 'real') {
+  if (!/^\/Users\/[A-Za-z0-9._-]{1,32}\/Library\/Messages\/chat\.db$/.test(realDb ?? '')) {
+    fail('--real-db must be exactly /Users/<user>/Library/Messages/chat.db');
+  }
+} else if (realDb !== undefined) {
+  fail('--real-db is only accepted by the real pass');
+}
+const REQUIRED = [[product, '--product'], [home, '--home'], [tmp, '--tmp'], [cwd, '--cwd'], [out, '--out']];
+if (pass !== 'real') REQUIRED.push([fixture, '--fixture']);
+else if (fixture !== undefined) fail('--fixture is meaningless for the real pass');
+for (const [v, l] of REQUIRED) checkPath(v, l);
 
 // BridgeHelperLocator searches `.build/release/<helper>` relative to the working
 // directory, so a cwd inside a build tree changes which helper could be found.
@@ -81,13 +96,16 @@ if (!product.includes('/imsg-web/')) fail('--product must be a project-owned art
 
 // This rung reads no real data, and the generator refuses to produce one that
 // could. The real database is not merely "not passed" -- it is unnameable here.
-for (const [value, label] of [[fixture, '--fixture'], [home, '--home'], [cwd, '--cwd'], [tmp, '--tmp']]) {
+for (const [value, label] of [[home, '--home'], [cwd, '--cwd'], [tmp, '--tmp'],
+  ...(pass === 'real' ? [] : [[fixture, '--fixture']])]) {
   if (/Library\/Messages/.test(value)) fail(`${label} names the real Messages directory`);
   if (/Library\/Application Support\/AddressBook/.test(value)) fail(`${label} names the real address book`);
 }
 // The fixture and the decoy container must both live under the run root, so the
 // decoy the product is invited to find is one this script created.
-if (!fixture.startsWith(`${home}/`)) fail('--fixture must live under --home, the private run root');
+if (pass !== 'real' && !fixture.startsWith(`${home}/`)) {
+  fail('--fixture must live under --home, the private run root');
+}
 
 const templatePath = resolve(dirname(new URL(import.meta.url).pathname), `step3-${pass}.sh.template`);
 const script = readFileSync(templatePath, 'utf8')
@@ -95,7 +113,8 @@ const script = readFileSync(templatePath, 'utf8')
   .replaceAll('@@RUNHOME@@', home)
   .replaceAll('@@RUNTMP@@', tmp)
   .replaceAll('@@RUNCWD@@', cwd)
-  .replaceAll('@@FIXTURE@@', fixture)
+  .replaceAll('@@FIXTURE@@', fixture ?? '')
+  .replaceAll('@@REALDB@@', realDb ?? '')
   .replaceAll('@@CONTACTS_FLAG@@', CONTACTS_FLAG)
   .replaceAll('@@SOURCE_LABEL@@', contactsSource ?? '')
   .replaceAll('@@ROLE@@', role);
@@ -114,19 +133,22 @@ const FORBIDDEN = [
   [/2>\s*\/dev\/null/, 'discarded stderr'],
   [/[<>]\(/, 'process substitution'],
   [/&\s*$/m, 'a backgrounded command'],
-  // The whole point of the rung is a decoy. Naming the real one would defeat it.
-  [/Library\/Messages/, 'the real Messages directory'],
+  // The whole point of the other rungs is a decoy or a fixture. Naming the real
+  // database would defeat them. The real pass declares it instead.
+  ...(pass === 'real' ? [] : [[/Library\/Messages/, 'the real Messages directory']]),
 ];
 for (const [pattern, label] of FORBIDDEN) {
   if (pattern.test(codeOnly)) fail(`generated script contains ${label}`);
 }
 
 const ALLOWED = new Set([
-  'echo', 'date', 'stat', 'shasum', 'ls', 'ps', 'log', 'mkdir', 'touch',
+  'echo', 'date', 'stat', 'shasum', 'ls', 'ps', 'log', 'grep',
   'test', '[', 'set', 'export', 'exit', 'cat',
+  // The real pass opens the owner's database and creates nothing.
+  ...(pass === 'real' ? [] : ['mkdir', 'touch']),
 ]);
 const KEYWORDS = new Set(['if', 'then', 'else', 'elif', 'fi', 'for', 'in', 'do', 'done', 'case', 'esac', 'while', '!']);
-const WRITE_COMMANDS = new Set(['mkdir', 'touch']);
+const WRITE_COMMANDS = new Set(pass === 'real' ? [] : ['mkdir', 'touch']);
 // Writes name the run root and nothing else. `${DECOY}` is built from
 // `${RUNHOME}` inside the template, which the segmenter cannot see through, so
 // it is listed explicitly and the template's assignment of it is checked below.
@@ -141,7 +163,9 @@ const HEREDOC = /<<'REQUEST'\n[\s\S]*?\nREQUEST\n/g;
 const RUN_SHAPE = new RegExp(
   '^/usr/bin/env -i HOME="\\$\\{RUNHOME\\}" PATH=/usr/bin:/bin:/usr/sbin:/sbin '
   + 'TMPDIR="\\$\\{RUNTMP\\}" LANG=en_US\\.UTF-8 LC_ALL=en_US\\.UTF-8 '
-  + '"\\$\\{PRODUCT\\}" rpc --db "\\$\\{FIXTURE\\}"'
+  + '"\\$\\{PRODUCT\\}" rpc --db "\\$\\{'
+  + (pass === 'real' ? 'REALDB' : 'FIXTURE')
+  + '\\}"'
   + CONTACTS_FLAG.replace(/-/g, '\\-')
   + ' <<\'REQUEST\'$'
 );
