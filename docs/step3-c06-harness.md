@@ -47,11 +47,14 @@ third test confirms a tested version cannot rescue a wrong protocol version.
 The harness fixture now reports 0.15.4, which is what the class-R products
 report, so the end-to-end test exercises the real combination.
 
-What evidence exists today for such an assertion: parity EQUAL on real data,
-phone-derived contact resolution confirmed, RPC-level timing, a real read-only
-`chat.db` open that modified nothing. What does not: anything through the
-application's own HTTP surface on 0.15.4, which is what C06 would establish —
-so the list would be widened *before* the evidence that justifies widening it.
+The evidence behind the assertion: parity EQUAL on real data, phone-derived
+contact resolution confirmed in both contexts, a real read-only `chat.db` open
+that modified nothing, and RPC-level timing across both arms. What it does not
+include is anything through the application's own HTTP surface on 0.15.4 —
+which is what C06 establishes, and which this list was blocking. The list was
+therefore widened *before* the result that most directly justifies it. That
+ordering is deliberate, is recorded on the constant itself, and C06's outcome
+belongs there once it exists.
 
 ## The modules
 
