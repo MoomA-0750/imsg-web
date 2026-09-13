@@ -558,3 +558,80 @@ A second, weaker signal is available at no cost: run the F2 shape **without**
 `homeDirectoryForCurrentUser` rather than `NSHomeDirectory()`, so it does not
 answer the lock question — but a disagreement between the two would itself be a
 finding.
+
+## Contact sources — why an external binary is not one
+
+Asked whether adding a separate tool could supply contacts instead of granting
+Contacts to `imsg`. Checked against the pinned source rather than reasoned about.
+
+**There is no injection point.** `imsg` resolves names inside itself, and the
+source is chosen on one line with no override:
+
+```swift
+let source = isSSH ? nativeSource.allowingAddressBook(at: AddressBookContacts.directory)
+                   : nativeSource
+```
+
+No environment variable, option or file lets a caller supply contacts. The
+grep for `IMSG_*` finds overrides for bridge IPC, launch timeout and version —
+none for contacts. So an external tool's output has nowhere to go, and a
+measurement taken against externally-supplied names would be measuring
+something other than the candidate patch, whose entire content is *`imsg`'s own
+batching of its own lookups*. It does not solve the problem it appears to solve.
+
+Independent of that, adding a third-party binary would: reintroduce exactly the
+provenance uncertainty class R was built to remove; need its own TCC grants, so
+it duplicates the prompt rather than avoiding it, onto a less-audited artifact;
+and, if it reaches Apple over the network, introduce credentials — a class of
+secret this project has kept out of argv, environment, logs and chat entirely —
+while returning server-side data that need not match what Messages resolves
+against locally.
+
+## The option the upstream source itself points at
+
+`AddressBookContacts` carries this comment:
+
+```swift
+// SSH can have Full Disk Access without a Contacts.framework grant. Read the
+// existing v22 store in place, including its WAL; never copy or modify it.
+```
+
+So upstream built the AddressBook fallback for **precisely this situation**: a
+process with file access but no Contacts grant. It needs **no Contacts grant at
+all** — only file access, which the dedicated Node already holds.
+
+It is gated on `isSSH`, and Phase C forbids fabricating `SSH_CONNECTION`. But
+that prohibition is about *fabricating an environment variable*, and there is a
+way to reach the same branch without doing so:
+
+**A second local patch making the contact source explicit** — e.g. a
+`--contacts-source` option selecting the AddressBook reader directly, instead of
+inferring it from SSH variables. Applied to **both arms**, so within-host parity
+is unaffected.
+
+| | (a) interactive grant | explicit-source patch |
+|---|---|---|
+| desktop prompt | required, per code identity | none |
+| survives an `imsg` rebuild | **no** — grant dies with the identity | **yes** — no grant involved |
+| number of grants | up to 4, one per class-R product | 0 |
+| relies on | a Contacts grant to `imsg` | file access the dedicated Node already has |
+| cost | none to build | a second patch to write, review and maintain |
+| environment fabrication | none | none |
+
+This is **not** a recommendation to overturn (a); it is a second option the
+owner did not have when choosing, surfaced because the source made it visible.
+It also interacts with the version policy: option (a)'s grant is destroyed by
+every re-pin, and the patch route has no grant to destroy.
+
+## A question this raises about production, not about measurement
+
+The production LaunchAgent is not an SSH session either, so `isSSH` is false
+there too and the same code path applies. **It is therefore possible that the
+deployed UI has never resolved a contact name**, and no record states otherwise:
+the C02 Agent runs recorded chat and message counts, not whether names appeared.
+The only run that ever resolved names did so under an inherited real SSH
+environment, and resolved 0 on the Intel host even then.
+
+If that is so, (a) is not a measurement convenience — it is a **production
+defect being discovered**, and the choice between the two routes above is a
+product decision rather than a testing one.
