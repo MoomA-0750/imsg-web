@@ -101,6 +101,59 @@ for (const [name, line, expected] of REFUSALS) {
   });
 }
 
+// The declared extra pin exists because one host's toolchain resolves a larger
+// graph. It must stay a declaration of one exact package, not a tolerance.
+function generateWithArgs(extraArgs) {
+  const dir = mkdtempSync(join(tmpdir(), 'gen-phase-d-test-'));
+  try {
+    copyFileSync(GENERATOR, join(dir, 'gen-phase-d.mjs'));
+    copyFileSync(TEMPLATE, join(dir, 'phase-d-build.sh.template'));
+    try {
+      const stdout = execFileSync(process.execPath, [
+        join(dir, 'gen-phase-d.mjs'), '--role', 'intel', '--root', ROOT,
+        '--archive', `${ROOT}/src.tgz`, '--archive-sha', SHA, '--out', join(dir, 'out.sh'),
+        ...extraArgs,
+      ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+      return { ok: true, output: stdout, script: readFileSync(join(dir, 'out.sh'), 'utf8') };
+    } catch (error) {
+      return { ok: false, output: `${error.stdout ?? ''}${error.stderr ?? ''}` };
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const REV = '39f212458aeb88e33bdac2200a793a3f0d55d32b';
+
+test('without a declared extra pin the gate still expects exactly four', () => {
+  const result = generateWithArgs([]);
+  assert.equal(result.ok, true, result.output);
+  assert.match(result.script, /pin count: \$\{PIN_COUNT\} \(expected 4\)/);
+  assert.match(result.script, /EXTRA_PIN_ID=''/);
+});
+
+test('a declared extra pin raises the expected count to five and names it', () => {
+  const result = generateWithArgs(['--expect-extra-pin', `sqlcipher.swift@${REV}`]);
+  assert.equal(result.ok, true, result.output);
+  assert.match(result.script, /pin count: \$\{PIN_COUNT\} \(expected 5\)/);
+  assert.match(result.script, /EXTRA_PIN_ID='sqlcipher\.swift'/);
+  assert.match(result.script, new RegExp(`EXTRA_PIN_REV='${REV}'`));
+});
+
+for (const [name, value] of [
+  ['a revision that is not 40 hex', 'sqlcipher.swift@39f2124'],
+  ['an identity with no revision', 'sqlcipher.swift'],
+  ['a revision with no identity', `@${REV}`],
+  ['an identity carrying shell metacharacters', `sql;rm -rf /@${REV}`],
+  ['an uppercase revision', `sqlcipher.swift@${REV.toUpperCase()}`],
+]) {
+  test(`refuses ${name} as a declared extra pin`, () => {
+    const result = generateWithArgs(['--expect-extra-pin', value]);
+    assert.equal(result.ok, false, `expected refusal for: ${value}`);
+    assert.match(result.output, /--expect-extra-pin must be/);
+  });
+}
+
 test('refuses a build root outside the project', () => {
   const dir = mkdtempSync(join(tmpdir(), 'gen-phase-d-test-'));
   try {

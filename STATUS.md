@@ -64,8 +64,12 @@ implemented in code with tests that fail when it leaks (C), rebuild under
 observation of baseline and candidate at v0.15.4 on both hosts (D), and native
 /helper/IPC closure (E). **imsg has still never been executed by this project.**
 
-The four class-R products are the only artifacts that may be measured:
-Intel `f825229b…`/`52a23596…`, M1 `ed0ad126…`/`3207be3b…`. None may be run yet.
+The four class-R products are the only artifacts that may be measured. As of
+2026-09-13 these are the **rebuilt** set carrying the explicit contact-source
+patch, and they supersede the first set:
+Intel `f18c906b…`/`fb78b375…`, M1 `00983e9f…`/`47794c68…`. None has been run.
+The superseded set (Intel `f825229b…`/`52a23596…`, M1 `ed0ad126…`/`3207be3b…`)
+still exists on both hosts and was not removed. See `docs/step3-rebuild-result.md`.
 
 What step2 leaves for later, deliberately: the first execution of a built
 product is its own phase with its own authorization, created because Phase C and

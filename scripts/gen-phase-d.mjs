@@ -59,12 +59,28 @@ if (!/^[0-9a-f]{64}$/.test(archiveSha ?? '')) fail('--archive-sha must be 64 hex
 // is the single thing that makes "writes are confined" checkable at all.
 if (!root.includes('/imsg-web')) fail('--root must live under the project base directory');
 
+// One host's toolchain resolves a package the committed lock does not list.
+// That is declared here, by identity and revision, so the gate can still refuse
+// anything else. Tolerating "an extra pin" in general would give back exactly
+// the blindness the bidirectional check was added to remove.
+let extraId = '';
+let extraRev = '';
+if (args['expect-extra-pin'] !== undefined) {
+  const match = /^([a-z0-9][a-z0-9._-]{0,63})@([0-9a-f]{40})$/.exec(args['expect-extra-pin']);
+  if (!match) fail('--expect-extra-pin must be <identity>@<40 hex revision>');
+  [, extraId, extraRev] = match;
+}
+const expectedPins = 4 + (extraId ? 1 : 0);
+
 const templatePath = resolve(dirname(new URL(import.meta.url).pathname), 'phase-d-build.sh.template');
 const script = readFileSync(templatePath, 'utf8')
   .replaceAll('@@BUILDROOT@@', root)
   .replaceAll('@@ROLE@@', role)
   .replaceAll('@@ARCHIVE@@', archive)
-  .replaceAll('@@ARCHIVE_SHA@@', archiveSha);
+  .replaceAll('@@ARCHIVE_SHA@@', archiveSha)
+  .replaceAll('@@EXPECTED_PINS@@', String(expectedPins))
+  .replaceAll('@@EXTRA_PIN_ID@@', extraId)
+  .replaceAll('@@EXTRA_PIN_REV@@', extraRev);
 
 if (script.includes('@@')) fail('an unsubstituted marker remains in the generated script');
 

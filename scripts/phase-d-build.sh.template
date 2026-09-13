@@ -160,13 +160,29 @@ build_arm() {
   # ADDED a fifth (sqlcipher.swift, fetched as a prebuilt xcframework and not
   # linked into the product). Checking only for absence is the same shape of
   # error as a check that cannot fail.
+  #
+  # One host legitimately resolves a larger graph: Swift 6.1.2 pulls
+  # sqlcipher.swift into it and Swift 6.4 does not, which Phase D reproduced
+  # from both directions. That difference is DECLARED by the generator, by
+  # identity and revision, rather than tolerated. An undeclared fifth pin, or a
+  # declared one at a different revision, still stops the arm.
   grep '"identity"' "${dir}/Package.resolved"
   PIN_COUNT=$(grep -c '"identity"' "${dir}/Package.resolved")
-  echo "pin count: ${PIN_COUNT} (expected 4)"
+  echo "pin count: ${PIN_COUNT} (expected @@EXPECTED_PINS@@)"
   PINS_OK=1
-  if [ "${PIN_COUNT}" -ne 4 ]; then
+  if [ "${PIN_COUNT}" -ne @@EXPECTED_PINS@@ ]; then
     echo "pin count differs - the resolved graph is not the committed one"
     PINS_OK=0
+  fi
+  EXTRA_PIN_ID='@@EXTRA_PIN_ID@@'
+  EXTRA_PIN_REV='@@EXTRA_PIN_REV@@'
+  if [ -n "${EXTRA_PIN_ID}" ]; then
+    if grep -q "\"${EXTRA_PIN_ID}\"" "${dir}/Package.resolved" && grep -q "${EXTRA_PIN_REV}" "${dir}/Package.resolved"; then
+      echo "declared extra pin present: ${EXTRA_PIN_ID} at ${EXTRA_PIN_REV}"
+    else
+      echo "declared extra pin ABSENT or at another revision - stopping this arm"
+      PINS_OK=0
+    fi
   fi
   for rev in bd219c4ee9032fee3e009856f81fcc6ec09a85f4 8ad83035460a3d1029a2c5a0cca4f980297a9ca2 15c27dbf811e96b9fe48525389ffe042adb9f8cb 964c300fb0736699ce945c9edb56ecd62eba27a3; do
     if grep -q "${rev}" "${dir}/Package.resolved"; then
