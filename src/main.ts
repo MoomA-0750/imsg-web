@@ -28,11 +28,9 @@ async function main() {
   const executable = process.env.IMSG_WEB_IMSG_PATH, origin = process.env.IMSG_WEB_ORIGIN;
   const rawPort = process.env.IMSG_WEB_PORT ?? '8787';
   if (!executable || !isAbsolute(executable) || executable.includes('\0') || !origin || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
-  const cwebp = process.env.IMSG_WEB_CWEBP_PATH;
-  if (cwebp !== undefined && (!isAbsolute(cwebp) || cwebp.includes('\0'))) throw new Error();
   const tmpDir = await ensureChildTmpDir(directory);
   const context = buildChildEnv({ tmpDir, cwd: tmpDir });
-  const runtime = await startRuntime({ store, source: new LiveSource({ executable, context, expectedDatabasePath: context.databasePath, ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context, ...(cwebp ? { cwebp } : {}) }) } : {}) }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  const runtime = await startRuntime({ store, source: new LiveSource({ executable, context, expectedDatabasePath: context.databasePath, ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context }) } : {}) }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;

@@ -103,7 +103,7 @@ describe('B04 DB generation and reader lifetime', () => {
     const f = await setup(); const chats = await f.source.chats(1);
     await writeFile(f.path, ' look \uFFFC\uFFFC'); // same inode, so the reader sees new bytes without a DB change
     const [latest, earlier] = (await f.source.history(chats.chats[0]!.id, 50)).messages.reverse();
-    expect(latest).toMatchObject({ text: 'look', attachments: [{ id: null, kind: 'file', sticker: false }, { id: null, kind: 'file', sticker: false }], sender: null });
+    expect(latest).toMatchObject({ text: 'look', attachments: [{ id: null, kind: 'file', sticker: false, preview: false }, { id: null, kind: 'file', sticker: false, preview: false }], sender: null });
     expect(earlier).toMatchObject({ text: 'earlier', attachments: [] });
   });
   it('gives an ID only to a present image of an allowed type, and serves it only from inside Attachments', async () => {
@@ -153,22 +153,36 @@ describe('B04 DB generation and reader lifetime', () => {
     expect(JSON.stringify(message)).not.toContain(f.dir);
     expect((await f.source.attachment(message.link!.image!.id!)).type).toBe('image/png');
   });
-  it('prepares present HEIC images in the background after history, without delaying the response', async () => {
+  it('offers Messages thumbnails for images never downloaded, and prepares HEIC and thumbnails in the background', async () => {
     const HEIC = Buffer.concat([Buffer.from('000000186674797068656963', 'hex'), Buffer.from('synthetic')]);
     const convert = vi.fn(async () => Buffer.from('converted'));
-    const converter = { targets: ['image/webp', 'image/jpeg'], has: () => false, convert } as unknown as ImageConverter;
+    const converter = { has: () => false, convert } as unknown as ImageConverter;
     const f = await setup(dir => [
       { original_path: join(dir, 'Attachments', 'photo.heic'), mime_type: 'image/heic', missing: false },
       { original_path: join(dir, 'Attachments', 'gone.heic'), mime_type: 'image/heic', missing: true },
       { original_path: join(dir, 'Attachments', 'plain.png'), mime_type: 'image/png', missing: false },
+      { original_path: join(dir, 'Attachments', 'aa', '01', 'SYN-GUID', 'IMG_1.HEIC'), mime_type: 'image/heic', missing: true },
+      { original_path: join(dir, 'Attachments', 'aa', '01', 'SYN-GUID', 'IMG_2.JPG'), mime_type: 'image/jpeg', missing: true },
+      { original_path: join(dir, 'Elsewhere', 'IMG_3.HEIC'), mime_type: 'image/heic', missing: true },
+      { original_path: join(dir, 'Attachments', '..', 'Caches', 'Previews', 'Attachments', 'IMG_4.HEIC'), mime_type: 'image/heic', missing: true },
     ], () => ({}), converter);
     await mkdir(join(f.dir, 'Attachments'), { recursive: true });
     await writeFile(join(f.dir, 'Attachments', 'photo.heic'), HEIC);
     await writeFile(join(f.dir, 'Attachments', 'plain.png'), PNG_SIGNATURE);
+    const previews = join(f.dir, 'Caches', 'Previews', 'Attachments');
+    await mkdir(join(previews, 'aa', '01', 'SYN-GUID'), { recursive: true });
+    const AAPL = Buffer.concat([Buffer.from('AAPL\r\n\x1a\n', 'latin1'), Buffer.from('synthetic')]);
+    await writeFile(join(previews, 'aa', '01', 'SYN-GUID', 'IMG_1-preview.ktx'), AAPL);
+    await writeFile(join(previews, 'IMG_3-preview.ktx'), AAPL); // would match only a path outside Attachments
+    await writeFile(join(previews, 'IMG_4-preview.ktx'), AAPL);
     const chats = await f.source.chats(1);
-    await f.source.history(chats.chats[0]!.id, 50);
-    await vi.waitFor(() => expect(convert).toHaveBeenCalledTimes(1));
-    expect(convert).toHaveBeenCalledWith(expect.stringContaining('photo.heic'), expect.any(Function), 'image/heic', 'image/webp', true);
+    const message = (await f.source.history(chats.chats[0]!.id, 50)).messages.at(-1)!;
+    expect(message.attachments.map(a => [a.id !== null, a.preview])).toEqual([[true, false], [false, false], [true, false], [true, true], [false, false], [false, false], [false, false]]);
+    expect(JSON.stringify(message)).not.toContain('SYN-GUID');
+    await vi.waitFor(() => expect(convert).toHaveBeenCalledTimes(2));
+    expect(convert).toHaveBeenCalledWith(expect.stringContaining('IMG_1-preview.ktx'), expect.any(Function), 'image/x-apple-preview', true);
+    expect(convert).toHaveBeenCalledWith(expect.stringContaining('photo.heic'), expect.any(Function), 'image/heic', true);
+    expect((await f.source.attachment(message.attachments[3]!.id!, 'image/avif,*/*')).type).toBe('image/jpeg');
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
   it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {

@@ -86,32 +86,43 @@ The card opens the link in a new tab with no referrer; only absolute http(s)
 URLs become links.
 
 **HEIC and JPEG XL.** The owner's browser drew neither, so they are converted
-on the Mac unless the browser's `Accept` names the original type (Safari names
-HEIC and gets the original). The target is WebP when the browser accepts it,
-else JPEG; a failed conversion falls back to JPEG, then to the original.
+to JPEG on the Mac with the system `sips`, unless the browser's `Accept` names
+the original type (Safari names HEIC and gets the original). A failed
+conversion sends the original.
 
-- macOS 27 on the M1 writes AVIF and JPEG but only reads WebP. WebP comes from
-  libwebp's official `cwebp` 1.6.0 (signature verified), which cannot read HEIC,
-  so `sips` first writes an uncompressed TIFF. Without `cwebp` configured, JPEG.
-- On a 2.2 MB, 5712 px photo, seven interleaved runs under load (medians):
-  JPEG 0.30 s / 688K, AVIF 0.50 s / 468K, WebP (q80) 0.74 s / 300K. Small images
-  took about 0.4 s in any format; that is mostly `sips` itself.
-- The newest 20 present HEIC/JPEG XL images of each history response are
-  converted ahead in the background. On the M1, four took 2.6 s together and
-  each first view afterwards took 1 ms; without that, a first view took
-  0.4–1.3 s. Background work uses at most one of two slots and yields to views.
-- `sips` and `cwebp` only ever see a copy of the checked bytes in a private
-  directory under the child TMPDIR, removed afterwards. Two facts about `sips`
-  shaped this: it exits 0 when it fails (success is judged by the output's first
-  bytes), and `-Z` also enlarges (it is applied only above 2048 px).
-- Conversions stay in memory (64 MiB); repeat views took a few milliseconds.
+- Formats compared on a 2.2 MB, 5712 px photo, seven interleaved runs under
+  load (medians): JPEG 0.30 s / 688K, AVIF 0.50 s / 468K, WebP 0.74 s / 300K.
+  macOS 27 reads WebP but cannot write it, so WebP needed libwebp's `cwebp`
+  after a `sips` TIFF step, which made it the slowest. The owner chose JPEG:
+  fastest, and every format looked fine to them. Small images took about 0.4 s
+  in any format; that is mostly `sips` itself.
+- The newest 20 present convertible images of each history response are
+  converted ahead in the background, using at most one of two slots and
+  yielding to views; the file is checked again when that work starts. On the
+  M1 a first view after preparation took about 1 ms.
+- `sips` only ever sees a copy of the checked bytes in a private directory under
+  the child TMPDIR, removed afterwards. It exits 0 when it fails (success is
+  judged by the output's first bytes), and `-Z` also enlarges (it is applied
+  only above 2048 px). Conversions stay in memory (64 MiB).
+
+**Thumbnails of images never downloaded.** Messages caches a thumbnail at
+`Caches/Previews/Attachments/<same relative directory>/<stem>-preview.ktx`, in
+Apple's texture format (`AAPL\r\n\x1a\n`), which `sips` converts. 180 of 707
+absent images (about a quarter) had one; the rest have neither file nor
+thumbnail. With the owner's approval the app now also reads that cache: the
+path is derived lexically from a path inside `Messages/Attachments`, the file
+must lie inside the preview cache after symlinks are resolved and start with
+that signature, and it is only ever served converted to JPEG, with a caption
+saying the original is not on the Mac. On the M1 all 40 tried were served,
+median 44K and 82 ms. Messages may drop that cache at any time.
 
 How images are served (branch `attachment-images`): history registers an
 opaque per-epoch ID only for a present image of an allowed type (JPEG, PNG,
 GIF, WebP, HEIC/HEIF, JPEG XL; never SVG). `/api/attachments/:id` needs a
 session, resolves symlinks and serves the file only if it lies inside
-`Messages/Attachments`, is a regular file of at most 32 MiB whose first bytes are an allowed image, with that detected
-type, `no-store`, `nosniff` and a `sandbox` CSP. Paths and file names never
+`Messages/Attachments` (or, for a thumbnail, the preview cache), is a regular
+file of at most 32 MiB whose first bytes are an allowed image, with that
+detected type, `no-store`, `nosniff` and a `sandbox` CSP. Paths and file names never
 reach the browser. Anything else is shown as a line of text saying why.
 
 ## Known and not yet resolved

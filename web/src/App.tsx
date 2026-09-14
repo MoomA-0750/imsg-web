@@ -28,8 +28,11 @@ const ATTACHMENT_LABEL = { image: '画像', video: '動画', file: '添付ファ
 
 function Attachment({ item }: { item: AttachmentView }) {
   const [failed, setFailed] = useState(false);
-  if (item.id && !failed) return <img className={item.sticker ? 'attachment-image sticker' : 'attachment-image'} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt="添付画像" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
-  const reason = item.id ? 'このブラウザでは表示できない形式です' : item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません';
+  if (item.id && !failed) {
+    const image = <img className={item.sticker ? 'attachment-image sticker' : 'attachment-image'} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+    return item.preview ? <figure className="attachment-preview">{image}<figcaption>サムネイル（元の画像はこのMacにありません）</figcaption></figure> : image;
+  }
+  const reason = item.preview || !item.id ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません') : 'このブラウザでは表示できない形式です';
   return <p className="attachment">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
 }
 

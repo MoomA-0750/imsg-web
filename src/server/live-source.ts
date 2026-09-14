@@ -1,8 +1,8 @@
 import { createHmac, randomBytes } from 'node:crypto';
-import { realpath, stat } from 'node:fs/promises';
-import { dirname, isAbsolute, join } from 'node:path';
+import { lstat, realpath, stat } from 'node:fs/promises';
+import { dirname, isAbsolute, join, parse, relative } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView } from '../shared/web-types.js';
-import { CONVERTIBLE, IMAGE_TYPES, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
+import { CONVERTIBLE, IMAGE_TYPES, PREVIEW_TYPE, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
 import type { ImageConverter } from './image-convert.js';
 import { ReadonlyAdapter, type Attachment } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
@@ -33,6 +33,9 @@ const OBJECT_REPLACEMENT = '\uFFFC';
 export const MAX_REMEMBERED_ATTACHMENTS = 4000;
 /** How many of the newest convertible images a history response prepares ahead of viewing. */
 export const PREPARE_AHEAD = 20;
+/** How many missing images per history response may be looked up in Messages' preview cache. */
+const MAX_PREVIEW_LOOKUPS = 2000;
+type FileEntry = { path: string; type: string; root: 'attachments' | 'previews' };
 export type SourceOptions = {
   executable: string;
   /** The exact environment and cwd for every imsg child this source starts. */
@@ -58,8 +61,8 @@ export function clip(text: string, length: number) {
 
 export class LiveSource implements ReadSource, AttachmentSource {
   #client: Client | undefined;
-  #files = new Map<string, { path: string; type: string }>();
-  #attachmentRoot: Promise<string> | undefined;
+  #files = new Map<string, FileEntry>();
+  #roots: Partial<Record<FileEntry['root'], Promise<string>>> = {};
   #adapter: ReadonlyAdapter | undefined;
   #identity: string | undefined;
   #status: { raw: unknown; parsed: Awaited<ReturnType<ReadonlyAdapter['status']>>['parsed']; at: number } | undefined;
@@ -140,14 +143,33 @@ export class LiveSource implements ReadSource, AttachmentSource {
     this.#identity = identity; this.#status = { raw, parsed, at };
     return { raw, path, identity, epoch: this.#epoch, adapter: this.#adapter! };
   }
-  /** Remembers a servable image under an opaque ID; anything else gets no ID. */
-  #attachmentView(a: Attachment, key: string): AttachmentView {
+  /**
+   * Where Messages caches the thumbnail of an attachment it has not downloaded:
+   * the same relative directory under Caches/Previews, named `<stem>-preview.ktx`.
+   * Derived lexically from a path inside Messages/Attachments only; the file is
+   * checked again, inside the preview cache, when it is served.
+   */
+  #previewPath(a: Attachment): string | undefined {
+    if (!this.options.converter || !a.missing || !a.type.startsWith('image/') || !isAbsolute(a.path)) return undefined;
+    const messages = dirname(this.options.expectedDatabasePath);
+    const rel = relative(join(messages, 'Attachments'), a.path);
+    if (!rel || rel.startsWith('..') || isAbsolute(rel)) return undefined;
+    const { dir, name } = parse(rel);
+    return name ? join(messages, 'Caches', 'Previews', 'Attachments', dir, `${name}-preview.ktx`) : undefined;
+  }
+  /** Remembers a servable image under an opaque ID; anything else gets no ID. Convertible entries are also collected. */
+  #attachmentView(a: Attachment, key: string, previews: ReadonlySet<string>, convertible: FileEntry[]): AttachmentView {
     const kind = a.type.startsWith('image/') ? 'image' : a.type.startsWith('video/') ? 'video' : 'file';
-    if (kind !== 'image' || a.missing || !IMAGE_TYPES.has(a.type) || !isAbsolute(a.path)) return { id: null, kind, sticker: a.sticker };
+    const preview = this.#previewPath(a);
+    let entry: FileEntry | undefined;
+    if (preview && previews.has(preview)) entry = { path: preview, type: PREVIEW_TYPE, root: 'previews' };
+    else if (kind === 'image' && !a.missing && IMAGE_TYPES.has(a.type) && isAbsolute(a.path)) entry = { path: a.path, type: a.type, root: 'attachments' };
+    if (!entry) return { id: null, kind, sticker: a.sticker, preview: false };
     const id = this.#id('attachment', key);
-    this.#files.delete(id); this.#files.set(id, { path: a.path, type: a.type });
+    this.#files.delete(id); this.#files.set(id, entry);
     if (this.#files.size > MAX_REMEMBERED_ATTACHMENTS) this.#files.delete(this.#files.keys().next().value!);
-    return { id, kind, sticker: a.sticker };
+    if (CONVERTIBLE.has(entry.type)) convertible.push(entry);
+    return { id, kind: 'image', sticker: a.sticker, preview: entry.root === 'previews' };
   }
   #newClient(): Client {
     return this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context, args: [...RPC_ARGS] });
@@ -182,51 +204,56 @@ export class LiveSource implements ReadSource, AttachmentSource {
       if (capabilities(c.raw).history.state !== 'available') throw new WebError('HISTORY_UNAVAILABLE');
       const rows = await c.adapter.history(target.row, limit);
       await this.#verify(c.path, c.identity, c.epoch);
+      // Thumbnails for images that were never downloaded, looked up before the rows are mapped.
+      const previews = new Set<string>();
+      const lookups = [...new Set(rows.flatMap(row => row.attachments.map(a => this.#previewPath(a)).filter((path): path is string => path !== undefined)))].slice(0, MAX_PREVIEW_LOOKUPS);
+      await Promise.all(lookups.map(path => lstat(path).then(info => { if (info.isFile()) previews.add(path); }, () => {})));
+      const convertible: FileEntry[] = [];
       const snapshot: HistorySnapshot = { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
         // Messages marks each attachment in the text with U+FFFC. The marker is
         // dropped from the text; attachments are listed separately.
-        const attachments: AttachmentView[] = row.attachments.map((a, i) => this.#attachmentView(a, `${row.guid}:${i}`));
+        const attachments: AttachmentView[] = row.attachments.map((a, i) => this.#attachmentView(a, `${row.guid}:${i}`, previews, convertible));
         const markers = Math.min(row.text.split(OBJECT_REPLACEMENT).length - 1, 32);
-        while (attachments.length < markers) attachments.push({ id: null, kind: 'file', sticker: false });
+        while (attachments.length < markers) attachments.push({ id: null, kind: 'file', sticker: false, preview: false });
         let text = clip(row.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), 16384);
         const link: LinkView | null = row.link && {
           url: row.link.url, title: clip(row.link.title, 300).value, summary: clip(row.link.summary, 600).value, siteName: clip(row.link.siteName, 120).value,
-          image: row.link.image && this.#attachmentView(row.link.image, `${row.guid}:link`),
+          image: row.link.image && this.#attachmentView(row.link.image, `${row.guid}:link`, new Set(), convertible),
         };
         // A message that is only the link says nothing the card does not.
         if (row.link && (text.value === row.link.url || text.value === row.link.originalUrl)) text = { value: '', trimmed: false };
         const sender = row.sender === null ? null : clip(row.sender, 256).value;
         return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, link, createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
-      if (this.options.converter) {
+      if (this.options.converter && convertible.length > 0) {
         // Newest first, the order the owner meets them in. Checks and conversion happen later, off this queue.
-        const ahead = rows.slice().reverse().flatMap(row => [...row.attachments, ...(row.link?.image ? [row.link.image] : [])])
-          .filter(a => !a.missing && CONVERTIBLE.has(a.type) && isAbsolute(a.path)).slice(0, PREPARE_AHEAD);
-        if (ahead.length > 0) void this.#prepare(ahead, this.options.converter);
+        void this.#prepare(convertible.reverse().slice(0, PREPARE_AHEAD), this.options.converter);
       }
       return snapshot;
     });
   }
   /**
    * Serves an image that a history response in this epoch listed. It does not
-   * go through the imsg reader queue: the file is read by this process, and the
-   * path was already checked to be inside the Messages attachments folder.
+   * go through the imsg reader queue: the file is read by this process, and it
+   * is checked to be inside the Messages attachments folder or, for a
+   * thumbnail, Messages' preview cache.
    */
-  #root(): Promise<string> {
-    this.#attachmentRoot ??= realpath(join(dirname(this.options.expectedDatabasePath), 'Attachments'));
-    return this.#attachmentRoot.catch(() => { this.#attachmentRoot = undefined; throw new WebError('ATTACHMENT_UNAVAILABLE', 404); });
+  #root(kind: FileEntry['root']): Promise<string> {
+    const messages = dirname(this.options.expectedDatabasePath);
+    const promise = this.#roots[kind] ??= realpath(kind === 'attachments' ? join(messages, 'Attachments') : join(messages, 'Caches', 'Previews'));
+    return promise.catch(() => { delete this.#roots[kind]; throw new WebError('ATTACHMENT_UNAVAILABLE', 404); });
   }
-  async #prepare(list: Attachment[], converter: ImageConverter) {
-    try {
-      const root = await this.#root();
-      await Promise.all(list.map(a => prepareAttachment(root, a.path, a.type, converter)));
-    } catch { /* preparing is best effort; a view converts on demand */ }
+  async #prepare(list: FileEntry[], converter: ImageConverter) {
+    await Promise.all(list.map(async entry => {
+      try { await prepareAttachment(await this.#root(entry.root), entry.path, entry.type, converter); }
+      catch { /* preparing is best effort; a view converts on demand */ }
+    }));
   }
   async attachment(id: string, accept?: string): Promise<AttachmentFile> {
     this.#ensureActive();
     const file = this.#files.get(id);
     if (!file) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
-    const root = await this.#root();
+    const root = await this.#root(file.root);
     return openAttachment(root, file.path, file.type, this.options.converter && { converter: this.options.converter, accept });
   }
   capabilities(): Promise<CapabilitySnapshot> {

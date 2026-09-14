@@ -15,7 +15,6 @@ if grep -q SLOW "$input"; then sleep 1; fi
 # Like sips: a failure still exits 0 and simply writes nothing.
 if grep -q "NO$format" "$input"; then exit 0; fi
 case "$format" in
-  tiff) printf 'MM\000*' > "$output"; cat "$input" >> "$output" ;;
   jpeg) printf '\377\330\377\340' > "$output" ;;
 esac
 printf 'resample=%s' "$resample" >> "$output"

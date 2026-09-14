@@ -46,8 +46,11 @@ test('names senders only in group chats; shows images it can, and says why for t
   await expect(card).toContainText('合成サイト · example.invalid');
   await expect(page.getByText('危険なリンクの合成本文')).toBeVisible();
   await expect(page.getByText('開いてはいけない合成リンク')).toHaveCount(0);
-  const image = page.locator('.bubble img.attachment-image');
+  const image = page.locator('.bubble > img.attachment-image');
   await expect(image).toHaveCount(1);
+  const thumbnail = page.locator('figure.attachment-preview');
+  await expect(thumbnail.locator('img')).toHaveAttribute('src', `/api/attachments/${'T'.repeat(43)}`);
+  await expect(thumbnail).toContainText('サムネイル（元の画像はこのMacにありません）');
   await expect(image).toHaveAttribute('src', `/api/attachments/${'P'.repeat(43)}`);
   await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(1);
   await expect(page.getByText('画像（このブラウザでは表示できない形式です）')).toBeVisible();

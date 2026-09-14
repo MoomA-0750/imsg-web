@@ -1,10 +1,11 @@
 import type { Capability } from '../server/capabilities.js';
 export type ChatView = { id: string; name: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; trimmed: boolean };
 /**
- * `id` is set only for an image that is on this Mac and of a type the server
- * will serve at `/api/attachments/:id`. Paths and file names are never sent.
+ * `id` is set only for an image the server will serve at `/api/attachments/:id`:
+ * the file on this Mac, or with `preview` Messages' cached thumbnail of an image
+ * that was never downloaded. Paths and file names are never sent.
  */
-export type AttachmentView = { id: string | null; kind: 'image' | 'video' | 'file'; sticker: boolean };
+export type AttachmentView = { id: string | null; kind: 'image' | 'video' | 'file'; sticker: boolean; preview: boolean };
 /** A link preview Messages stored when the link was sent. `url` is always absolute http(s). */
 export type LinkView = { url: string; title: string; summary: string; siteName: string; image: AttachmentView | null };
 export type MessageView = { id: string; text: string; isFromMe: boolean; sender: string | null; attachments: AttachmentView[]; link: LinkView | null; createdAt: string | null; trimmed: boolean };

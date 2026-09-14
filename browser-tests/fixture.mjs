@@ -19,10 +19,11 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   ] }; },
   async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('G') ? [
     { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [
-      { id: 'P'.repeat(43), kind: 'image', sticker: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false },
-      { id: null, kind: 'image', sticker: false }, { id: null, kind: 'video', sticker: false },
+      { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false, preview: false },
+      { id: null, kind: 'image', sticker: false, preview: false }, { id: null, kind: 'video', sticker: false, preview: false },
+      { id: 'T'.repeat(43), kind: 'image', sticker: false, preview: true },
     ], link: null, createdAt: null, trimmed: false },
-    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false } }, createdAt: null, trimmed: false },
+    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, createdAt: null, trimmed: false },
     { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, createdAt: null, trimmed: false },
   ] : [
     { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: [], link: null, createdAt: null, trimmed: false },
@@ -30,10 +31,10 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async attachment(id) {
-    // P is a real 1×1 PNG; Q claims to be HEIC but is not decodable, like HEIC in a browser without support.
-    const body = id === 'P'.repeat(43) ? PNG : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
+    // P (an image) and T (a thumbnail) are a real 1×1 PNG; Q claims to be HEIC but is not decodable.
+    const body = id === 'P'.repeat(43) || id === 'T'.repeat(43) ? PNG : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
     if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
-    return { type: id.startsWith('P') ? 'image/png' : 'image/heic', size: body.length, stream: Readable.from([body]) };
+    return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
   },
   async close() {},
 } });
