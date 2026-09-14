@@ -17,6 +17,14 @@ describe('C01 LaunchAgent generator', () => {
     expect(xml.match(/<key>IMSG_WEB_/g)).toHaveLength(4);
   });
   it.each([{ port: 0 }, { port: 65536 }, { port: 8787.1 }, { origin: 'http://host' }, { origin: 'https://host/' }, { origin: 'https://a:b@host' }, { origin: 'https://host?q=1' }, { label: '../escape' }, { stateName: '..' }, { node: '/usr/local/bin/node' }, { release: '/outside' }, { release: config.release + '/../abc' }, { imsg: 'imsg' }, { imsg: '/opt/homebrew/bin/imsg' }, { imsg: '/usr/local/bin/imsg' }, { output: 'relative' }, { base: '/Users/' + 'a'.repeat(100) }, { secret: 'bad' }])('rejects invalid configuration %j', change => { expect(() => validateConfig({ ...config, ...change })).toThrow(); });
+  it('adds the send mode to the environment only when it really sends', () => {
+    expect(renderLaunchAgent(config)).not.toContain('IMSG_WEB_SEND');
+    expect(renderLaunchAgent({ ...config, send: 'off' })).not.toContain('IMSG_WEB_SEND');
+    expect(renderLaunchAgent({ ...config, send: 'dry-run' })).toContain('<key>IMSG_WEB_SEND</key><string>dry-run</string>');
+    expect(renderLaunchAgent({ ...config, send: 'live' })).toContain('<key>IMSG_WEB_SEND</key><string>live</string>');
+    expect(() => validateConfig({ ...config, send: 'yes' })).toThrow();
+    expect(renderLaunchAgent({ ...config, send: 'live' }).match(/<key>IMSG_WEB_/g)).toHaveLength(5);
+  });
   it('escapes XML without shell interpolation', () => {
     expect(renderLaunchAgent({ ...config, imsg: '/Users/test/Library/imsg-web/A&B<"\'>/imsg' })).toContain('A&amp;B&lt;&quot;&apos;&gt;');
   });

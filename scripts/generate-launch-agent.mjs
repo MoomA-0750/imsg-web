@@ -17,7 +17,10 @@ function within(base, value) {
   if (!part || part === '..' || part.startsWith('../') || isAbsolute(part)) fail();
 }
 export function validateConfig(c) {
-  if (!c || Object.keys(c).sort().join(',') !== 'base,imsg,label,node,origin,output,port,release,stateName') fail();
+  const keys = Object.keys(c ?? {}).filter(key => key !== 'send').sort().join(',');
+  if (!c || keys !== 'base,imsg,label,node,origin,output,port,release,stateName') fail();
+  // Sending is off unless explicitly requested. 'dry-run' validates but dispatches nothing; 'live' really sends.
+  if (c.send !== undefined && !['off', 'dry-run', 'live'].includes(c.send)) fail();
   absolute(c.base); absolute(c.output); absolute(c.imsg);
   within(join(c.base, 'runtime'), c.node); within(join(c.base, 'releases'), c.release);
   // Production runs a build of ours, so the executable lives under the base
@@ -35,7 +38,7 @@ export function validateConfig(c) {
 export function renderLaunchAgent(input) {
   const c = validateConfig(input);
   const str = value => `<string>${xml(value)}</string>`;
-  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port) };
+  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port), ...(c.send && c.send !== 'off' ? { IMSG_WEB_SEND: c.send } : {}) };
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -113,10 +116,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     if (process.platform !== 'darwin' || !['arm64', 'x64'].includes(process.arch) || process.versions.node !== '24.20.0') fail();
     const args = process.argv.slice(2), values = {};
-    if (args.length !== 16) fail();
+    if (args.length !== 16 && args.length !== 18) fail();
     for (let i = 0; i < args.length; i += 2) {
       const key = args[i];
-      if (!['--base', '--release', '--imsg', '--origin', '--port', '--label', '--stateName', '--output'].includes(key) || key.slice(2) in values) fail();
+      if (!['--base', '--release', '--imsg', '--origin', '--port', '--label', '--stateName', '--output', '--send'].includes(key) || key.slice(2) in values) fail();
       values[key.slice(2)] = args[i + 1];
     }
     if (!/^[1-9][0-9]{3,4}$/.test(values.port)) fail();

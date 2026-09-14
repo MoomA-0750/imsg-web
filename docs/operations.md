@@ -61,6 +61,27 @@ The owner runs `setup` / `auth rotate` in their own terminal and keeps the key
 in a password manager. The key never goes into chat, logs, argv, environment or
 this repository.
 
+## Sending (optional, off by default)
+
+Sending is a separate path and is off unless the plist carries `IMSG_WEB_SEND`.
+Add `--send dry-run` (validate and resolve a target, dispatch nothing) or
+`--send live` to the generator command:
+
+```sh
+<node> scripts/generate-launch-agent.mjs ... --send dry-run
+```
+
+`live` needs, on this Mac, done by the owner:
+
+- Messages.app running and signed in to iMessage.
+- An Automation grant so the app's dedicated Node may control Messages (macOS
+  prompts on the first send; approve it in System Settings → Privacy & Security
+  → Automation). No SIP change, and no IMCore injection: sending uses the
+  AppleScript transport, text only.
+
+Start `live` with a single message to your own number, and confirm it arrives.
+Sending never reuses the read path; the read RPC allowlist is unchanged.
+
 ## Serve
 
 With the owner's approval at the time, and after checking `tailscale serve
