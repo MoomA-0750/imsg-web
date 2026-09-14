@@ -3,7 +3,8 @@ import { RpcError, isObject } from './rpc/errors.js';
 import { parseStatus, type Status } from './capabilities.js';
 
 type Chat = { id: number; name: string; guid: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null };
-type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; createdAt: string | null };
+type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; createdAt: string | null };
+const text = (v: unknown) => typeof v === 'string' ? v : '';
 const date = (v: unknown) => typeof v === 'string' && v.length < 50 && Number.isFinite(Date.parse(v)) ? v : null;
 const positive = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) > 0;
 function limitValid(limit: number): void { if (!positive(limit) || limit > 1000) throw new RpcError('PARAMS_INVALID'); }
@@ -24,7 +25,10 @@ export class ReadonlyAdapter {
     if (!isObject(raw) || !Array.isArray(raw.chats) || raw.chats.length > limit) throw new RpcError('RPC_PROTOCOL_INVALID');
     return raw.chats.map(item => {
       if (!isObject(item) || !positive(item.id) || typeof item.name !== 'string' || typeof item.guid !== 'string' || typeof item.service !== 'string') throw new RpcError('RPC_PROTOCOL_INVALID');
-      return { id: item.id, name: item.name || (typeof item.identifier === 'string' ? item.identifier : '') || '名前のない会話', guid: item.guid, service: item.service,
+      // imsg's `name` is the chat title, or the raw handle when there is none. Only
+      // in the second case does the resolved contact name read better.
+      const identifier = text(item.identifier), titled = item.name !== '' && item.name !== identifier;
+      return { id: item.id, name: (titled ? item.name : text(item.contact_name) || item.name || identifier) || '名前のない会話', guid: item.guid, service: item.service,
         isGroup: typeof item.is_group === 'boolean' ? item.is_group : null,
         unreadCount: Number.isSafeInteger(item.unread_count) && (item.unread_count as number) >= 0 ? item.unread_count as number : null,
         lastMessageAt: date(item.last_message_at) };
@@ -37,7 +41,8 @@ export class ReadonlyAdapter {
     if (!isObject(raw) || !Array.isArray(raw.messages) || raw.messages.length > limit) throw new RpcError('RPC_PROTOCOL_INVALID');
     return raw.messages.map(item => {
       if (!isObject(item) || !positive(item.id) || item.chat_id !== chatId || typeof item.guid !== 'string' || typeof item.text !== 'string' || typeof item.is_from_me !== 'boolean') throw new RpcError('RPC_PROTOCOL_INVALID');
-      return { id: item.id, chatId, text: item.text, guid: item.guid, isFromMe: item.is_from_me, createdAt: date(item.created_at) };
+      return { id: item.id, chatId, text: item.text, guid: item.guid, isFromMe: item.is_from_me,
+        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, createdAt: date(item.created_at) };
     });
   }
   async subscribe(): Promise<number> {

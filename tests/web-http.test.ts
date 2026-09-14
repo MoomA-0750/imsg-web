@@ -11,7 +11,7 @@ const KEY = 'A'.repeat(43);
 const ID = 'C'.repeat(43);
 const BODY = 'SYNTHETIC_PRIVATE_BODY';
 const CHAT: ChatSnapshot = { epoch: 'epoch-a', limit: 50, chats: [{ id: ID, name: 'Synthetic conversation', service: 'iMessage', isGroup: false, unreadCount: null, lastMessageAt: null, trimmed: false }] };
-const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id: 'D'.repeat(43), text: BODY, isFromMe: false, createdAt: null, trimmed: false }] };
+const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id: 'D'.repeat(43), text: BODY, isFromMe: false, sender: null, attachments: 0, createdAt: null, trimmed: false }] };
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 

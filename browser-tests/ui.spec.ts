@@ -30,6 +30,16 @@ test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and n
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toHaveCount(0);
   expect((await page.request.get('/api/chats')).status()).toBe(401);
 });
+test('names senders only in group chats and shows attachments as a count, not a glyph', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  await expect(page.getByText('合成送信者 Hidden')).toHaveCount(0);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.getByText('合成送信者 Delta')).toBeVisible();
+  await expect(page.getByText('添付ファイル 2件（この画面では表示できません）')).toBeVisible();
+  await expect(page.getByText('本文のないメッセージ')).toHaveCount(0);
+});
 test('B05 mobile360/dark/keyboard and long synthetic content does not overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 }); await page.emulateMedia({ colorScheme: 'dark' });
   await login(page);

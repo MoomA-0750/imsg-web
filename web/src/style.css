@@ -51,6 +51,8 @@ time { flex:0 0 auto; color:var(--muted); font-size:.72rem; }
 .mine .bubble { background:var(--green-soft); border-radius:15px 4px 15px 15px; }
 .bubble p { margin:0 0 .4rem; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
 .bubble time { display:block; text-align:right; }
+.bubble .sender { display:block; margin-bottom:.2rem; color:var(--muted); font-size:.8em; font-weight:600; overflow-wrap:anywhere; }
+.bubble .attachment { color:var(--muted); font-size:.9em; }
 .empty { flex:1; display:grid; place-items:center; min-height:140px; padding:2rem; text-align:center; color:var(--muted); }
 .error-bar { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.65rem 1rem; background:#fff0f0; color:var(--danger); font-size:.85rem; }
 .load-more,.limit { flex:0 0 auto; margin:0; padding:.6rem 1rem; border-top:1px solid var(--line); text-align:center; color:var(--muted); font-size:.75rem; background:var(--surface); }

@@ -12,10 +12,13 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   async chats(limit) { return { epoch: 'epoch-a', limit, chats: [
     { id: 'C'.repeat(43), name: '合成テスト会話 Alpha', service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false },
     { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false },
+    { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false },
   ] }; },
-  async history(id, limit) { return { epoch: 'epoch-a', limit, messages: [
-    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, createdAt: null, trimmed: false },
-    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, createdAt: '2026-09-08T00:01:00Z', trimmed: false },
+  async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('G') ? [
+    { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: 2, createdAt: null, trimmed: false },
+  ] : [
+    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: 0, createdAt: null, trimmed: false },
+    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, attachments: 0, createdAt: '2026-09-08T00:01:00Z', trimmed: false },
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async close() {},

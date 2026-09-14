@@ -43,7 +43,7 @@ async function setup() {
   const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory });
   cleanups.push(async () => { failClose = false; hold?.resolve(); await source.close().catch(() => {}); for (const h of handles) await h.close().catch(() => {}); });
   const replace = async () => { await writeFile(join(dir, 'replacement'), 'new'); await rename(join(dir, 'replacement'), path); };
-  return { source, calls, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
+  return { source, calls, path, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
 }
 describe('B04 DB generation and reader lifetime', () => {
   it('bootstraps only path then opens a reader after stat, keeps raw IDs private, reverses history, keeps unknown fields null', async () => {
@@ -96,6 +96,13 @@ describe('B04 DB generation and reader lifetime', () => {
     await expect(f.source.history(first.chats[0]!.id, 50)).rejects.toMatchObject({ code: 'STALE_CHAT' });
     const count = f.created; const a = f.source.close(); expect(f.source.close()).toBe(a); await a;
     await expect(f.source.chats(50)).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' }); expect(f.created).toBe(count);
+  });
+  it('turns attachment markers into a count and keeps the surrounding text', async () => {
+    const f = await setup(); const chats = await f.source.chats(1);
+    await writeFile(f.path, ' look \uFFFC\uFFFC'); // same inode, so the reader sees new bytes without a DB change
+    const [latest, earlier] = (await f.source.history(chats.chats[0]!.id, 50)).messages.reverse();
+    expect(latest).toMatchObject({ text: 'look', attachments: 2, sender: null });
+    expect(earlier).toMatchObject({ text: 'earlier', attachments: 0 });
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
   it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {

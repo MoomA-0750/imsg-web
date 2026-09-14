@@ -26,6 +26,7 @@ export const RPC_ARGS = ['rpc', '--contacts-from-address-book'] as const;
  * is caught immediately; only readiness and version changes wait for expiry.
  */
 export const STATUS_TTL_MS = 60_000;
+const OBJECT_REPLACEMENT = '\uFFFC';
 export type SourceOptions = {
   executable: string;
   /** The exact environment and cwd for every imsg child this source starts. */
@@ -163,8 +164,12 @@ export class LiveSource implements ReadSource {
       const rows = await c.adapter.history(target.row, limit);
       await this.#verify(c.path, c.identity, c.epoch);
       return { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
-        const text = clip(row.text, 16384);
-        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, createdAt: row.createdAt, trimmed: text.trimmed };
+        // Messages marks each attachment in the text with U+FFFC. Attachments are
+        // not requested, so the marker becomes a count instead of a bare glyph.
+        const attachments = row.text.split(OBJECT_REPLACEMENT).length - 1;
+        const text = clip(row.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), 16384);
+        const sender = row.sender === null ? null : clip(row.sender, 256).value;
+        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
     });
   }

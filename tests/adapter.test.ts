@@ -35,6 +35,25 @@ describe('readonly adapter contracts (synthetic)', () => {
     await expect(adapter.history(42, 1)).rejects.toMatchObject({ code: 'RPC_PROTOCOL_INVALID' });
     expect(request).toHaveBeenCalledExactlyOnceWith('messages.history', { chat_id: 42, limit: 1, attachments: false });
   });
+  it('prefers a chat title, then the resolved contact name, then the raw handle', async () => {
+    const { adapter, request } = setup();
+    request.mockResolvedValue({ chats: [
+      { id: 1, guid: 'g1', service: 'iMessage', name: 'Synthetic group title', identifier: 'chat-synthetic', contact_name: 'Ignored' },
+      { id: 2, guid: 'g2', service: 'iMessage', name: '+15550000001', identifier: '+15550000001', contact_name: 'Synthetic Person' },
+      { id: 3, guid: 'g3', service: 'SMS', name: '+15550000002', identifier: '+15550000002' },
+      { id: 4, guid: 'g4', service: 'SMS', name: '', identifier: '' },
+    ] });
+    expect((await adapter.chats(4)).map(chat => chat.name)).toEqual(['Synthetic group title', 'Synthetic Person', '+15550000002', '名前のない会話']);
+  });
+  it('names the sender of received messages only, preferring the resolved name', async () => {
+    const { adapter, request } = setup();
+    request.mockResolvedValue({ messages: [
+      { id: 3, chat_id: 7, guid: 'm3', text: 'a', is_from_me: false, sender: '+15550000001', sender_name: 'Synthetic Person' },
+      { id: 2, chat_id: 7, guid: 'm2', text: 'b', is_from_me: false, sender: 'synthetic@example.invalid' },
+      { id: 1, chat_id: 7, guid: 'm1', text: 'c', is_from_me: true, sender: '+15550000009', sender_name: 'Owner' },
+    ] });
+    expect((await adapter.history(7, 3)).map(message => message.sender)).toEqual(['Synthetic Person', 'synthetic@example.invalid', null]);
+  });
   it('allows only one pending or active subscription', async () => {
     const { adapter, request } = setup();
     let complete!: (value: unknown) => void;
