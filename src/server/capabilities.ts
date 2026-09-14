@@ -6,21 +6,9 @@ import { isObject } from './rpc/errors.js';
  * every read capability as `unknown`, and that is the behaviour protecting a
  * user from a version whose reads have never been checked.
  *
- * `0.15.4` added 2026-09-14, on the owner's decision, against this evidence:
- *   - real-data parity baseline vs candidate EQUAL over 25 chats and 125
- *     messages, both arms reproducible on a static database
- *     (docs/step3-i-parity-result.md);
- *   - contact resolution confirmed including phone-number normalisation, in
- *     both the SSH and LaunchAgent contexts (step3-h1, step3-h2);
- *   - a read-only open of the real chat.db that modified nothing, not even an
- *     mtime (docs/step3-h3-result.md);
- *   - RPC-level timing across both arms (docs/step3-j1-timing-result.md).
- *
- * What that evidence does NOT yet include is C06 itself — the authenticated API
- * cycle through this application, p95 and RSS over the defined window. C06 was
- * blocked by this very list, so the list is being widened before the result
- * that would most directly justify it. That ordering is deliberate and
- * recorded; when C06 completes, its outcome belongs here.
+ * `0.15.4` (with imsg-patches applied) was exercised against real data on the
+ * M1 Mac; see docs/real-data-findings.md. Use through this application on the
+ * production Mac is the owner's trial, not yet recorded.
  */
 export const TESTED_VERSIONS = ['0.14.2', '0.15.1', '0.15.4'] as const;
 export type Reason = 'SUPPORTED' | 'RPC_STATUS_INVALID' | 'VERSION_UNTESTED'

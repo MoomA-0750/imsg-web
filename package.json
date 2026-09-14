@@ -12,10 +12,7 @@
     "test": "vitest run",
     "doctor": "node dist/doctor.js",
     "start": "node dist/main.js serve",
-    "test:browser": "playwright test",
-    "test:diagnostic": "node --test scripts/diagnose-performance.test.mjs",
-    "test:profile": "node --test scripts/profile-owned-rpc.test.mjs",
-    "test:nonlaunch": "npm run build && node --test --test-concurrency=1 scripts/nonlaunch-*.test.mjs scripts/supervise-api-worker.test.mjs"
+    "test:browser": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",

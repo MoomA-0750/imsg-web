@@ -1,12 +1,11 @@
 # P0a contract foundation
 
-> **Scope note (2026-09-12).** This file describes the P0a milestone and is kept
-> as that record. Two of its statements are no longer true of the integrated
-> product: P0b added a loopback HTTP listener and owner-key authentication, and
-> P0c produced a LaunchAgent generator (no production agent is installed and
-> production remains stopped). Database writes and Messages mutations are still
-> absent. The checked imsg versions are now 0.14.2 (Intel) and **0.15.3** (M1);
-> see `docs/imsg-0153-upgrade-assessment.md`. For current state read `STATUS.md`.
+> **Scope note (2026-09-14).** This file describes the P0a milestone and is kept
+> for its RPC client contract, which still holds. Since then the product gained
+> a loopback HTTP listener, owner-key authentication and a LaunchAgent
+> generator; database writes and Messages mutations are still absent. The imsg
+> in use is a patched 0.15.4 (`imsg-patches/`), and the reader passes
+> `--contacts-from-address-book`. For current state read `STATUS.md`.
 
 Scope: Node24 TypeScript, persistent local read-only `imsg rpc`, typed adapter, capability diagnostics, non-content doctor output, synthetic tests. Build output is portable JavaScript; the Node executable is architecture-specific. No runtime npm dependencies. No HTTP listener, database writes, Messages mutations, authentication claim, or deployed LaunchAgent.
 
