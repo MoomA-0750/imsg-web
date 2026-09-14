@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, MessageView } from '../../src/shared/web-types';
+import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView } from '../../src/shared/web-types';
 
 const PAGE = 50;
 const MAX = 1000;
@@ -31,6 +31,21 @@ function Attachment({ item }: { item: AttachmentView }) {
   if (item.id && !failed) return <img className={item.sticker ? 'attachment-image sticker' : 'attachment-image'} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt="添付画像" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
   const reason = item.id ? 'このブラウザでは表示できない形式です' : item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません';
   return <p className="attachment">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
+}
+
+function LinkCard({ link }: { link: LinkView }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  let host: string;
+  try {
+    const url = new URL(link.url);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    host = url.hostname;
+  } catch { return null; }
+  const imageId = link.image?.id;
+  return <a className="link-card" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+    {imageId && !imageFailed && <img src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
+    <span className="link-body"><strong>{link.title || host}</strong>{link.summary && <span className="link-summary">{link.summary}</span>}<span className="link-site">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
+  </a>;
 }
 
 export function App() {
@@ -241,7 +256,7 @@ export function App() {
     {epochNotice && <div className="notice" role="status">{epochNotice}</div>}
     <div className="panes">
       <aside className="chat-pane" aria-label="会話一覧"><div className="pane-heading"><div><h1>会話</h1><p>{chats.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadChats()} disabled={chatsBusy} aria-label="会話一覧を更新">↻</button></div>{chatError && <ErrorBar text={chatError} retry={loadChats} />}{chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list">{chats.map(chat => <li key={chat.id}><button className={selected?.id === chat.id ? 'chat active' : 'chat'} onClick={() => choose(chat)}><span className="chat-top"><strong>{chat.name || '名前のない会話'}{chat.trimmed && <span className="trim">（省略）</span>}</strong><time>{dateLabel(chat.lastMessageAt)}</time></span><span className="chat-meta">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span></button></li>)}</ul>}<LoadMore value={chatLimit} busy={chatsBusy} onMore={() => setChatLimit(value => Math.min(MAX, value + PAGE))} /></aside>
-      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || message.attachments.length === 0) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} /></>}</main>
+      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} /></>}</main>
     </div>
   </div>;
 }

@@ -1,9 +1,9 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
-import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView } from '../shared/web-types.js';
+import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView } from '../shared/web-types.js';
 import { IMAGE_TYPES, openAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
-import { ReadonlyAdapter } from './readonly-adapter.js';
+import { ReadonlyAdapter, type Attachment } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
 import type { ChildContext } from './child-env.js';
 import { isObject } from './rpc/errors.js';
@@ -135,6 +135,15 @@ export class LiveSource implements ReadSource, AttachmentSource {
     this.#identity = identity; this.#status = { raw, parsed, at };
     return { raw, path, identity, epoch: this.#epoch, adapter: this.#adapter! };
   }
+  /** Remembers a servable image under an opaque ID; anything else gets no ID. */
+  #attachmentView(a: Attachment, key: string): AttachmentView {
+    const kind = a.type.startsWith('image/') ? 'image' : a.type.startsWith('video/') ? 'video' : 'file';
+    if (kind !== 'image' || a.missing || !IMAGE_TYPES.has(a.type) || !isAbsolute(a.path)) return { id: null, kind, sticker: a.sticker };
+    const id = this.#id('attachment', key);
+    this.#files.delete(id); this.#files.set(id, { path: a.path, type: a.type });
+    if (this.#files.size > MAX_REMEMBERED_ATTACHMENTS) this.#files.delete(this.#files.keys().next().value!);
+    return { id, kind, sticker: a.sticker };
+  }
   #newClient(): Client {
     return this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context, args: [...RPC_ARGS] });
   }
@@ -171,19 +180,18 @@ export class LiveSource implements ReadSource, AttachmentSource {
       return { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
         // Messages marks each attachment in the text with U+FFFC. The marker is
         // dropped from the text; attachments are listed separately.
-        const attachments: AttachmentView[] = row.attachments.map((a, i) => {
-          const kind = a.type.startsWith('image/') ? 'image' : a.type.startsWith('video/') ? 'video' : 'file';
-          if (kind !== 'image' || a.missing || !IMAGE_TYPES.has(a.type) || !isAbsolute(a.path)) return { id: null, kind, sticker: a.sticker };
-          const id = this.#id('attachment', `${row.guid}:${i}`);
-          this.#files.delete(id); this.#files.set(id, { path: a.path, type: a.type });
-          if (this.#files.size > MAX_REMEMBERED_ATTACHMENTS) this.#files.delete(this.#files.keys().next().value!);
-          return { id, kind, sticker: a.sticker };
-        });
+        const attachments: AttachmentView[] = row.attachments.map((a, i) => this.#attachmentView(a, `${row.guid}:${i}`));
         const markers = Math.min(row.text.split(OBJECT_REPLACEMENT).length - 1, 32);
         while (attachments.length < markers) attachments.push({ id: null, kind: 'file', sticker: false });
-        const text = clip(row.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), 16384);
+        let text = clip(row.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), 16384);
+        const link: LinkView | null = row.link && {
+          url: row.link.url, title: clip(row.link.title, 300).value, summary: clip(row.link.summary, 600).value, siteName: clip(row.link.siteName, 120).value,
+          image: row.link.image && this.#attachmentView(row.link.image, `${row.guid}:link`),
+        };
+        // A message that is only the link says nothing the card does not.
+        if (row.link && (text.value === row.link.url || text.value === row.link.originalUrl)) text = { value: '', trimmed: false };
         const sender = row.sender === null ? null : clip(row.sender, 256).value;
-        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, createdAt: row.createdAt, trimmed: text.trimmed };
+        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, link, createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
     });
   }

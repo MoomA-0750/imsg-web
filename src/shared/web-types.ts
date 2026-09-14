@@ -5,7 +5,9 @@ export type ChatView = { id: string; name: string; service: string; isGroup: boo
  * will serve at `/api/attachments/:id`. Paths and file names are never sent.
  */
 export type AttachmentView = { id: string | null; kind: 'image' | 'video' | 'file'; sticker: boolean };
-export type MessageView = { id: string; text: string; isFromMe: boolean; sender: string | null; attachments: AttachmentView[]; createdAt: string | null; trimmed: boolean };
+/** A link preview Messages stored when the link was sent. `url` is always absolute http(s). */
+export type LinkView = { url: string; title: string; summary: string; siteName: string; image: AttachmentView | null };
+export type MessageView = { id: string; text: string; isFromMe: boolean; sender: string | null; attachments: AttachmentView[]; link: LinkView | null; createdAt: string | null; trimmed: boolean };
 export type ChatSnapshot = { epoch: string; chats: ChatView[]; limit: number };
 export type HistorySnapshot = { epoch: string; messages: MessageView[]; limit: number };
 export type CapabilitySnapshot = { epoch: string; mode: 'readonly'; features: Record<string, Capability> };

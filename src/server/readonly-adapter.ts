@@ -4,9 +4,23 @@ import { parseStatus, type Status } from './capabilities.js';
 
 type Chat = { id: number; name: string; guid: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null };
 export type Attachment = { path: string; type: string; missing: boolean; sticker: boolean };
-type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; createdAt: string | null };
+/** From imsg-patches/link-preview: what Messages stored with a link. Never fetched from the network. */
+export type LinkPreview = { url: string; originalUrl: string | null; title: string; summary: string; siteName: string; image: Attachment | null };
+type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; link: LinkPreview | null; createdAt: string | null };
 const MAX_ATTACHMENTS = 32;
 const text = (v: unknown) => typeof v === 'string' ? v : '';
+/** Only an absolute http(s) URL of sane length can become something the owner clicks. */
+function webUrl(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 2048) return null;
+  try { const url = new URL(v); return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password ? url.href : null; } catch { return null; }
+}
+const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: text(a.mime_type).toLowerCase(), missing: a.missing !== false, sticker: a.is_sticker === true });
+function linkPreview(v: unknown): LinkPreview | null {
+  if (!isObject(v)) return null;
+  const originalUrl = webUrl(v.original_url), url = webUrl(v.url) ?? originalUrl;
+  if (!url) return null;
+  return { url, originalUrl, title: text(v.title), summary: text(v.summary), siteName: text(v.site_name), image: isObject(v.image) ? attachment(v.image) : null };
+}
 const date = (v: unknown) => typeof v === 'string' && v.length < 50 && Number.isFinite(Date.parse(v)) ? v : null;
 const positive = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) > 0;
 function limitValid(limit: number): void { if (!positive(limit) || limit > 1000) throw new RpcError('PARAMS_INVALID'); }
@@ -45,11 +59,9 @@ export class ReadonlyAdapter {
     return raw.messages.map(item => {
       if (!isObject(item) || !positive(item.id) || item.chat_id !== chatId || typeof item.guid !== 'string' || typeof item.text !== 'string' || typeof item.is_from_me !== 'boolean') throw new RpcError('RPC_PROTOCOL_INVALID');
       // A link preview is stored as an untyped plugin payload; the link itself is already in the text.
-      const attachments = Array.isArray(item.attachments) ? item.attachments.filter(isObject).filter(a => !text(a.filename).endsWith('.pluginPayloadAttachment')).slice(0, MAX_ATTACHMENTS).map(a => ({
-        path: text(a.original_path), type: text(a.mime_type).toLowerCase(), missing: a.missing !== false, sticker: a.is_sticker === true,
-      })) : [];
+      const attachments = Array.isArray(item.attachments) ? item.attachments.filter(isObject).filter(a => !text(a.filename).endsWith('.pluginPayloadAttachment')).slice(0, MAX_ATTACHMENTS).map(attachment) : [];
       return { id: item.id, chatId, text: item.text, guid: item.guid, isFromMe: item.is_from_me,
-        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, attachments, createdAt: date(item.created_at) };
+        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, attachments, link: linkPreview(item.link_preview), createdAt: date(item.created_at) };
     });
   }
   async subscribe(): Promise<number> {

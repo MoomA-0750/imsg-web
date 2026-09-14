@@ -72,6 +72,22 @@ describe('readonly adapter contracts (synthetic)', () => {
     ]);
     expect(second!.attachments).toHaveLength(32);
   });
+  it('accepts a link preview only with an absolute http(s) URL', async () => {
+    const { adapter, request } = setup();
+    const message = (id: number, link_preview: unknown) => ({ id, chat_id: 7, guid: `m${id}`, text: '', is_from_me: false, link_preview });
+    request.mockResolvedValue({ messages: [
+      message(6, { url: 'https://example.invalid/p', original_url: 'http://example.invalid/o', title: 'T', summary: 'S', site_name: 'N', image: { original_path: '/synthetic/i', mime_type: 'image/jpeg', missing: false } }),
+      message(5, { url: 'javascript:alert(1)', original_url: 'https://example.invalid/fallback' }),
+      message(4, { url: 'javascript:alert(1)' }),
+      message(3, { url: 'https://user:secret@example.invalid/' }),
+      message(2, { url: `https://example.invalid/${'x'.repeat(2100)}` }),
+      message(1, 'not an object'),
+    ] });
+    const links = (await adapter.history(7, 6)).map(m => m.link);
+    expect(links[0]).toEqual({ url: 'https://example.invalid/p', originalUrl: 'http://example.invalid/o', title: 'T', summary: 'S', siteName: 'N', image: { path: '/synthetic/i', type: 'image/jpeg', missing: false, sticker: false } });
+    expect(links[1]).toMatchObject({ url: 'https://example.invalid/fallback', title: '', image: null });
+    expect(links.slice(2)).toEqual([null, null, null, null]);
+  });
   it('allows only one pending or active subscription', async () => {
     const { adapter, request } = setup();
     let complete!: (value: unknown) => void;

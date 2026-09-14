@@ -8,10 +8,11 @@ const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn
 vi.mock('../src/server/cli-status.js', () => ({ cliStatus: forbiddenCli }));
 vi.mock('node:child_process', () => ({ spawn: forbiddenSpawn }));
 
+const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function setup(attachments: (dir: string) => unknown[] = () => []) {
+async function setup(attachments: (dir: string) => unknown[] = () => [], extra: (dir: string) => Record<string, unknown> = () => ({})) {
   const dir = await mkdtemp(join(tmpdir(), 'iw-source-')), path = join(dir, 'chat.db');
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path, 'old');
@@ -35,7 +36,7 @@ async function setup(attachments: (dir: string) => unknown[] = () => []) {
       if (method === 'chats.list') return { chats: Array.from({ length: Number(params.limit) }, (_, i) => ({ id: offset + i + 1, guid: `chat-${offset + i}`, name: '', identifier: 'Synthetic conversation', service: 'iMessage' })) };
       if (method === 'messages.history') {
         const buffer = Buffer.alloc(16); const { bytesRead } = await (await handle).read(buffer, 0, 16, 0);
-        return { messages: [{ id: 2, chat_id: params.chat_id, guid: 'm-2', text: buffer.subarray(0, bytesRead).toString(), is_from_me: false, attachments: attachments(dir) }, { id: 1, chat_id: params.chat_id, guid: 'm-1', text: 'earlier', is_from_me: true }] };
+        return { messages: [{ id: 2, chat_id: params.chat_id, guid: 'm-2', text: buffer.subarray(0, bytesRead).toString(), is_from_me: false, attachments: attachments(dir), ...extra(dir) }, { id: 1, chat_id: params.chat_id, guid: 'm-1', text: 'earlier', is_from_me: true }] };
       }
       throw new Error('unexpected method');
     } };
@@ -115,23 +116,41 @@ describe('B04 DB generation and reader lifetime', () => {
       { original_path: join(dir, 'Attachments', 'escape.png'), mime_type: 'image/png', missing: false },
       { original_path: join(outside, 'secret.png'), mime_type: 'image/png', missing: false },
       { original_path: join(dir, 'Attachments', 'dir.png'), mime_type: 'image/png', missing: false },
+      { original_path: join(dir, 'Attachments', 'page.jpg'), mime_type: 'image/jpeg', missing: false },
     ]);
     await mkdir(join(f.dir, 'Attachments', 'dir.png'), { recursive: true });
-    await writeFile(join(f.dir, 'Attachments', 'ok.png'), 'PNGDATA');
+    await writeFile(join(f.dir, 'Attachments', 'ok.png'), Buffer.concat([PNG_SIGNATURE, Buffer.from('DATA')]));
+    await writeFile(join(f.dir, 'Attachments', 'page.jpg'), '<!DOCTYPE html><script>synthetic</script>');
     await writeFile(join(outside, 'secret.png'), 'SECRET');
     await symlink(join(outside, 'secret.png'), join(f.dir, 'Attachments', 'escape.png'));
     const chats = await f.source.chats(1);
     const [message] = (await f.source.history(chats.chats[0]!.id, 50)).messages.slice(-1);
     const list = message!.attachments;
-    expect(list.map(a => [a.kind, a.id !== null])).toEqual([['image', true], ['image', false], ['image', false], ['video', false], ['image', true], ['image', true], ['image', true]]);
+    expect(list.map(a => [a.kind, a.id !== null])).toEqual([['image', true], ['image', false], ['image', false], ['video', false], ['image', true], ['image', true], ['image', true], ['image', true]]);
     expect(JSON.stringify(list)).not.toContain(f.dir);
     const served = await f.source.attachment(list[0]!.id!);
-    expect(served).toMatchObject({ type: 'image/png', size: 7 });
-    expect(Buffer.concat(await served.stream.toArray()).toString()).toBe('PNGDATA');
-    for (const index of [4, 5, 6]) await expect(f.source.attachment(list[index]!.id!)).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE', status: 404 });
+    expect(served).toMatchObject({ type: 'image/png', size: 12 });
+    expect(Buffer.concat(await served.stream.toArray()).subarray(8).toString()).toBe('DATA');
+    for (const index of [4, 5, 6, 7]) await expect(f.source.attachment(list[index]!.id!)).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE', status: 404 });
     await expect(f.source.attachment('Z'.repeat(43))).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE', status: 404 });
     await f.replace(); await expect(f.source.chats(1)).rejects.toMatchObject({ code: 'DB_CHANGED' });
     await expect(f.source.attachment(list[0]!.id!)).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE' }); // a new epoch forgets old IDs
+  });
+  it('turns a stored link preview into a card, drops a text that is only the link, and serves its image like an attachment', async () => {
+    const f = await setup(() => [], dir => ({ link_preview: {
+      url: 'https://example.invalid/article', original_url: 'https://x.test/a', title: 'Synthetic title', summary: 'S'.repeat(700), site_name: 'Synthetic site',
+      image: { original_path: join(dir, 'Attachments', 'preview.pluginPayloadAttachment'), mime_type: 'image/png', missing: false },
+    } }));
+    await mkdir(join(f.dir, 'Attachments'), { recursive: true });
+    await writeFile(join(f.dir, 'Attachments', 'preview.pluginPayloadAttachment'), Buffer.concat([PNG_SIGNATURE, Buffer.from('DATA')]));
+    const chats = await f.source.chats(1);
+    await writeFile(f.path, 'https://x.test/a'); // same inode, and within the 16 bytes the fixture reads: the text is only the original link
+    const message = (await f.source.history(chats.chats[0]!.id, 50)).messages.at(-1)!;
+    expect(message.text).toBe('');
+    expect(message.link).toMatchObject({ url: 'https://example.invalid/article', title: 'Synthetic title', siteName: 'Synthetic site' });
+    expect(message.link!.summary).toHaveLength(600);
+    expect(JSON.stringify(message)).not.toContain(f.dir);
+    expect((await f.source.attachment(message.link!.image!.id!)).type).toBe('image/png');
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
   it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {

@@ -36,7 +36,16 @@ test('names senders only in group chats; shows images it can, and says why for t
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   await expect(page.getByText('合成送信者 Hidden')).toHaveCount(0);
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
-  await expect(page.getByText('合成送信者 Delta')).toBeVisible();
+  await expect(page.getByText('合成送信者 Delta').first()).toBeVisible();
+  const card = page.locator('a.link-card');
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute('href', 'https://example.invalid/synthetic-article');
+  await expect(card).toHaveAttribute('target', '_blank');
+  await expect(card).toHaveAttribute('rel', 'noopener noreferrer');
+  await expect(card).toContainText('合成リンクのタイトル');
+  await expect(card).toContainText('合成サイト · example.invalid');
+  await expect(page.getByText('危険なリンクの合成本文')).toBeVisible();
+  await expect(page.getByText('開いてはいけない合成リンク')).toHaveCount(0);
   const image = page.locator('.bubble img.attachment-image');
   await expect(image).toHaveCount(1);
   await expect(image).toHaveAttribute('src', `/api/attachments/${'P'.repeat(43)}`);
@@ -49,7 +58,7 @@ test('names senders only in group chats; shows images it can, and says why for t
 test('B05 mobile360/dark/keyboard and long synthetic content does not overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 }); await page.emulateMedia({ colorScheme: 'dark' });
   await login(page);
-  await page.route('**/messages?*', route => route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: '長文😀'.repeat(2000), isFromMe: false, sender: null, attachments: [], createdAt: null, trimmed: true }] } }));
+  await page.route('**/messages?*', route => route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: '長文😀'.repeat(2000), isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: true }] } }));
   const chat = page.getByRole('button', { name: /合成テスト会話 Alpha/ }); await chat.focus(); await page.keyboard.press('Enter');
   await expect(page.getByText('（省略）', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
@@ -61,7 +70,7 @@ test('B05 mobile360/dark/keyboard and long synthetic content does not overflow',
 test('B02 delayed old read cannot restore private data after logout', async ({ page }) => {
   await login(page);
   let complete!: () => Promise<void>; const gate = new Promise<void>(resolve => {
-    void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, attachments: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
+    void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
   });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await gate;
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click(); await complete();
@@ -70,7 +79,7 @@ test('B02 delayed old read cannot restore private data after logout', async ({ p
 });
 test('B05 old selected chat response cannot replace the newly selected chat', async ({ page }) => {
   await login(page); let complete!: () => Promise<void>;
-  const entered = new Promise<void>(resolve => { void page.route(`**/${'C'.repeat(43)}/messages?*`, route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_CHAT_SENTINEL', isFromMe: false, sender: null, attachments: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
+  const entered = new Promise<void>(resolve => { void page.route(`**/${'C'.repeat(43)}/messages?*`, route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_CHAT_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await entered;
   await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click();
   await expect(page.getByText('Beta の合成本文')).toBeVisible(); await complete();
@@ -90,7 +99,7 @@ test('B05 empty/error states and 1000-row request ceiling', async ({ page }) => 
 });
 test('B05 epoch change clears all resources; delayed old epoch cannot restore them', async ({ page }) => {
   await login(page); await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
-  let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, attachments: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
+  let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
   await page.getByRole('button', { name: 'メッセージを更新' }).click(); await entered;
   await page.route('**/api/chats?*', route => route.fulfill({ json: { epoch: 'epoch-b', limit: 50, chats: [] } }));
   await page.getByRole('button', { name: '会話一覧を更新' }).click(); await expect(page.getByText('メッセージデータが更新されました。会話を選び直してください。')).toBeVisible(); await complete();
