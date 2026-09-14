@@ -27,7 +27,7 @@ running on every request.
 The owner approved adding sending. Phase 1 (server) is in: a separate send
 client and service (`src/server/rpc/send-client.ts`, `src/server/send-service.ts`)
 that never reuse the read-only path, a `POST /api/send` route (owner key + CSRF
-+ its own rate limit), `send.tracked` over the AppleScript transport, and a
++ its own rate limit), plain `send` over the AppleScript transport, and a
 capability that reflects the mode. It is **off by default**; `IMSG_WEB_SEND`
 selects `dry-run` (validate + resolve target, dispatch nothing) or `live`.
 Reply-into-a-chat and send-to-a-handle are both supported; text only. All tested
@@ -40,7 +40,11 @@ only when the send capability is available, with a banner in dry-run. Failure,
 rate-limit and stale-chat messages are handled (Phase 3 essentials).
 
 The owner tried the composer on the M1 in dry-run (`--send dry-run`, release
-`06facab`) and confirmed the UI is fine — nothing was sent.
+`06facab`) and confirmed the UI is fine — nothing was sent. A first live attempt
+failed: the initial code used `send.tracked`, which imsg rejects on the
+AppleScript transport ("send.tracked requires bridge transport"). Fixed to plain
+`send`; outcomes are now classified from imsg's `disposition`/`retry_safe`
+(not-started → failed/safe-to-retry, otherwise unknown). Needs a fresh live try.
 
 Next: Phase 4 — the owner enables live on the Mac (`--send live`, Messages
 signed in + an Automation grant) and sends one message to their own number.

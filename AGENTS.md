@@ -11,8 +11,10 @@ approved.
 - Sending is its own path. It never reuses the read-only RPC client or its
   method allowlist; the read allowlist stays `status`, `chats.list`,
   `messages.history`, `watch.subscribe`, `watch.unsubscribe`. The send path is
-  `send.tracked` only, over the AppleScript transport (no IMCore injection, no
-  SIP change). It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
+  `send` only, over the AppleScript transport (no IMCore injection, no SIP
+  change). Not `send.tracked`: it requires the bridge transport. imsg's error
+  reports whether a send started, so a pre-dispatch failure stays distinct from
+  an ambiguous one. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
   and validates without dispatching. Do not enable live sending, and do not
   perform a real send, without the owner's approval each time.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived

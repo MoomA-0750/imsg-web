@@ -51,32 +51,30 @@ function LinkCard({ link }: { link: LinkView }) {
   </a>;
 }
 
-type SendResult = { state: 'sent' | 'already_sent' | 'failed' | 'unknown' | 'dry_run'; code?: string };
+type SendResult = { state: 'sent' | 'failed' | 'unknown' | 'dry_run' };
 type SendMode = 'live' | 'dry-run';
 
-function Composer({ chat, mode, send, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, attemptId: string) => Promise<SendResult>; onSent: () => void; onAuthError: () => void }) {
+function Composer({ chat, mode, send, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string) => Promise<SendResult>; onSent: () => void; onAuthError: () => void }) {
   const [text, setText] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
-  // Kept stable across an ambiguous retry so the same send is not delivered twice.
-  const attemptId = useRef<string | null>(null);
-  useEffect(() => { setText(''); setConfirming(false); setBusy(false); setNotice(null); attemptId.current = null; }, [chat.id]);
+  useEffect(() => { setText(''); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
 
   const dispatch = async () => {
     if (busy) return;
-    if (!attemptId.current) attemptId.current = crypto.randomUUID();
     setBusy(true); setNotice(null);
     try {
-      const result = await send(chat.id, text, attemptId.current);
-      if (result.state === 'sent' || result.state === 'already_sent') { setText(''); attemptId.current = null; setConfirming(false); setNotice({ kind: 'ok', text: '送信しました。' }); onSent(); }
-      else if (result.state === 'dry_run') { setText(''); attemptId.current = null; setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
-      else if (result.state === 'unknown') { setConfirming(false); setNotice({ kind: 'warn', text: '送信できたか不明です。履歴を確認し、届いていなければ「再送」してください。' }); } // keep text + attemptId
-      else { setConfirming(false); attemptId.current = null; setNotice({ kind: 'error', text: '送信に失敗しました。内容を確認してください。' }); }
+      const result = await send(chat.id, text);
+      if (result.state === 'sent') { setText(''); setConfirming(false); setNotice({ kind: 'ok', text: '送信しました。' }); onSent(); }
+      else if (result.state === 'dry_run') { setText(''); setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
+      // Not sent (imsg reported it never started): the text is kept for a safe edit-and-resend.
+      else if (result.state === 'failed') { setConfirming(false); setNotice({ kind: 'error', text: '送信できませんでした（送信されていません）。宛先や内容を確認して、もう一度お試しください。' }); }
+      // May or may not have gone out: do not silently resend.
+      else { setConfirming(false); setNotice({ kind: 'warn', text: '送信できたか不明です。メッセージアプリで届いたか確認してください。もう一度送ると二重になることがあります。' }); }
     } catch (error) {
       const status = (error as ApiError).status;
       if (status === 401) { onAuthError(); return; }
-      if (status === 409) attemptId.current = null;
       setConfirming(false);
       setNotice({ kind: 'error', text: status === 429 ? '送信数の上限に達しました。しばらく待ってください。' : status === 409 ? '会話が更新されました。開き直してください。' : status === 400 ? '送信内容を確認してください（空、長すぎる、宛先が無効 など）。' : '送信できませんでした。' });
     } finally { setBusy(false); }
@@ -87,7 +85,7 @@ function Composer({ chat, mode, send, onSent, onAuthError }: { chat: ChatView; m
     <textarea value={text} onChange={event => { setText(event.target.value); setConfirming(false); }} placeholder="メッセージを入力（送信前に確認します）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
     {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     {!confirming
-      ? <div className="composer-actions"><button type="submit" disabled={busy || text.trim() === ''}>{busy ? '送信中…' : notice?.kind === 'warn' ? '再送' : '送信'}</button></div>
+      ? <div className="composer-actions"><button type="submit" disabled={busy || text.trim() === ''}>{busy ? '送信中…' : '送信'}</button></div>
       : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
   </form>;
 }
@@ -213,10 +211,10 @@ export function App() {
     }
   }, [loseSession, run, switchEpoch]);
 
-  const sendMessage = useCallback(async (chatId: string, text: string, attemptId: string): Promise<SendResult> => {
+  const sendMessage = useCallback(async (chatId: string, text: string): Promise<SendResult> => {
     const token = session?.csrfToken;
     if (!token) { const error = new Error('no session') as ApiError; error.status = 401; throw error; }
-    return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify({ chatId, text, attemptId }) });
+    return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify({ chatId, text }) });
   }, [session]);
 
   useEffect(() => {

@@ -7,17 +7,15 @@ const FIXTURE = fileURLToPath(new URL('./fixtures/fake-send-imsg.mjs', import.me
 function client(timeoutMs = 5000) {
   return new SendClient({ executable: process.execPath, context: testContext(), args: [FIXTURE], timeoutMs });
 }
-const send = (text: string, timeoutMs?: number) => client(timeoutMs).send({ chat_guid: 'g', text, transport: 'applescript', service: 'auto', attempt_id: '00000000-0000-4000-8000-000000000000' });
+const send = (text: string, timeoutMs?: number) => client(timeoutMs).send({ chat_guid: 'g', text, transport: 'applescript', service: 'auto' });
 
-describe('SendClient (synthetic imsg on the send path)', () => {
+describe('SendClient (synthetic imsg, plain send over applescript)', () => {
   it('reports a clean acknowledgement as ok, ignoring notices', async () => {
-    expect(await send('OKSEND NOTICE')).toEqual({ ok: true, raw: { ok: true, transport: 'applescript', attempt_id: '00000000-0000-4000-8000-000000000000' } });
+    expect(await send('OKSEND NOTICE')).toEqual({ ok: true, raw: { ok: true, transport: 'applescript' } });
   });
-  it('reports a definite RPC error as a non-ambiguous failure with its code and message', async () => {
-    expect(await send('ERR')).toEqual({ ok: false, ambiguous: false, code: -32000, message: 'synthetic send failure' });
-  });
-  it('surfaces a reused attempt_id error so the caller can treat it as already sent', async () => {
-    expect(await send('DUP')).toMatchObject({ ok: false, ambiguous: false, code: -32602 });
+  it('passes through the error code, message and data so the service can classify it', async () => {
+    expect(await send('NOTSTARTED')).toEqual({ ok: false, ambiguous: false, code: -32603, message: 'Delivery failed before dispatch', data: { transport: 'applescript', retry_safe: true, disposition: 'not_started', operation: 'send' } });
+    expect(await send('BADPARAM')).toMatchObject({ ok: false, ambiguous: false, code: -32602, data: 'bad recipient' });
   });
   it('treats a timeout as ambiguous, never as a clean failure', async () => {
     expect(await send('HANG', 200)).toEqual({ ok: false, ambiguous: true });

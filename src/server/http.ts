@@ -114,19 +114,18 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     // A send-specific ceiling on top of the general per-session rate: a mutation deserves a tighter bound.
     const sendWindows = new Map<string, { window: number; count: number }>();
     const SEND_PER_MIN = 10;
-    app.post('/api/send', { schema: { body: { type: 'object', additionalProperties: false, required: ['text', 'attemptId'], properties: {
+    app.post('/api/send', { schema: { body: { type: 'object', additionalProperties: false, required: ['text'], properties: {
       chatId: { type: 'string', minLength: 43, maxLength: 43 },
       to: { type: 'string', minLength: 1, maxLength: 256 },
       text: { type: 'string', minLength: 1, maxLength: 16384 },
-      attemptId: { type: 'string', minLength: 36, maxLength: 36 },
     } } } }, async request => {
       const session = authenticated.get(request)!;
       const now = Date.now();
       const window = sendWindows.get(session.hash);
       if (!window || now - window.window >= 60_000) sendWindows.set(session.hash, { window: now, count: 1 });
       else if (++window.count > SEND_PER_MIN) throw new WebError('RATE_LIMITED', 429);
-      const body = request.body as { chatId?: string; to?: string; text: string; attemptId: string };
-      return sender.send({ ...(body.chatId !== undefined ? { chatId: body.chatId } : {}), ...(body.to !== undefined ? { to: body.to } : {}), text: body.text, attemptId: body.attemptId });
+      const body = request.body as { chatId?: string; to?: string; text: string };
+      return sender.send({ ...(body.chatId !== undefined ? { chatId: body.chatId } : {}), ...(body.to !== undefined ? { to: body.to } : {}), text: body.text });
     });
   }
   if (options.webDir) {

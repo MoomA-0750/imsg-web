@@ -58,8 +58,8 @@ test('names senders only in group chats; shows images it can, and says why for t
   await expect(page.getByText('動画（この画面では表示できません）')).toBeVisible();
   await expect(page.getByText('本文のないメッセージ')).toHaveCount(0);
 });
-test('composes and sends only after an explicit confirm, and keeps an ambiguous send for a safe retry', async ({ page }) => {
-  const sends: unknown[] = [];
+test('composes and sends only after an explicit confirm, and is honest about each outcome', async ({ page }) => {
+  const sends: { chatId: string; text: string }[] = [];
   await page.route('**/api/send', async route => { sends.push(route.request().postDataJSON()); await route.continue(); });
   await login(page);
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
@@ -76,23 +76,20 @@ test('composes and sends only after an explicit confirm, and keeps an ambiguous 
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('送信しました。')).toBeVisible();
-  expect(sends).toHaveLength(1);
-  expect(sends[0]).toMatchObject({ chatId: 'C'.repeat(43), text: '合成の送信メッセージ' });
-  const attempt = (sends[0] as { attemptId: string }).attemptId;
-  expect(attempt).toMatch(/^[0-9a-f-]{36}$/);
+  expect(sends).toEqual([{ chatId: 'C'.repeat(43), text: '合成の送信メッセージ' }]); // no recipient handle or attempt id in the request
   await expect(box).toHaveValue('');
-  // An ambiguous result keeps the text and the same attempt_id, so a retry cannot double-send.
+  // An ambiguous result keeps the text and warns, without silently resending.
   await box.fill('UNKNOWN な送信');
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('送信できたか不明です。', { exact: false })).toBeVisible();
   await expect(box).toHaveValue('UNKNOWN な送信');
-  await page.getByRole('button', { name: '再送', exact: true }).click();
+  // A failure imsg marks as not-started keeps the text and says nothing was sent.
+  await box.fill('FAIL な送信');
+  await page.getByRole('button', { name: '送信', exact: true }).click();
   await page.getByRole('button', { name: '送信する', exact: true }).click();
-  await expect(page.getByText('送信できたか不明です。', { exact: false })).toBeVisible();
-  const retries = sends.slice(1) as { attemptId: string }[];
-  expect(retries).toHaveLength(2);
-  expect(retries[0]!.attemptId).toBe(retries[1]!.attemptId); // same attempt id on the retry
+  await expect(page.getByText('送信されていません', { exact: false })).toBeVisible();
+  await expect(box).toHaveValue('FAIL な送信');
 });
 test('B05 mobile360/dark/keyboard and long synthetic content does not overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 }); await page.emulateMedia({ colorScheme: 'dark' });

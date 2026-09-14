@@ -8,16 +8,20 @@ import { isObject } from './errors.js';
  * child on timeout and fails the request — safe when nothing changed. A send
  * whose response never arrives *may already have gone out*, so its own lifecycle
  * is here, deliberately separate, and it reports that ambiguity instead of
- * pretending the send failed. `send.tracked` carries a caller UUID so an
- * explicit retry cannot double-send.
+ * pretending the send failed.
+ *
+ * Plain `send` over the AppleScript transport (no IMCore injection, no SIP
+ * change). `send.tracked` is not used: it requires the bridge transport. imsg's
+ * error carries `disposition`/`retry_safe`, so a pre-dispatch failure is still
+ * distinguishable from an ambiguous one — the service reads that.
  */
-export const SEND_METHOD = 'send.tracked';
+export const SEND_METHOD = 'send';
 
 export type SendReply =
   | { ok: true; raw: Record<string, unknown> }
-  /** The RPC rejected it before any message went out (invalid params, unknown recipient, duplicate attempt_id). */
-  | { ok: false; ambiguous: false; code: number; message: string }
-  /** No authoritative response: it may or may not have been delivered. Never auto-retry without the same attempt_id. */
+  /** The RPC returned an error. `data` is imsg's error payload (may name `disposition`/`retry_safe`). */
+  | { ok: false; ambiguous: false; code: number; message: string; data: unknown }
+  /** No authoritative response: it may or may not have been delivered. */
   | { ok: false; ambiguous: true };
 
 export type SendClientOptions = {
@@ -68,7 +72,7 @@ export class SendClient {
           try { record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line)); } catch { finish({ ok: false, ambiguous: true }); return; }
           if (!isObject(record) || record.jsonrpc !== '2.0' || record.id !== '1') continue; // notices and stray ids are not our reply
           if (isObject(record.error) && Number.isSafeInteger(record.error.code)) {
-            finish({ ok: false, ambiguous: false, code: record.error.code as number, message: typeof record.error.message === 'string' ? record.error.message : '' });
+            finish({ ok: false, ambiguous: false, code: record.error.code as number, message: typeof record.error.message === 'string' ? record.error.message : '', data: record.error.data });
           } else if (isObject(record.result)) {
             finish({ ok: true, raw: record.result });
           } else {

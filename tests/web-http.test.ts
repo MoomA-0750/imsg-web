@@ -321,7 +321,6 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
 
 
 describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
-  const UUID = '11111111-2222-4333-8444-555555555555';
   async function sendFixture(mode: 'off' | 'dry-run' | 'live') {
     let now = 1_000_000;
     const auth = new Auth(hashKey(KEY), () => now);
@@ -357,32 +356,32 @@ describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
   it('does not expose the send route when sending is off', async () => {
     const { post, login } = await sendFixture('off');
     const { cookie, csrf } = await login();
-    const response = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID });
+    const response = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'hi' });
     expect(response.statusCode).toBe(404);
   });
 
   it('requires this session CSRF token and a valid session', async () => {
     const { post, send, login } = await sendFixture('dry-run');
     const { cookie, csrf } = await login();
-    expect((await post({ cookie }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID })).statusCode).toBe(403);
-    expect((await post({ 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID })).statusCode).toBe(401);
+    expect((await post({ cookie }, { chatId: 'C'.repeat(43), text: 'hi' })).statusCode).toBe(403);
+    expect((await post({ 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'hi' })).statusCode).toBe(401);
     expect(send).not.toHaveBeenCalled();
   });
 
   it('dispatches a validated dry-run send and returns only the state', async () => {
     const { post, send, login } = await sendFixture('dry-run');
     const { cookie, csrf } = await login();
-    const response = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'Synthetic outgoing', attemptId: UUID });
+    const response = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'Synthetic outgoing' });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ state: 'dry_run' });
-    expect(send).toHaveBeenCalledWith({ chatId: 'C'.repeat(43), text: 'Synthetic outgoing', attemptId: UUID });
+    expect(send).toHaveBeenCalledWith({ chatId: 'C'.repeat(43), text: 'Synthetic outgoing' });
     expect(response.body).not.toContain('Synthetic outgoing');
   });
 
   it('rejects malformed bodies before dispatch', async () => {
     const { post, send, login } = await sendFixture('dry-run');
     const { cookie, csrf } = await login();
-    for (const payload of [{ text: 'hi' }, { chatId: 'C'.repeat(43), text: 'hi' }, { chatId: 'short', text: 'hi', attemptId: UUID }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID, extra: 1 }, { chatId: 'C'.repeat(43), attemptId: UUID }]) {
+    for (const payload of [{}, { text: '' }, { chatId: 'short', text: 'hi' }, { chatId: 'C'.repeat(43), text: 'hi', extra: 1 }, { to: 'x'.repeat(300), text: 'hi' }]) {
       expect((await post({ cookie, 'x-csrf-token': csrf }, payload)).statusCode).toBe(400);
     }
     expect(send).not.toHaveBeenCalled();
@@ -391,8 +390,8 @@ describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
   it('limits sends per minute per session', async () => {
     const { post, login } = await sendFixture('live');
     const { cookie, csrf } = await login();
-    for (let i = 0; i < 10; i++) expect((await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: `m${i}`, attemptId: UUID })).statusCode).toBe(200);
-    const eleventh = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'm10', attemptId: UUID });
+    for (let i = 0; i < 10; i++) expect((await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: `m${i}` })).statusCode).toBe(200);
+    const eleventh = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'm10' });
     expect(eleventh.statusCode).toBe(429);
   });
 });
