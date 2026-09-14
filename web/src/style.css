@@ -96,3 +96,15 @@ time { flex:0 0 auto; color:var(--muted); font-size:.72rem; }
   .notice { background:#463a14; color:#ffe39a; border-color:#6c5922; }
   .error-bar { background:#3c2020; }
 }
+
+/* Send composer (send-messages branch) */
+.composer { flex:0 0 auto; display:flex; flex-direction:column; gap:.5rem; padding:.7rem 1rem; border-top:1px solid var(--line); background:var(--surface); }
+.composer textarea { width:100%; resize:vertical; min-height:2.6rem; border:1px solid #a9b8ae; border-radius:10px; padding:.6rem .7rem; font:inherit; background:var(--surface); color:inherit; }
+.composer-banner { margin:0; color:var(--muted); font-size:.8rem; }
+.composer-notice { margin:0; font-size:.85rem; }
+.composer-notice.ok { color:var(--green-strong); }
+.composer-notice.warn { color:#8a6d1f; }
+.composer-notice.error { color:var(--danger); }
+.composer-actions { display:flex; justify-content:flex-end; }
+.composer-confirm { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; }
+.composer-confirm span { flex:1 1 auto; min-width:0; color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }

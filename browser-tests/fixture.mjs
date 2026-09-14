@@ -37,6 +37,14 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
   },
   async close() {},
+}, sender: {
+  // Synthetic in-process sender: never touches imsg or Messages. Outcome chosen by markers in the text.
+  mode: 'live',
+  async send({ text }) {
+    if (String(text).includes('UNKNOWN')) return { state: 'unknown' };
+    if (String(text).includes('FAIL')) return { state: 'failed', code: 'synthetic' };
+    return { state: 'sent' };
+  },
 } });
 await app.ready();
 const server = createServer({ key: await readFile(join(directory, 'key.pem')), cert: await readFile(join(directory, 'cert.pem')) }, (request, response) => app.routing(request, response));

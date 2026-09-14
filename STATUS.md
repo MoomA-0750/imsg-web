@@ -31,8 +31,15 @@ that never reuse the read-only path, a `POST /api/send` route (owner key + CSRF
 capability that reflects the mode. It is **off by default**; `IMSG_WEB_SEND`
 selects `dry-run` (validate + resolve target, dispatch nothing) or `live`.
 Reply-into-a-chat and send-to-a-handle are both supported; text only. All tested
-with synthetic fixtures — nothing real is sent. Next: Phase 2 UI (compose +
-confirm), Phase 3 failure UX, Phase 4 owner enables live on the Mac (Messages
+with synthetic fixtures — nothing real is sent.
+
+Phase 2 (UI) is in: a composer under the open conversation that requires an
+explicit confirm before sending, shows the outcome, and on an ambiguous result
+keeps the text and the same attempt_id so a retry cannot double-send. It appears
+only when the send capability is available, with a banner in dry-run. Failure,
+rate-limit and stale-chat messages are handled (Phase 3 essentials).
+
+Next: Phase 4 — the owner enables live on the Mac (`IMSG_WEB_SEND=live`, Messages
 signed in + an Automation grant) and sends one message to their own number.
 
 ## Next

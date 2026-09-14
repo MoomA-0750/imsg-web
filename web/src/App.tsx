@@ -51,6 +51,47 @@ function LinkCard({ link }: { link: LinkView }) {
   </a>;
 }
 
+type SendResult = { state: 'sent' | 'already_sent' | 'failed' | 'unknown' | 'dry_run'; code?: string };
+type SendMode = 'live' | 'dry-run';
+
+function Composer({ chat, mode, send, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, attemptId: string) => Promise<SendResult>; onSent: () => void; onAuthError: () => void }) {
+  const [text, setText] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
+  // Kept stable across an ambiguous retry so the same send is not delivered twice.
+  const attemptId = useRef<string | null>(null);
+  useEffect(() => { setText(''); setConfirming(false); setBusy(false); setNotice(null); attemptId.current = null; }, [chat.id]);
+
+  const dispatch = async () => {
+    if (busy) return;
+    if (!attemptId.current) attemptId.current = crypto.randomUUID();
+    setBusy(true); setNotice(null);
+    try {
+      const result = await send(chat.id, text, attemptId.current);
+      if (result.state === 'sent' || result.state === 'already_sent') { setText(''); attemptId.current = null; setConfirming(false); setNotice({ kind: 'ok', text: '送信しました。' }); onSent(); }
+      else if (result.state === 'dry_run') { setText(''); attemptId.current = null; setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
+      else if (result.state === 'unknown') { setConfirming(false); setNotice({ kind: 'warn', text: '送信できたか不明です。履歴を確認し、届いていなければ「再送」してください。' }); } // keep text + attemptId
+      else { setConfirming(false); attemptId.current = null; setNotice({ kind: 'error', text: '送信に失敗しました。内容を確認してください。' }); }
+    } catch (error) {
+      const status = (error as ApiError).status;
+      if (status === 401) { onAuthError(); return; }
+      if (status === 409) attemptId.current = null;
+      setConfirming(false);
+      setNotice({ kind: 'error', text: status === 429 ? '送信数の上限に達しました。しばらく待ってください。' : status === 409 ? '会話が更新されました。開き直してください。' : status === 400 ? '送信内容を確認してください（空、長すぎる、宛先が無効 など）。' : '送信できませんでした。' });
+    } finally { setBusy(false); }
+  };
+
+  return <form className="composer" onSubmit={event => { event.preventDefault(); if (text.trim() && !confirming) { setNotice(null); setConfirming(true); } }}>
+    {mode === 'dry-run' && <p className="composer-banner" role="status">テスト送信モードです。実際には送信されません。</p>}
+    <textarea value={text} onChange={event => { setText(event.target.value); setConfirming(false); }} placeholder="メッセージを入力（送信前に確認します）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
+    {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
+    {!confirming
+      ? <div className="composer-actions"><button type="submit" disabled={busy || text.trim() === ''}>{busy ? '送信中…' : notice?.kind === 'warn' ? '再送' : '送信'}</button></div>
+      : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
+  </form>;
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [checking, setChecking] = useState(true);
@@ -172,6 +213,12 @@ export function App() {
     }
   }, [loseSession, run, switchEpoch]);
 
+  const sendMessage = useCallback(async (chatId: string, text: string, attemptId: string): Promise<SendResult> => {
+    const token = session?.csrfToken;
+    if (!token) { const error = new Error('no session') as ApiError; error.status = 401; throw error; }
+    return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify({ chatId, text, attemptId }) });
+  }, [session]);
+
   useEffect(() => {
     const controller = new AbortController();
     api<Session>('/api/session', { signal: controller.signal }).then(value => setSession(value)).catch(error => {
@@ -253,13 +300,15 @@ export function App() {
 
   const featureValues = capability ? Object.values(capability.features) : [];
   const availableCount = featureValues.filter(value => value.state === 'available').length;
+  const sendFeature = capability?.features.send;
+  const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className={`app ${selected ? 'show-detail' : ''}`}>
     <header><div><strong>imsg Web</strong><span className="mode">閲覧専用・15秒更新</span></div><div className="header-actions"><span className="capability" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span><button className="secondary compact" onClick={() => void logout()}>ログアウト</button></div></header>
     {featureValues.some(feature => feature.reasonCode === 'STATUS_PROBE_DISABLED') && <p role="status">既読・入力中の機能状態は未確認です。安全に確認する機能はまだ実装されていません。</p>}
     {epochNotice && <div className="notice" role="status">{epochNotice}</div>}
     <div className="panes">
       <aside className="chat-pane" aria-label="会話一覧"><div className="pane-heading"><div><h1>会話</h1><p>{chats.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadChats()} disabled={chatsBusy} aria-label="会話一覧を更新">↻</button></div>{chatError && <ErrorBar text={chatError} retry={loadChats} />}{chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list">{chats.map(chat => <li key={chat.id}><button className={selected?.id === chat.id ? 'chat active' : 'chat'} onClick={() => choose(chat)}><span className="chat-top"><strong>{chat.name || '名前のない会話'}{chat.trimmed && <span className="trim">（省略）</span>}</strong><time>{dateLabel(chat.lastMessageAt)}</time></span><span className="chat-meta">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span></button></li>)}</ul>}<LoadMore value={chatLimit} busy={chatsBusy} onMore={() => setChatLimit(value => Math.min(MAX, value + PAGE))} /></aside>
-      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} /></>}</main>
+      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} />{sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} onSent={() => void loadHistory()} onAuthError={loseSession} />}</>}</main>
     </div>
   </div>;
 }
