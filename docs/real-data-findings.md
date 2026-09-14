@@ -44,6 +44,37 @@ repository when the project was simplified on 2026-09-14.
   LaunchAgent: messages load, contact names show in the list and for group
   senders, attachments show as a count, and it does not feel slow.
 
+## Attachments and profile pictures (2026-09-14)
+
+Surveyed on the M1 with aggregate counts only, to decide what showing images
+would take.
+
+- **Most attachments are not on the Mac.** Of the 300 newest attachment rows,
+  243 had no file (Messages keeps them in iCloud until opened). In a 28-chat,
+  881-message sample, 83 of 112 were marked `missing`. Only files already on
+  the Mac can be shown; downloading would mean driving Messages.app, which is
+  out of bounds.
+- **Types:** JPEG and PNG dominate, then HEIC (about a sixth of images) and a
+  little JPEG XL. Chrome and Firefox cannot decode HEIC or JPEG XL; Safari can.
+- **Link previews arrive as attachments**: an untyped
+  `.pluginPayloadAttachment`. They are skipped; the link is in the text.
+- `messages.history` with `attachments: true` returned the fields the app needs
+  (`original_path`, `mime_type`, `missing`, `is_sticker`); history stayed about
+  30 ms per 50 messages. `convert_attachments` stays off, so imsg never runs a
+  converter or writes a cache.
+- **Profile pictures are rare and not exposed by imsg.** The address book held
+  about 300 contacts and 13 thumbnails. imsg does not return them, so showing
+  them would need another imsg patch or a second address-book reader in the
+  app. Group photos (6 chats) are likewise not exposed.
+
+How images are served (branch `attachment-images`): history registers an
+opaque per-epoch ID only for a present image of an allowed type (JPEG, PNG,
+GIF, WebP, HEIC/HEIF, JPEG XL; never SVG). `/api/attachments/:id` needs a
+session, resolves symlinks and serves the file only if it lies inside
+`Messages/Attachments`, is a regular file of at most 32 MiB, with that fixed
+type, `no-store`, `nosniff` and a `sandbox` CSP. Paths and file names never
+reach the browser. Anything else is shown as a line of text saying why.
+
 ## Known and not yet resolved
 
 - **Intel with a stale bridge lock.** The iMac also runs the owner's separate
