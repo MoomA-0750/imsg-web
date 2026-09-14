@@ -29,8 +29,9 @@ running on every request.
 2. Then the iMac, the same way (`docs/operations.md`), watching for the stale
    bridge lock issue noted in the findings.
 
-Optional, on branch `attachment-images` (not merged, not deployed): shows
-images that are on the Mac. Findings and the serving rules are in
+Optional, on branch `attachment-images` (not merged; M1 trial pending): shows
+images that are on the Mac, and link cards (needs `imsg-patches/link-preview`).
+Findings and the serving rules are in
 `docs/real-data-findings.md`. Profile pictures were looked at and not built.
 
 ## Leftovers on the Macs

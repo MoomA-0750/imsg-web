@@ -5,9 +5,10 @@ the [`imsg`](https://github.com/openclaw/imsg) CLI. Each Mac runs its own
 instance, reached over Tailscale and protected by an owner key.
 
 Implemented: owner login, sessions and key rotation; conversation list and
-history with 15-second refresh; images from attachments that are on the Mac; a
-responsive UI. Not implemented: sending, read-state changes, typing, search,
-video and other attachment types, profile pictures.
+history with 15-second refresh; images from attachments that are on the Mac;
+link cards from the preview Messages stored; a responsive UI. Not implemented:
+sending, read-state changes, typing, search, video and other attachment types,
+profile pictures.
 
 ## Development
 

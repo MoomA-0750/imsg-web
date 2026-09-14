@@ -57,7 +57,8 @@ would take.
 - **Types:** JPEG and PNG dominate, then HEIC (about a sixth of images) and a
   little JPEG XL. Chrome and Firefox cannot decode HEIC or JPEG XL; Safari can.
 - **Link previews arrive as attachments**: an untyped
-  `.pluginPayloadAttachment`. They are skipped; the link is in the text.
+  `.pluginPayloadAttachment`. They are not listed as attachments; the link card
+  below uses them.
 - `messages.history` with `attachments: true` returned the fields the app needs
   (`original_path`, `mime_type`, `missing`, `is_sticker`); history stayed about
   30 ms per 50 messages. `convert_attachments` stays off, so imsg never runs a
@@ -67,11 +68,24 @@ would take.
   them would need another imsg patch or a second address-book reader in the
   app. Group photos (6 chats) are likewise not exposed.
 
+**Link previews.** The sender's device fetches the page and Messages stores the
+result with the message, so nothing has to be fetched again (and fetching from
+the Mac would tell the site, and the sender, when a link was viewed). About 60
+of 66 recent link messages carried title, site and URL in `payload_data`; the
+preview image is one of that message's attachments, usually not on the Mac. imsg
+does not return any of it, hence `imsg-patches/link-preview`. With the patch, in
+a 28-chat sample all 19 link messages decoded (title 19, summary 18, site name
+14); 5 preview images were on the Mac, all real images, three of them JPEG
+recorded as PNG. One preview attachment elsewhere turned out to be an HTML page,
+so files are checked by their first bytes and served with the type found there.
+The card opens the link in a new tab with no referrer; only absolute http(s)
+URLs become links.
+
 How images are served (branch `attachment-images`): history registers an
 opaque per-epoch ID only for a present image of an allowed type (JPEG, PNG,
 GIF, WebP, HEIC/HEIF, JPEG XL; never SVG). `/api/attachments/:id` needs a
 session, resolves symlinks and serves the file only if it lies inside
-`Messages/Attachments`, is a regular file of at most 32 MiB, with that fixed
+`Messages/Attachments`, is a regular file of at most 32 MiB whose first bytes are an allowed image, with that detected
 type, `no-store`, `nosniff` and a `sandbox` CSP. Paths and file names never
 reach the browser. Anything else is shown as a line of text saying why.
 
