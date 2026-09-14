@@ -53,7 +53,11 @@ would take.
   243 had no file (Messages keeps them in iCloud until opened). In a 28-chat,
   881-message sample, 83 of 112 were marked `missing`. Only files already on
   the Mac can be shown; downloading would mean driving Messages.app, which is
-  out of bounds.
+  out of bounds. Of the 740 newest image attachments, the 706 with
+  `transfer_state` 0 were all absent and 33 of the 34 with state 5 were present:
+  the files were never downloaded to this Mac, not deleted from it. Recent
+  images are no exception (21 of 34 from the last 30 days absent). The owner
+  opened such images in Messages.app and they did not always appear.
 - **Types:** JPEG and PNG dominate, then HEIC (about a sixth of images) and a
   little JPEG XL. Chrome and Firefox cannot decode HEIC or JPEG XL; Safari can.
 - **Link previews arrive as attachments**: an untyped
