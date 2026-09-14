@@ -3,7 +3,9 @@ import { RpcError, isObject } from './rpc/errors.js';
 import { parseStatus, type Status } from './capabilities.js';
 
 type Chat = { id: number; name: string; guid: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null };
-type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; createdAt: string | null };
+export type Attachment = { path: string; type: string; missing: boolean; sticker: boolean };
+type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; createdAt: string | null };
+const MAX_ATTACHMENTS = 32;
 const text = (v: unknown) => typeof v === 'string' ? v : '';
 const date = (v: unknown) => typeof v === 'string' && v.length < 50 && Number.isFinite(Date.parse(v)) ? v : null;
 const positive = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) > 0;
@@ -37,12 +39,17 @@ export class ReadonlyAdapter {
   async history(chatId: number, limit = 50): Promise<Message[]> {
     limitValid(limit);
     if (!positive(chatId)) throw new RpcError('PARAMS_INVALID');
-    const raw = await this.client.request('messages.history', { chat_id: chatId, limit, attachments: false });
+    // Attachment metadata only. convert_attachments stays off, so imsg never runs a converter or writes a cache.
+    const raw = await this.client.request('messages.history', { chat_id: chatId, limit, attachments: true, convert_attachments: false });
     if (!isObject(raw) || !Array.isArray(raw.messages) || raw.messages.length > limit) throw new RpcError('RPC_PROTOCOL_INVALID');
     return raw.messages.map(item => {
       if (!isObject(item) || !positive(item.id) || item.chat_id !== chatId || typeof item.guid !== 'string' || typeof item.text !== 'string' || typeof item.is_from_me !== 'boolean') throw new RpcError('RPC_PROTOCOL_INVALID');
+      // A link preview is stored as an untyped plugin payload; the link itself is already in the text.
+      const attachments = Array.isArray(item.attachments) ? item.attachments.filter(isObject).filter(a => !text(a.filename).endsWith('.pluginPayloadAttachment')).slice(0, MAX_ATTACHMENTS).map(a => ({
+        path: text(a.original_path), type: text(a.mime_type).toLowerCase(), missing: a.missing !== false, sticker: a.is_sticker === true,
+      })) : [];
       return { id: item.id, chatId, text: item.text, guid: item.guid, isFromMe: item.is_from_me,
-        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, createdAt: date(item.created_at) };
+        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, attachments, createdAt: date(item.created_at) };
     });
   }
   async subscribe(): Promise<number> {

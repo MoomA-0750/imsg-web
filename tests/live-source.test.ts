@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, open, rename, writeFile, rm, unlink, type FileHandle } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, rename, symlink, writeFile, rm, unlink, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LiveSource, STATUS_TTL_MS, clip } from '../src/server/live-source.js';
@@ -11,7 +11,7 @@ vi.mock('node:child_process', () => ({ spawn: forbiddenSpawn }));
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function setup() {
+async function setup(attachments: (dir: string) => unknown[] = () => []) {
   const dir = await mkdtemp(join(tmpdir(), 'iw-source-')), path = join(dir, 'chat.db');
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path, 'old');
@@ -35,7 +35,7 @@ async function setup() {
       if (method === 'chats.list') return { chats: Array.from({ length: Number(params.limit) }, (_, i) => ({ id: offset + i + 1, guid: `chat-${offset + i}`, name: '', identifier: 'Synthetic conversation', service: 'iMessage' })) };
       if (method === 'messages.history') {
         const buffer = Buffer.alloc(16); const { bytesRead } = await (await handle).read(buffer, 0, 16, 0);
-        return { messages: [{ id: 2, chat_id: params.chat_id, guid: 'm-2', text: buffer.subarray(0, bytesRead).toString(), is_from_me: false }, { id: 1, chat_id: params.chat_id, guid: 'm-1', text: 'earlier', is_from_me: true }] };
+        return { messages: [{ id: 2, chat_id: params.chat_id, guid: 'm-2', text: buffer.subarray(0, bytesRead).toString(), is_from_me: false, attachments: attachments(dir) }, { id: 1, chat_id: params.chat_id, guid: 'm-1', text: 'earlier', is_from_me: true }] };
       }
       throw new Error('unexpected method');
     } };
@@ -43,7 +43,7 @@ async function setup() {
   const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory });
   cleanups.push(async () => { failClose = false; hold?.resolve(); await source.close().catch(() => {}); for (const h of handles) await h.close().catch(() => {}); });
   const replace = async () => { await writeFile(join(dir, 'replacement'), 'new'); await rename(join(dir, 'replacement'), path); };
-  return { source, calls, path, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
+  return { source, calls, dir, path, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
 }
 describe('B04 DB generation and reader lifetime', () => {
   it('bootstraps only path then opens a reader after stat, keeps raw IDs private, reverses history, keeps unknown fields null', async () => {
@@ -97,12 +97,41 @@ describe('B04 DB generation and reader lifetime', () => {
     const count = f.created; const a = f.source.close(); expect(f.source.close()).toBe(a); await a;
     await expect(f.source.chats(50)).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' }); expect(f.created).toBe(count);
   });
-  it('turns attachment markers into a count and keeps the surrounding text', async () => {
+  it('drops attachment markers from the text and still lists an attachment imsg did not describe', async () => {
     const f = await setup(); const chats = await f.source.chats(1);
     await writeFile(f.path, ' look \uFFFC\uFFFC'); // same inode, so the reader sees new bytes without a DB change
     const [latest, earlier] = (await f.source.history(chats.chats[0]!.id, 50)).messages.reverse();
-    expect(latest).toMatchObject({ text: 'look', attachments: 2, sender: null });
-    expect(earlier).toMatchObject({ text: 'earlier', attachments: 0 });
+    expect(latest).toMatchObject({ text: 'look', attachments: [{ id: null, kind: 'file', sticker: false }, { id: null, kind: 'file', sticker: false }], sender: null });
+    expect(earlier).toMatchObject({ text: 'earlier', attachments: [] });
+  });
+  it('gives an ID only to a present image of an allowed type, and serves it only from inside Attachments', async () => {
+    const outside = await mkdtemp(join(tmpdir(), 'iw-outside-'));
+    cleanups.push(() => rm(outside, { recursive: true, force: true }));
+    const f = await setup(dir => [
+      { original_path: join(dir, 'Attachments', 'ok.png'), mime_type: 'image/png', missing: false },
+      { original_path: join(dir, 'Attachments', 'gone.jpg'), mime_type: 'image/jpeg', missing: true },
+      { original_path: join(dir, 'Attachments', 'vector.svg'), mime_type: 'image/svg+xml', missing: false },
+      { original_path: join(dir, 'Attachments', 'clip.mov'), mime_type: 'video/quicktime', missing: false },
+      { original_path: join(dir, 'Attachments', 'escape.png'), mime_type: 'image/png', missing: false },
+      { original_path: join(outside, 'secret.png'), mime_type: 'image/png', missing: false },
+      { original_path: join(dir, 'Attachments', 'dir.png'), mime_type: 'image/png', missing: false },
+    ]);
+    await mkdir(join(f.dir, 'Attachments', 'dir.png'), { recursive: true });
+    await writeFile(join(f.dir, 'Attachments', 'ok.png'), 'PNGDATA');
+    await writeFile(join(outside, 'secret.png'), 'SECRET');
+    await symlink(join(outside, 'secret.png'), join(f.dir, 'Attachments', 'escape.png'));
+    const chats = await f.source.chats(1);
+    const [message] = (await f.source.history(chats.chats[0]!.id, 50)).messages.slice(-1);
+    const list = message!.attachments;
+    expect(list.map(a => [a.kind, a.id !== null])).toEqual([['image', true], ['image', false], ['image', false], ['video', false], ['image', true], ['image', true], ['image', true]]);
+    expect(JSON.stringify(list)).not.toContain(f.dir);
+    const served = await f.source.attachment(list[0]!.id!);
+    expect(served).toMatchObject({ type: 'image/png', size: 7 });
+    expect(Buffer.concat(await served.stream.toArray()).toString()).toBe('PNGDATA');
+    for (const index of [4, 5, 6]) await expect(f.source.attachment(list[index]!.id!)).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE', status: 404 });
+    await expect(f.source.attachment('Z'.repeat(43))).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE', status: 404 });
+    await f.replace(); await expect(f.source.chats(1)).rejects.toMatchObject({ code: 'DB_CHANGED' });
+    await expect(f.source.attachment(list[0]!.id!)).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE' }); // a new epoch forgets old IDs
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
   it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {

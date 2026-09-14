@@ -1,7 +1,8 @@
 import { createHmac, randomBytes } from 'node:crypto';
-import { stat } from 'node:fs/promises';
-import { isAbsolute } from 'node:path';
-import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot } from '../shared/web-types.js';
+import { realpath, stat } from 'node:fs/promises';
+import { dirname, isAbsolute, join } from 'node:path';
+import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView } from '../shared/web-types.js';
+import { IMAGE_TYPES, openAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
 import { ReadonlyAdapter } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
 import type { ChildContext } from './child-env.js';
@@ -27,6 +28,8 @@ export const RPC_ARGS = ['rpc', '--contacts-from-address-book'] as const;
  */
 export const STATUS_TTL_MS = 60_000;
 const OBJECT_REPLACEMENT = '\uFFFC';
+/** Servable images remembered per epoch; the oldest are forgotten first. */
+export const MAX_REMEMBERED_ATTACHMENTS = 4000;
 export type SourceOptions = {
   executable: string;
   /** The exact environment and cwd for every imsg child this source starts. */
@@ -48,8 +51,10 @@ export function clip(text: string, length: number) {
   return { value, trimmed: cut };
 }
 
-export class LiveSource implements ReadSource {
+export class LiveSource implements ReadSource, AttachmentSource {
   #client: Client | undefined;
+  #files = new Map<string, { path: string; type: string }>();
+  #attachmentRoot: Promise<string> | undefined;
   #adapter: ReadonlyAdapter | undefined;
   #identity: string | undefined;
   #status: { raw: unknown; parsed: Awaited<ReturnType<ReadonlyAdapter['status']>>['parsed']; at: number } | undefined;
@@ -63,7 +68,7 @@ export class LiveSource implements ReadSource {
   #closing: Promise<void> | undefined;
   constructor(private readonly options: SourceOptions) {}
   #id(kind: string, value: string): string { return createHmac('sha256', this.#key).update(`${this.#epoch}:${kind}:${value}`).digest('base64url'); }
-  #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); }
+  #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); this.#files.clear(); }
   async #retire() {
     this.#rotateEpoch(); this.#identity = undefined; this.#status = undefined;
     if (this.#client) {
@@ -164,14 +169,36 @@ export class LiveSource implements ReadSource {
       const rows = await c.adapter.history(target.row, limit);
       await this.#verify(c.path, c.identity, c.epoch);
       return { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
-        // Messages marks each attachment in the text with U+FFFC. Attachments are
-        // not requested, so the marker becomes a count instead of a bare glyph.
-        const attachments = row.text.split(OBJECT_REPLACEMENT).length - 1;
+        // Messages marks each attachment in the text with U+FFFC. The marker is
+        // dropped from the text; attachments are listed separately.
+        const attachments: AttachmentView[] = row.attachments.map((a, i) => {
+          const kind = a.type.startsWith('image/') ? 'image' : a.type.startsWith('video/') ? 'video' : 'file';
+          if (kind !== 'image' || a.missing || !IMAGE_TYPES.has(a.type) || !isAbsolute(a.path)) return { id: null, kind, sticker: a.sticker };
+          const id = this.#id('attachment', `${row.guid}:${i}`);
+          this.#files.delete(id); this.#files.set(id, { path: a.path, type: a.type });
+          if (this.#files.size > MAX_REMEMBERED_ATTACHMENTS) this.#files.delete(this.#files.keys().next().value!);
+          return { id, kind, sticker: a.sticker };
+        });
+        const markers = Math.min(row.text.split(OBJECT_REPLACEMENT).length - 1, 32);
+        while (attachments.length < markers) attachments.push({ id: null, kind: 'file', sticker: false });
         const text = clip(row.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), 16384);
         const sender = row.sender === null ? null : clip(row.sender, 256).value;
         return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
     });
+  }
+  /**
+   * Serves an image that a history response in this epoch listed. It does not
+   * go through the imsg reader queue: the file is read by this process, and the
+   * path was already checked to be inside the Messages attachments folder.
+   */
+  async attachment(id: string): Promise<AttachmentFile> {
+    this.#ensureActive();
+    const file = this.#files.get(id);
+    if (!file) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+    this.#attachmentRoot ??= realpath(join(dirname(this.options.expectedDatabasePath), 'Attachments'));
+    const root = await this.#attachmentRoot.catch(() => { this.#attachmentRoot = undefined; throw new WebError('ATTACHMENT_UNAVAILABLE', 404); });
+    return openAttachment(root, file.path, file.type);
   }
   capabilities(): Promise<CapabilitySnapshot> {
     return this.#queue('capabilities', async () => {

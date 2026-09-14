@@ -92,7 +92,7 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
     expect(requests.filter(row => !ALLOWED.includes(row.method!))).toEqual([]);
     expect(requests.filter(row => FORBIDDEN.includes(row.method!))).toEqual([]);
     for (const row of requests) {
-      const params = row.method === 'status' ? {} : row.method === 'chats.list' ? { limit: 50 } : row.method === 'messages.history' ? { chat_id: 1, limit: 50, attachments: false } : row.method === 'watch.subscribe' ? { attachments: false } : { subscription: 1 };
+      const params = row.method === 'status' ? {} : row.method === 'chats.list' ? { limit: 50 } : row.method === 'messages.history' ? { chat_id: 1, limit: 50, attachments: true, convert_attachments: false } : row.method === 'watch.subscribe' ? { attachments: false } : { subscription: 1 };
       expect(row.params).toEqual(params);
     }
   });

@@ -3,7 +3,10 @@ import { request as httpRequest } from 'node:http';
 import type { FastifyInstance } from 'fastify';
 import { Auth, hashKey } from '../src/server/auth.js';
 import { checkedOrigin, createApp } from '../src/server/http.js';
+import { Readable } from 'node:stream';
 import type { ChatSnapshot, HistorySnapshot, ReadSource } from '../src/shared/web-types.js';
+import type { AttachmentSource } from '../src/server/attachments.js';
+import { WebError } from '../src/server/web-error.js';
 
 const ORIGIN = 'https://imsg.synthetic.test';
 const HOST = 'imsg.synthetic.test';
@@ -11,7 +14,9 @@ const KEY = 'A'.repeat(43);
 const ID = 'C'.repeat(43);
 const BODY = 'SYNTHETIC_PRIVATE_BODY';
 const CHAT: ChatSnapshot = { epoch: 'epoch-a', limit: 50, chats: [{ id: ID, name: 'Synthetic conversation', service: 'iMessage', isGroup: false, unreadCount: null, lastMessageAt: null, trimmed: false }] };
-const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id: 'D'.repeat(43), text: BODY, isFromMe: false, sender: null, attachments: 0, createdAt: null, trimmed: false }] };
+const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id: 'D'.repeat(43), text: BODY, isFromMe: false, sender: null, attachments: [], createdAt: null, trimmed: false }] };
+const IMAGE_ID = 'I'.repeat(43);
+const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 
@@ -23,6 +28,10 @@ async function fixture() {
     history: vi.fn<ReadSource['history']>(async (_id, limit) => ({ ...HISTORY, limit })),
     capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' } } })),
     close: vi.fn<ReadSource['close']>(async () => {}),
+    attachment: vi.fn<AttachmentSource['attachment']>(async id => {
+      if (id !== IMAGE_ID) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+      return { type: 'image/png', size: PNG.length, stream: Readable.from([PNG]) };
+    }),
   };
   const app = await createApp({ origin: ORIGIN, auth, source });
   apps.push(app);
@@ -203,17 +212,38 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
     expect(response.json()).toEqual({ code: 'READ_UNAVAILABLE' });
   });
 
-  it('provides no send, read-receipt, generic RPC, attachment, or private-file endpoints', async () => {
+  it('provides no send, read-receipt, generic RPC, attachment-upload, or private-file endpoints', async () => {
     const { app, login, source } = await fixture();
     const { cookie, csrf } = await login();
-    for (const url of ['/api/send', '/api/read', '/api/rpc']) {
+    for (const url of ['/api/send', '/api/read', '/api/rpc', `/api/attachments/${IMAGE_ID}`]) {
       const response = await app.inject({ method: 'POST', url, headers: { host: HOST, cookie, origin: ORIGIN, 'x-csrf-token': csrf }, payload: {} });
       expect(response.statusCode).toBe(404);
       expect(response.json()).toEqual({ code: 'NOT_FOUND' });
     }
-    for (const url of ['/api/attachments/1', '/owner.json', '/src/server/auth.ts', '/.env']) expect((await app.inject({ url, headers: { host: HOST, cookie } })).statusCode).toBe(404);
+    for (const url of ['/api/attachments/1', '/api/attachments/..%2Fchat.db', '/owner.json', '/src/server/auth.ts', '/.env']) expect((await app.inject({ url, headers: { host: HOST, cookie } })).statusCode).toBe(404);
     expect(source.chats).not.toHaveBeenCalled();
     expect(source.history).not.toHaveBeenCalled();
+    expect(source.attachment).not.toHaveBeenCalled();
+  });
+
+  it('serves a listed image only to a session, with a fixed type and a response that cannot run anything', async () => {
+    const { app, login, source, advance } = await fixture();
+    expect((await app.inject({ url: `/api/attachments/${IMAGE_ID}`, headers: { host: HOST } })).statusCode).toBe(401);
+    expect(source.attachment).not.toHaveBeenCalled();
+    const { cookie } = await login();
+    const response = await app.inject({ url: `/api/attachments/${IMAGE_ID}`, headers: { host: HOST, cookie } });
+    expect(response.statusCode).toBe(200);
+    expect(response.rawPayload.equals(PNG)).toBe(true);
+    expect(response.headers).toMatchObject({ 'content-type': 'image/png', 'content-length': String(PNG.length), 'content-disposition': 'inline', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; sandbox" });
+    const unknown = await app.inject({ url: `/api/attachments/${'J'.repeat(43)}`, headers: { host: HOST, cookie } });
+    expect(unknown.statusCode).toBe(404); expect(unknown.json()).toEqual({ code: 'ATTACHMENT_UNAVAILABLE' });
+    // A session that expires while the file is being opened gets no bytes, and the open file is released.
+    const stream = Readable.from([PNG]);
+    source.attachment.mockImplementationOnce(async () => { advance(8 * 86400 * 1000); return { type: 'image/png', size: PNG.length, stream }; });
+    const expired = await app.inject({ url: `/api/attachments/${IMAGE_ID}`, headers: { host: HOST, cookie } });
+    expect(expired.statusCode).toBe(401); expect(expired.json()).toEqual({ code: 'UNAUTHORIZED' });
+    expect(expired.headers['content-security-policy']).toContain("default-src 'self'");
+    expect(stream.destroyed).toBe(true);
   });
 
   it('enforces global 32 in-flight requests and releases slots after responses', async () => {

@@ -33,7 +33,7 @@ describe('readonly adapter contracts (synthetic)', () => {
     const { adapter, request } = setup();
     request.mockResolvedValue({ messages: [{ id: 2, chat_id: 999, guid: 'synthetic', text: 'Synthetic', is_from_me: false }] });
     await expect(adapter.history(42, 1)).rejects.toMatchObject({ code: 'RPC_PROTOCOL_INVALID' });
-    expect(request).toHaveBeenCalledExactlyOnceWith('messages.history', { chat_id: 42, limit: 1, attachments: false });
+    expect(request).toHaveBeenCalledExactlyOnceWith('messages.history', { chat_id: 42, limit: 1, attachments: true, convert_attachments: false });
   });
   it('prefers a chat title, then the resolved contact name, then the raw handle', async () => {
     const { adapter, request } = setup();
@@ -53,6 +53,24 @@ describe('readonly adapter contracts (synthetic)', () => {
       { id: 1, chat_id: 7, guid: 'm1', text: 'c', is_from_me: true, sender: '+15550000009', sender_name: 'Owner' },
     ] });
     expect((await adapter.history(7, 3)).map(message => message.sender)).toEqual(['Synthetic Person', 'synthetic@example.invalid', null]);
+  });
+  it('keeps only the attachment fields it needs, skips link previews, treats unknown presence as missing, and bounds the list', async () => {
+    const { adapter, request } = setup();
+    request.mockResolvedValue({ messages: [
+      { id: 2, chat_id: 7, guid: 'm2', text: '', is_from_me: false, attachments: [
+        { original_path: '/synthetic/Attachments/a.HEIC', mime_type: 'Image/HEIC', missing: false, is_sticker: false, transfer_name: 'dropped.heic', total_bytes: 1 },
+        { original_path: '/synthetic/Attachments/b.png', mime_type: 'image/png', is_sticker: true },
+        'not an object',
+        { filename: '~/Library/Messages/Attachments/x/y/Synthetic.pluginPayloadAttachment', original_path: '/synthetic/Attachments/link', mime_type: '', missing: false },
+      ] },
+      { id: 1, chat_id: 7, guid: 'm1', text: 'x', is_from_me: true, attachments: Array.from({ length: 40 }, () => ({ original_path: '/p', mime_type: 'image/png', missing: false })) },
+    ] });
+    const [first, second] = await adapter.history(7, 2);
+    expect(first!.attachments).toEqual([
+      { path: '/synthetic/Attachments/a.HEIC', type: 'image/heic', missing: false, sticker: false },
+      { path: '/synthetic/Attachments/b.png', type: 'image/png', missing: true, sticker: true },
+    ]);
+    expect(second!.attachments).toHaveLength(32);
   });
   it('allows only one pending or active subscription', async () => {
     const { adapter, request } = setup();

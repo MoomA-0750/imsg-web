@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createApp } from '../dist/server/http.js';
 import { Auth, hashKey } from '../dist/server/auth.js';
+import { WebError } from '../dist/server/web-error.js';
+import { Readable } from 'node:stream';
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
 const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(hashKey('A'.repeat(43))), webDir: new URL('../dist/web', import.meta.url).pathname, source: {
@@ -15,12 +18,21 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false },
   ] }; },
   async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('G') ? [
-    { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: 2, createdAt: null, trimmed: false },
+    { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [
+      { id: 'P'.repeat(43), kind: 'image', sticker: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false },
+      { id: null, kind: 'image', sticker: false }, { id: null, kind: 'video', sticker: false },
+    ], createdAt: null, trimmed: false },
   ] : [
-    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: 0, createdAt: null, trimmed: false },
-    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, attachments: 0, createdAt: '2026-09-08T00:01:00Z', trimmed: false },
+    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: [], createdAt: null, trimmed: false },
+    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, attachments: [], createdAt: '2026-09-08T00:01:00Z', trimmed: false },
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
+  async attachment(id) {
+    // P is a real 1×1 PNG; Q claims to be HEIC but is not decodable, like HEIC in a browser without support.
+    const body = id === 'P'.repeat(43) ? PNG : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
+    if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+    return { type: id.startsWith('P') ? 'image/png' : 'image/heic', size: body.length, stream: Readable.from([body]) };
+  },
   async close() {},
 } });
 await app.ready();

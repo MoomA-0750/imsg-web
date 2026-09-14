@@ -3,6 +3,7 @@ import { OwnerStore } from './owner-store.js';
 import { startAdmin } from './admin.js';
 import { createApp } from './http.js';
 import type { ReadSource } from '../shared/web-types.js';
+import type { AttachmentSource } from './attachments.js';
 import { WebError } from './web-error.js';
 
 async function bounded(work: Promise<unknown>, ms = 5000) {
@@ -10,7 +11,7 @@ async function bounded(work: Promise<unknown>, ms = 5000) {
   try { await Promise.race([work, new Promise((_, reject) => { timer = setTimeout(() => reject(new WebError('SHUTDOWN_INCOMPLETE')), ms); })]); }
   finally { clearTimeout(timer); }
 }
-export async function startRuntime(options: { store: OwnerStore; source: ReadSource; origin: string; port: number; webDir?: string }) {
+export async function startRuntime(options: { store: OwnerStore; source: ReadSource & AttachmentSource; origin: string; port: number; webDir?: string }) {
   // Disabled placeholder; startAdmin loads the real hash under exclusive lock.
   const auth = new Auth('0'.repeat(64)); auth.block();
   const admin = await startAdmin(options.store, auth);

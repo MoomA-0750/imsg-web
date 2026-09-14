@@ -2,17 +2,20 @@ import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { Auth, equal, tokenValid, type Session } from './auth.js';
 import { WebError } from './web-error.js';
 import type { ReadSource } from '../shared/web-types.js';
+import type { AttachmentSource } from './attachments.js';
 
 const COOKIE = '__Host-imsg_session';
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
 export function checkedOrigin(value: string): URL {
   const u = new URL(value);
   if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
   return u;
 }
-export async function createApp(options: { origin: string; auth: Auth; source: ReadSource; webDir?: string }) {
+export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; webDir?: string }) {
   const origin = checkedOrigin(options.origin);
   const app = Fastify({ logger: false, bodyLimit: 2048, requestTimeout: 15_000, connectionTimeout: 15_000, keepAliveTimeout: 5000, return503OnClosing: true, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   await app.register(cookie);
@@ -22,7 +25,7 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
   app.addHook('onRequest', (request, reply, done) => {
     for (const [name, value] of Object.entries({
       'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
-      'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'",
+      'content-security-policy': CSP,
     })) reply.header(name, value);
     if (active >= 32) { reply.code(429).send({ code: 'BUSY' }); return; }
     active++;
@@ -52,6 +55,8 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
   app.addHook('onSend', (request, reply, payload, done) => {
     const session = authenticated.get(request);
     if (session && reply.statusCode < 300 && !(request.method === 'DELETE' && request.url === '/api/session') && !options.auth.valid(session)) {
+      if (payload instanceof Readable) payload.destroy(); // an attachment stream holds an open file
+      reply.removeHeader('content-length').removeHeader('content-disposition').header('content-security-policy', CSP);
       reply.code(401).type('application/json'); done(null, JSON.stringify({ code: 'UNAUTHORIZED' })); return;
     }
     if ((typeof payload === 'string' || Buffer.isBuffer(payload)) && Buffer.byteLength(payload) > 4 * 1024 * 1024) {
@@ -89,6 +94,14 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     const id = (request.params as { id: string }).id;
     if (!tokenValid(id)) throw new WebError('STALE_CHAT', 409);
     return options.source.history(id, limit((request.query as Record<string, unknown>).limit));
+  });
+  app.get('/api/attachments/:id', { exposeHeadRoute: false }, async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    if (!tokenValid(id)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+    const file = await options.source.attachment(id);
+    // The type comes from a fixed image allowlist. The response may not run anything even if opened directly.
+    return reply.type(file.type).header('content-length', file.size).header('content-disposition', 'inline')
+      .header('content-security-policy', "default-src 'none'; sandbox").send(file.stream);
   });
   if (options.webDir) {
     // Enumerate generated assets, never map arbitrary URL paths to the filesystem.
