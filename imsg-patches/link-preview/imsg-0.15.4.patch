@@ -1,0 +1,232 @@
+--- /dev/null
++++ b/Sources/IMsgCore/MessageStore+LinkPreview.swift
+@@ -0,0 +1,108 @@
++import Foundation
++import SQLite
++
++/// The link preview Messages stored with a URL balloon: title, summary, site
++/// name and which of the balloon's attachments is the preview image. It is
++/// decoded from `message.payload_data` only; nothing is fetched from the network.
++public struct LinkPreview: Sendable, Equatable {
++  /// ROWID of the balloon message that owns the preview and its attachments.
++  public let balloonRowID: Int64
++  public let url: String?
++  public let originalURL: String?
++  public let title: String?
++  public let summary: String?
++  public let siteName: String?
++  public let imageAttachmentIndex: Int?
++  public let imageMIMEType: String?
++}
++
++enum LinkPreviewDecoder {
++  static let maxPayloadBytes = 512 * 1024
++
++  /// Walks the keyed archive by hand along the few known keys. Nothing is
++  /// unarchived into objects, and no generic resolver is used: a dictionary
++  /// whose description merely mentions a UID must not be taken for one.
++  static func decode(_ data: Data, balloonRowID: Int64) -> LinkPreview? {
++    guard !data.isEmpty, data.count <= maxPayloadBytes,
++      let archive = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)
++        as? [String: Any],
++      let objects = archive["$objects"] as? [Any],
++      let top = archive["$top"] as? [String: Any]
++    else { return nil }
++    func object(_ reference: Any?) -> Any? {
++      guard let reference, let index = uid(reference), index > 0, index < objects.count else {
++        return nil
++      }
++      return objects[index]
++    }
++    func string(_ reference: Any?) -> String? {
++      guard let value = object(reference) as? String else { return nil }
++      let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
++      return trimmed.isEmpty ? nil : trimmed
++    }
++    func url(_ reference: Any?) -> String? {
++      guard let dict = object(reference) as? [String: Any] else { return nil }
++      guard let relative = string(dict["NS.relative"]) else { return nil }
++      if let base = string(dict["NS.base"]), let baseURL = URL(string: base) {
++        return URL(string: relative, relativeTo: baseURL)?.absoluteString
++      }
++      return relative
++    }
++    guard let root = object(top["root"]) as? [String: Any],
++      let metadata = object(root["richLinkMetadata"]) as? [String: Any]
++    else { return nil }
++    let image = object(metadata["image"]) as? [String: Any]
++    let preview = LinkPreview(
++      balloonRowID: balloonRowID,
++      url: url(metadata["URL"]),
++      originalURL: url(metadata["originalURL"]),
++      title: string(metadata["title"]),
++      summary: string(metadata["summary"]),
++      siteName: string(metadata["siteName"]),
++      imageAttachmentIndex: (image?["richLinkImageAttachmentSubstituteIndex"] as? NSNumber)?.intValue,
++      imageMIMEType: string(image?["MIMEType"])
++    )
++    guard preview.url != nil || preview.originalURL != nil || preview.title != nil else { return nil }
++    return preview
++  }
++
++  /// The index a CFKeyedArchiverUID points at. Foundation exposes no Swift type
++  /// for it, so it is recognised by its own description and nothing else.
++  private static func uid(_ value: Any) -> Int? {
++    if value is String || value is [Any] || value is [String: Any] || value is NSNumber
++      || value is Data || value is Date
++    {
++      return nil
++    }
++    let description = String(describing: value)
++    guard description.hasPrefix("<CFKeyedArchiverUID"),
++      let marker = description.range(of: "{value = "),
++      let end = description[marker.upperBound...].firstIndex(of: "}")
++    else { return nil }
++    return Int(description[marker.upperBound..<end])
++  }
++}
++
++extension MessageStore {
++  /// The stored link preview for a message that is a URL balloon or was
++  /// coalesced with one, or nil.
++  public func linkPreview(for message: Message) throws -> LinkPreview? {
++    guard schema.hasPayloadDataColumn, schema.hasBalloonBundleIDColumn else { return nil }
++    let rowID: Int64
++    if let preview = message.urlPreview {
++      rowID = preview.rowID
++    } else if message.balloonBundleID == MessageStore.urlPreviewBalloonBundleID {
++      rowID = message.rowID
++    } else {
++      return nil
++    }
++    return try withConnection { db in
++      let rows = try db.prepareRowIterator(
++        "SELECT payload_data FROM message WHERE ROWID = ? AND balloon_bundle_id = ?",
++        bindings: [rowID, MessageStore.urlPreviewBalloonBundleID]
++      )
++      guard let row = try rows.failableNext() else { return nil }
++      return LinkPreviewDecoder.decode(try dataValue(row, "payload_data"), balloonRowID: rowID)
++    }
++  }
++}
+--- a/Sources/imsg/RPCServer+Handlers.swift
++++ b/Sources/imsg/RPCServer+Handlers.swift
+@@ -576,7 +576,7 @@
+       reactionSenderNames[reaction.rowID] = name
+     }
+   }
+-  return try messagePayload(
++  var payload = try messagePayload(
+     message: message,
+     chatInfo: chatInfo,
+     participants: participants,
+@@ -585,4 +585,37 @@
+     senderName: senderName,
+     reactionSenderNames: reactionSenderNames
+   )
++  if let preview = try linkPreviewPayload(
++    store: store, message: message, includeAttachments: includeAttachments)
++  {
++    payload["link_preview"] = preview
++  }
++  return payload
++}
++
++/// Local patch (link-preview): the preview Messages stored with a link. The
++/// image is described only when attachments were requested, like any attachment.
++func linkPreviewPayload(
++  store: MessageStore,
++  message: Message,
++  includeAttachments: Bool
++) throws -> [String: Any]? {
++  guard let preview = try store.linkPreview(for: message) else { return nil }
++  var payload: [String: Any] = [:]
++  payload["url"] = preview.url
++  payload["original_url"] = preview.originalURL
++  payload["title"] = preview.title
++  payload["summary"] = preview.summary
++  payload["site_name"] = preview.siteName
++  if includeAttachments, let index = preview.imageAttachmentIndex, index >= 0 {
++    let metas = try store.attachments(for: preview.balloonRowID)
++    if index < metas.count {
++      var image = attachmentPayload(metas[index])
++      if metas[index].mimeType.isEmpty, let mimeType = preview.imageMIMEType {
++        image["mime_type"] = mimeType
++      }
++      payload["image"] = image
++    }
++  }
++  return payload
+ }
+--- /dev/null
++++ b/Tests/IMsgCoreTests/LinkPreviewDecoderTests.swift
+@@ -0,0 +1,69 @@
++import Foundation
++import Testing
++
++@testable import IMsgCore
++
++/// Stand-ins with the same archived shape as Messages' RichLink and LPLinkMetadata:
++/// plain keyed objects, not NSDictionary, so the decoder walks the same structure.
++@objc(IMsgTestSyntheticRichLink)
++private final class SyntheticRichLink: NSObject, NSCoding {
++  let metadata: SyntheticLinkMetadata
++  init(metadata: SyntheticLinkMetadata) { self.metadata = metadata }
++  required init?(coder: NSCoder) { nil }
++  func encode(with coder: NSCoder) {
++    coder.encode(false, forKey: "richLinkIsPlaceholder")
++    coder.encode(metadata, forKey: "richLinkMetadata")
++  }
++}
++
++@objc(IMsgTestSyntheticImageSubstitute)
++private final class SyntheticImageSubstitute: NSObject, NSCoding {
++  required init?(coder: NSCoder) { nil }
++  override init() {}
++  func encode(with coder: NSCoder) {
++    coder.encode(1, forKey: "richLinkImageAttachmentSubstituteIndex")
++    coder.encode("image/jpeg", forKey: "MIMEType")
++  }
++}
++
++@objc(IMsgTestSyntheticLinkMetadata)
++private final class SyntheticLinkMetadata: NSObject, NSCoding {
++  required init?(coder: NSCoder) { nil }
++  override init() {}
++  func encode(with coder: NSCoder) {
++    coder.encode(NSURL(string: "https://example.invalid/article"), forKey: "URL")
++    coder.encode(NSURL(string: "https://example.invalid/a"), forKey: "originalURL")
++    coder.encode("  Synthetic title ", forKey: "title")
++    coder.encode("Synthetic summary", forKey: "summary")
++    coder.encode("", forKey: "siteName")
++    coder.encode(SyntheticImageSubstitute(), forKey: "image")
++  }
++}
++
++@Test
++func decodesStoredLinkPreviewFields() throws {
++  let data = try NSKeyedArchiver.archivedData(
++    withRootObject: SyntheticRichLink(metadata: SyntheticLinkMetadata()),
++    requiringSecureCoding: false
++  )
++  let preview = try #require(LinkPreviewDecoder.decode(data, balloonRowID: 7))
++  #expect(preview.balloonRowID == 7)
++  #expect(preview.url == "https://example.invalid/article")
++  #expect(preview.originalURL == "https://example.invalid/a")
++  #expect(preview.title == "Synthetic title")
++  #expect(preview.summary == "Synthetic summary")
++  #expect(preview.siteName == nil)
++  #expect(preview.imageAttachmentIndex == 1)
++  #expect(preview.imageMIMEType == "image/jpeg")
++}
++
++@Test
++func ignoresPayloadsWithoutLinkMetadata() throws {
++  let other = try NSKeyedArchiver.archivedData(
++    withRootObject: ["somethingElse": "x"], requiringSecureCoding: false)
++  #expect(LinkPreviewDecoder.decode(other, balloonRowID: 1) == nil)
++  #expect(LinkPreviewDecoder.decode(Data("not a plist".utf8), balloonRowID: 1) == nil)
++  #expect(LinkPreviewDecoder.decode(Data(), balloonRowID: 1) == nil)
++  let oversized = Data(count: LinkPreviewDecoder.maxPayloadBytes + 1)
++  #expect(LinkPreviewDecoder.decode(oversized, balloonRowID: 1) == nil)
++}

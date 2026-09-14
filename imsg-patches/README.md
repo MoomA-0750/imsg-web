@@ -1,13 +1,28 @@
 # Patched imsg for imsg-web
 
-The app runs a self-built `imsg` 0.15.4 with two local patches. A stock `imsg`
+The app runs a self-built `imsg` 0.15.4 with three local patches. A stock `imsg`
 will not start under the app, because the app passes a flag only the patched
-build knows.
+build knows. Without the link-preview patch the app still works; links simply
+show no card.
 
 | patch | apply to | what it does |
 |---|---|---|
 | `contact-batch/imsg-0.15.1.patch` | upstream `e2f5046` (v0.15.4); applies cleanly although it was written against 0.15.1 | resolves contact names per request in batches instead of one lookup per row; about 3× faster on the warm UI cycle, identical output on real data |
 | `contact-source/imsg-0.15.4.patch` | the tree above | adds `imsg rpc --contacts-from-address-book` |
+| `link-preview/imsg-0.15.4.patch` | the tree above | adds `link_preview` (`url`, `original_url`, `title`, `summary`, `site_name`, and with `attachments: true` an `image` attachment) to message payloads |
+
+## Why the link-preview patch exists
+
+When a link is sent, the sender's device fetches the page and Messages stores
+the result with the message (`payload_data`, a keyed archive of `RichLink` →
+`LPLinkMetadata`); the preview image is one of that message's attachments.
+Upstream returns only the balloon's row ID. The patch walks the archive along
+the few known keys, without unarchiving objects and without any network access.
+
+It does not use imsg's generic `KeyedArchiveResolver`: that treats any
+dictionary whose description mentions a UID as a UID, so link metadata never
+resolves through it. (Polls are unaffected upstream because they try
+`NSKeyedUnarchiver` first.)
 
 ## Why the contact-source patch exists
 
@@ -26,7 +41,9 @@ git checkout e2f5046
 git apply --check <repo>/imsg-patches/contact-batch/imsg-0.15.1.patch
 git apply <repo>/imsg-patches/contact-batch/imsg-0.15.1.patch
 git apply <repo>/imsg-patches/contact-source/imsg-0.15.4.patch
+git apply <repo>/imsg-patches/link-preview/imsg-0.15.4.patch
 swift build -c release --product imsg --force-resolved-versions
+swift test --filter LinkPreview   # optional
 ```
 
 Use the real directory, `.build/out/Products/Release/`; `.build/release` is a
