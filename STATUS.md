@@ -44,12 +44,15 @@ The owner tried the composer on the M1 in dry-run (`--send dry-run`, release
 failed: the initial code used `send.tracked`, which imsg rejects on the
 AppleScript transport ("send.tracked requires bridge transport"). Fixed to plain
 `send`; outcomes are now classified from imsg's `disposition`/`retry_safe`
-(not-started → failed/safe-to-retry, otherwise unknown). Needs a fresh live try.
+(not-started → failed/safe-to-retry, otherwise unknown).
 
-Next: Phase 4 — the owner enables live on the Mac (`--send live`, Messages
-signed in + an Automation grant) and sends one message to their own number.
+2026-09-15: a real message sent successfully from the web UI on the M1 (release
+`6ea8900`, `--send live`). Sending now works end to end (reply into a chat, text
+only, over AppleScript). Live sending is currently enabled on the M1.
+
 Note: `send-messages` is off `main` and does not include the notifications
-commit that had been running (`6427ffc`); the two branches still need reconciling.
+commit (`6427ffc`, branch `attachment-images`); the branches still need
+reconciling — decide what merges to `main` (send, notifications, or both).
 
 ## Next
 
