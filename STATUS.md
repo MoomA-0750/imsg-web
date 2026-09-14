@@ -2,13 +2,13 @@
 
 ## Where things are
 
-The read-only web UI is implemented and tested on synthetic data. On the M1 Mac,
-the patched `imsg` 0.15.4 was run against real data: it modified nothing,
-contact names resolved (including under a LaunchAgent), output matched the stock
-build, and it was about 3× faster. See `docs/real-data-findings.md`.
+**M1 trial running** since 2026-09-14: the web UI on the M1 Mac under a
+LaunchAgent, behind Tailscale Serve, with the patched `imsg` 0.15.4 and real
+data. The owner confirmed messages load, contact names show (list and group
+senders), attachments show as a count, and speed feels fine. Three bugs found on
+the way are fixed; see `docs/real-data-findings.md`.
 
-Production is **stopped**. It has never been run with real data through the web
-UI.
+The iMac (Intel) has not been set up.
 
 ## Simplified on 2026-09-14
 
@@ -24,17 +24,17 @@ running on every request.
 
 ## Next
 
-1. Build the patched `imsg` on the iMac (Intel) or reuse the build already made
-   there, and set up a release directory (`docs/operations.md`).
-2. Owner grants Full Disk Access to the dedicated Node, places the LaunchAgent
-   plist, sets the owner key, and approves the Serve route.
-3. Owner uses the UI for a few days. Watch for: names showing, speed, memory,
-   and the stale bridge lock issue noted in the findings.
+1. Owner keeps using the M1 trial for a few days. Watch memory, log size and
+   anything that looks wrong.
+2. Then the iMac, the same way (`docs/operations.md`), watching for the stale
+   bridge lock issue noted in the findings.
 
 ## Leftovers on the Macs
 
 Temporary build and measurement directories remain on both Macs, and one test
-LaunchAgent plist (already unloaded) remains on the M1. Nothing was deleted;
+LaunchAgent plist (already unloaded) remains on the M1. On the M1, older
+releases and the previous trial plist (kept as a rollback copy) sit beside the
+running release. Nothing was deleted;
 removing them is the owner's call. Specifics are in the owner's private notes,
 not here.
 

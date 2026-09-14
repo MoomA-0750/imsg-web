@@ -35,6 +35,14 @@ repository when the project was simplified on 2026-09-14.
   refresh. With `PhoneNumberKit_PhoneNumberKit.bundle` and
   `SQLite.swift_SQLite.bundle` next to it: status 491 ms cold, chats 42 ms,
   history 51 ms. Build notes in `imsg-patches/README.md` now say so.
+- **Names were resolved but not shown.** imsg returns them in `contact_name`
+  (chats) and `sender_name` (messages); the adapter read neither, so the list
+  showed phone numbers and email addresses. Fixed, along with group senders.
+- **Photos showed as a stray glyph**, the U+FFFC marker Messages leaves in the
+  text. Now shown as an attachment count.
+- After those fixes the owner confirmed through the web UI under the
+  LaunchAgent: messages load, contact names show in the list and for group
+  senders, attachments show as a count, and it does not feel slow.
 
 ## Known and not yet resolved
 
