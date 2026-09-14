@@ -17,8 +17,11 @@ function within(base, value) {
   if (!part || part === '..' || part.startsWith('../') || isAbsolute(part)) fail();
 }
 export function validateConfig(c) {
-  if (!c || Object.keys(c).sort().join(',') !== 'base,imsg,label,node,origin,output,port,release,stateName') fail();
+  const keys = Object.keys(c ?? {}).filter(key => key !== 'cwebp').sort().join(',');
+  if (!c || keys !== 'base,imsg,label,node,origin,output,port,release,stateName') fail();
   absolute(c.base); absolute(c.output); absolute(c.imsg);
+  // Optional WebP encoder for converted HEIC. Like Node, a pinned download under runtime/.
+  if (c.cwebp !== undefined) within(join(c.base, 'runtime'), c.cwebp);
   within(join(c.base, 'runtime'), c.node); within(join(c.base, 'releases'), c.release);
   // Production runs a build of ours, so the executable lives under the base
   // this project owns rather than in a package-manager prefix that is
@@ -35,7 +38,7 @@ export function validateConfig(c) {
 export function renderLaunchAgent(input) {
   const c = validateConfig(input);
   const str = value => `<string>${xml(value)}</string>`;
-  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port) };
+  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port), ...(c.cwebp ? { IMSG_WEB_CWEBP_PATH: c.cwebp } : {}) };
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -72,7 +75,7 @@ export async function writeLaunchAgent(c, uid = process.getuid?.()) {
     if (!s.isDirectory() || s.uid !== uid) fail();
   }
   if (((await lstat(join(c.base, c.stateName))).mode & 0o777) !== 0o700 || ((await lstat(join(c.base, 'logs'))).mode & 0o777) !== 0o700) fail();
-  for (const path of [c.node, join(c.release, 'dist/main.js'), join(c.release, 'dist/web/index.html'), join(c.base, c.stateName, 'owner.json')]) {
+  for (const path of [c.node, ...(c.cwebp ? [c.cwebp] : []), join(c.release, 'dist/main.js'), join(c.release, 'dist/web/index.html'), join(c.base, c.stateName, 'owner.json')]) {
     await safeTree(path, uid);
     if (!(await lstat(path)).isFile()) fail();
   }
@@ -87,6 +90,7 @@ export async function writeLaunchAgent(c, uid = process.getuid?.()) {
   // a group-writable directory in the resolved path.
   await safeTree(imsg, uid); await safeTree(dirname(c.imsg), uid);
   await access(imsg, constants.X_OK); await access(c.node, constants.X_OK);
+  if (c.cwebp) await access(c.cwebp, constants.X_OK);
   for (const suffix of ['out', 'err']) {
     try {
       const s = await lstat(join(c.base, 'logs', `${c.label}.${suffix}.log`));
@@ -113,10 +117,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     if (process.platform !== 'darwin' || !['arm64', 'x64'].includes(process.arch) || process.versions.node !== '24.20.0') fail();
     const args = process.argv.slice(2), values = {};
-    if (args.length !== 16) fail();
+    if (args.length !== 16 && args.length !== 18) fail();
     for (let i = 0; i < args.length; i += 2) {
       const key = args[i];
-      if (!['--base', '--release', '--imsg', '--origin', '--port', '--label', '--stateName', '--output'].includes(key) || key.slice(2) in values) fail();
+      if (!['--base', '--release', '--imsg', '--origin', '--port', '--label', '--stateName', '--output', '--cwebp'].includes(key) || key.slice(2) in values) fail();
       values[key.slice(2)] = args[i + 1];
     }
     if (!/^[1-9][0-9]{3,4}$/.test(values.port)) fail();

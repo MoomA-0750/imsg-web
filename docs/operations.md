@@ -24,6 +24,8 @@ Browser -> Tailscale Serve HTTPS :443 -> http://127.0.0.1:8787 -> imsg rpc (read
 ```
 ~/Library/Application Support/imsg-web/   (0700)
   runtime/node-v24.20.0-<arch>/           official Node, checksum verified
+  runtime/libwebp-1.6.0-mac-<arch>/       official libwebp, signature verified
+                                          (optional: WebP for converted HEIC)
   releases/<commit>/                      dist, package files, node_modules,
                                           imsg + its two .bundle directories
   state/                                  owner hash (0600), lock
@@ -48,8 +50,11 @@ Generate the plist; it never installs or starts anything:
 ```sh
 <node> scripts/generate-launch-agent.mjs --base <base> --release <release> \
   --imsg <release>/imsg --origin https://<host-fqdn> --port 8787 \
-  --label local.imsg-web.readonly --stateName state --output <new-plist>
+  --label local.imsg-web.readonly --stateName state --output <new-plist> \
+  --cwebp <base>/runtime/libwebp-1.6.0-mac-<arch>/bin/cwebp   # optional
 ```
+
+Without `--cwebp`, HEIC is converted to JPEG with the system `sips` only.
 
 The owner places it at `~/Library/LaunchAgents/local.imsg-web.readonly.plist`
 and loads it with `launchctl bootstrap gui/$(id -u) <plist>`. It starts at login

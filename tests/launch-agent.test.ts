@@ -17,6 +17,14 @@ describe('C01 LaunchAgent generator', () => {
     expect(xml.match(/<key>IMSG_WEB_/g)).toHaveLength(4);
   });
   it.each([{ port: 0 }, { port: 65536 }, { port: 8787.1 }, { origin: 'http://host' }, { origin: 'https://host/' }, { origin: 'https://a:b@host' }, { origin: 'https://host?q=1' }, { label: '../escape' }, { stateName: '..' }, { node: '/usr/local/bin/node' }, { release: '/outside' }, { release: config.release + '/../abc' }, { imsg: 'imsg' }, { imsg: '/opt/homebrew/bin/imsg' }, { imsg: '/usr/local/bin/imsg' }, { output: 'relative' }, { base: '/Users/' + 'a'.repeat(100) }, { secret: 'bad' }])('rejects invalid configuration %j', change => { expect(() => validateConfig({ ...config, ...change })).toThrow(); });
+  it('passes an optional cwebp only from under runtime/', () => {
+    expect(renderLaunchAgent(config)).not.toContain('IMSG_WEB_CWEBP_PATH');
+    const cwebp = '/Users/test/Library/imsg-web/runtime/libwebp-1.6.0-mac-arm64/bin/cwebp';
+    const xml = renderLaunchAgent({ ...config, cwebp });
+    expect(xml).toContain(`<key>IMSG_WEB_CWEBP_PATH</key><string>${cwebp}</string>`);
+    expect(xml.match(/<key>IMSG_WEB_/g)).toHaveLength(5);
+    for (const bad of ['/opt/homebrew/bin/cwebp', 'cwebp', '/Users/test/Library/imsg-web/releases/abc/cwebp', '/Users/test/Library/imsg-web/runtime/../cwebp']) expect(() => validateConfig({ ...config, cwebp: bad })).toThrow();
+  });
   it('escapes XML without shell interpolation', () => {
     expect(renderLaunchAgent({ ...config, imsg: '/Users/test/Library/imsg-web/A&B<"\'>/imsg' })).toContain('A&amp;B&lt;&quot;&apos;&gt;');
   });
@@ -38,6 +46,14 @@ describe('C01 exclusive filesystem output', () => {
     expect((await lstat(c.output)).mode & 0o777).toBe(0o600);
     const before = await readFile(c.output, 'utf8'); expect(before).toBe(renderLaunchAgent(c));
     await expect(writeLaunchAgent(c)).rejects.toThrow(); expect(await readFile(c.output, 'utf8')).toBe(before);
+  });
+  it('requires an optional cwebp to exist as an executable file', async () => {
+    const c = await diskFixture(), cwebp = join(c.base, 'runtime/cwebp');
+    await expect(writeLaunchAgent({ ...c, cwebp })).rejects.toThrow();
+    await writeFile(cwebp, 'synthetic', { mode: 0o600 });
+    await expect(writeLaunchAgent({ ...c, cwebp })).rejects.toThrow();
+    await chmod(cwebp, 0o700); await writeLaunchAgent({ ...c, cwebp });
+    expect(await readFile(c.output, 'utf8')).toContain('IMSG_WEB_CWEBP_PATH');
   });
   it('rejects root, loose state, symlink output and symlink release ancestors', async () => {
     const c = await diskFixture();

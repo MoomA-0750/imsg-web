@@ -32,9 +32,10 @@ running on every request.
 Branch `attachment-images` (not merged) shows images that are on the Mac and
 link cards (needs `imsg-patches/link-preview`). It has been running on the M1
 since 2026-09-14 (release `717939f`): the owner confirmed images show and link
-cards open in a new tab. HEIC did not display in the owner's browser, so HEIC
-and JPEG XL are now converted to AVIF or JPEG on the Mac (not yet on the M1
-when this was written). Findings and the
+cards open in a new tab. HEIC did not display in the owner's browser; HEIC and
+JPEG XL are now converted on the Mac, to WebP through libwebp's `cwebp` (or
+JPEG), and prepared ahead after each history response. The owner confirmed the
+AVIF version worked; the WebP version is not yet on the M1. Findings and the
 serving rules are in `docs/real-data-findings.md`. Profile pictures were looked
 at and not built.
 

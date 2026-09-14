@@ -2,7 +2,7 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView } from '../shared/web-types.js';
-import { IMAGE_TYPES, openAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
+import { CONVERTIBLE, IMAGE_TYPES, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
 import type { ImageConverter } from './image-convert.js';
 import { ReadonlyAdapter, type Attachment } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
@@ -31,6 +31,8 @@ export const STATUS_TTL_MS = 60_000;
 const OBJECT_REPLACEMENT = '\uFFFC';
 /** Servable images remembered per epoch; the oldest are forgotten first. */
 export const MAX_REMEMBERED_ATTACHMENTS = 4000;
+/** How many of the newest convertible images a history response prepares ahead of viewing. */
+export const PREPARE_AHEAD = 20;
 export type SourceOptions = {
   executable: string;
   /** The exact environment and cwd for every imsg child this source starts. */
@@ -180,7 +182,7 @@ export class LiveSource implements ReadSource, AttachmentSource {
       if (capabilities(c.raw).history.state !== 'available') throw new WebError('HISTORY_UNAVAILABLE');
       const rows = await c.adapter.history(target.row, limit);
       await this.#verify(c.path, c.identity, c.epoch);
-      return { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
+      const snapshot: HistorySnapshot = { epoch: this.#epoch, limit, messages: rows.reverse().map(row => {
         // Messages marks each attachment in the text with U+FFFC. The marker is
         // dropped from the text; attachments are listed separately.
         const attachments: AttachmentView[] = row.attachments.map((a, i) => this.#attachmentView(a, `${row.guid}:${i}`));
@@ -196,6 +198,13 @@ export class LiveSource implements ReadSource, AttachmentSource {
         const sender = row.sender === null ? null : clip(row.sender, 256).value;
         return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, link, createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
+      if (this.options.converter) {
+        // Newest first, the order the owner meets them in. Checks and conversion happen later, off this queue.
+        const ahead = rows.slice().reverse().flatMap(row => [...row.attachments, ...(row.link?.image ? [row.link.image] : [])])
+          .filter(a => !a.missing && CONVERTIBLE.has(a.type) && isAbsolute(a.path)).slice(0, PREPARE_AHEAD);
+        if (ahead.length > 0) void this.#prepare(ahead, this.options.converter);
+      }
+      return snapshot;
     });
   }
   /**
@@ -203,12 +212,21 @@ export class LiveSource implements ReadSource, AttachmentSource {
    * go through the imsg reader queue: the file is read by this process, and the
    * path was already checked to be inside the Messages attachments folder.
    */
+  #root(): Promise<string> {
+    this.#attachmentRoot ??= realpath(join(dirname(this.options.expectedDatabasePath), 'Attachments'));
+    return this.#attachmentRoot.catch(() => { this.#attachmentRoot = undefined; throw new WebError('ATTACHMENT_UNAVAILABLE', 404); });
+  }
+  async #prepare(list: Attachment[], converter: ImageConverter) {
+    try {
+      const root = await this.#root();
+      await Promise.all(list.map(a => prepareAttachment(root, a.path, a.type, converter)));
+    } catch { /* preparing is best effort; a view converts on demand */ }
+  }
   async attachment(id: string, accept?: string): Promise<AttachmentFile> {
     this.#ensureActive();
     const file = this.#files.get(id);
     if (!file) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
-    this.#attachmentRoot ??= realpath(join(dirname(this.options.expectedDatabasePath), 'Attachments'));
-    const root = await this.#attachmentRoot.catch(() => { this.#attachmentRoot = undefined; throw new WebError('ATTACHMENT_UNAVAILABLE', 404); });
+    const root = await this.#root();
     return openAttachment(root, file.path, file.type, this.options.converter && { converter: this.options.converter, accept });
   }
   capabilities(): Promise<CapabilitySnapshot> {

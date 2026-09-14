@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { LiveSource, STATUS_TTL_MS, clip } from '../src/server/live-source.js';
 import { testContext } from './helpers/child-context.js';
+import type { ImageConverter } from '../src/server/image-convert.js';
 const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn(), forbiddenSpawn: vi.fn() }));
 vi.mock('../src/server/cli-status.js', () => ({ cliStatus: forbiddenCli }));
 vi.mock('node:child_process', () => ({ spawn: forbiddenSpawn }));
@@ -12,7 +13,7 @@ const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function setup(attachments: (dir: string) => unknown[] = () => [], extra: (dir: string) => Record<string, unknown> = () => ({})) {
+async function setup(attachments: (dir: string) => unknown[] = () => [], extra: (dir: string) => Record<string, unknown> = () => ({}), converter?: ImageConverter) {
   const dir = await mkdtemp(join(tmpdir(), 'iw-source-')), path = join(dir, 'chat.db');
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path, 'old');
@@ -41,7 +42,7 @@ async function setup(attachments: (dir: string) => unknown[] = () => [], extra: 
       throw new Error('unexpected method');
     } };
   };
-  const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory });
+  const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory, ...(converter ? { converter } : {}) });
   cleanups.push(async () => { failClose = false; hold?.resolve(); await source.close().catch(() => {}); for (const h of handles) await h.close().catch(() => {}); });
   const replace = async () => { await writeFile(join(dir, 'replacement'), 'new'); await rename(join(dir, 'replacement'), path); };
   return { source, calls, dir, path, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
@@ -151,6 +152,23 @@ describe('B04 DB generation and reader lifetime', () => {
     expect(message.link!.summary).toHaveLength(600);
     expect(JSON.stringify(message)).not.toContain(f.dir);
     expect((await f.source.attachment(message.link!.image!.id!)).type).toBe('image/png');
+  });
+  it('prepares present HEIC images in the background after history, without delaying the response', async () => {
+    const HEIC = Buffer.concat([Buffer.from('000000186674797068656963', 'hex'), Buffer.from('synthetic')]);
+    const convert = vi.fn(async () => Buffer.from('converted'));
+    const converter = { targets: ['image/webp', 'image/jpeg'], has: () => false, convert } as unknown as ImageConverter;
+    const f = await setup(dir => [
+      { original_path: join(dir, 'Attachments', 'photo.heic'), mime_type: 'image/heic', missing: false },
+      { original_path: join(dir, 'Attachments', 'gone.heic'), mime_type: 'image/heic', missing: true },
+      { original_path: join(dir, 'Attachments', 'plain.png'), mime_type: 'image/png', missing: false },
+    ], () => ({}), converter);
+    await mkdir(join(f.dir, 'Attachments'), { recursive: true });
+    await writeFile(join(f.dir, 'Attachments', 'photo.heic'), HEIC);
+    await writeFile(join(f.dir, 'Attachments', 'plain.png'), PNG_SIGNATURE);
+    const chats = await f.source.chats(1);
+    await f.source.history(chats.chats[0]!.id, 50);
+    await vi.waitFor(() => expect(convert).toHaveBeenCalledTimes(1));
+    expect(convert).toHaveBeenCalledWith(expect.stringContaining('photo.heic'), expect.any(Function), 'image/heic', 'image/webp', true);
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
   it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {
