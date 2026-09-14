@@ -39,8 +39,13 @@ keeps the text and the same attempt_id so a retry cannot double-send. It appears
 only when the send capability is available, with a banner in dry-run. Failure,
 rate-limit and stale-chat messages are handled (Phase 3 essentials).
 
-Next: Phase 4 — the owner enables live on the Mac (`IMSG_WEB_SEND=live`, Messages
+The owner tried the composer on the M1 in dry-run (`--send dry-run`, release
+`06facab`) and confirmed the UI is fine — nothing was sent.
+
+Next: Phase 4 — the owner enables live on the Mac (`--send live`, Messages
 signed in + an Automation grant) and sends one message to their own number.
+Note: `send-messages` is off `main` and does not include the notifications
+commit that had been running (`6427ffc`); the two branches still need reconciling.
 
 ## Next
 
