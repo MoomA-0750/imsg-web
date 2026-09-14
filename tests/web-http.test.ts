@@ -6,6 +6,7 @@ import { checkedOrigin, createApp } from '../src/server/http.js';
 import { Readable } from 'node:stream';
 import type { ChatSnapshot, HistorySnapshot, ReadSource } from '../src/shared/web-types.js';
 import type { AttachmentSource } from '../src/server/attachments.js';
+import type { Sender } from '../src/server/send-service.js';
 import { WebError } from '../src/server/web-error.js';
 
 const ORIGIN = 'https://imsg.synthetic.test';
@@ -315,5 +316,83 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
     const accepted = await get({ host: HOST, cookie, origin: ORIGIN });
     expect(accepted.status).toBe(200);
     expect(JSON.parse(accepted.body)).toEqual(HISTORY);
+  });
+});
+
+
+describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
+  const UUID = '11111111-2222-4333-8444-555555555555';
+  async function sendFixture(mode: 'off' | 'dry-run' | 'live') {
+    let now = 1_000_000;
+    const auth = new Auth(hashKey(KEY), () => now);
+    const source = {
+      chats: vi.fn<ReadSource['chats']>(async limit => ({ ...CHAT, limit })),
+      history: vi.fn<ReadSource['history']>(async (_id, limit) => ({ ...HISTORY, limit })),
+      capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } })),
+      close: vi.fn<ReadSource['close']>(async () => {}),
+      attachment: vi.fn<AttachmentSource['attachment']>(async () => { throw new WebError('ATTACHMENT_UNAVAILABLE', 404); }),
+    };
+    const send = vi.fn<Sender['send']>(async () => (mode === 'dry-run' ? { state: 'dry_run' } : { state: 'sent' }));
+    const sender: Sender = { mode, send };
+    const app = await createApp({ origin: ORIGIN, auth, source, sender });
+    apps.push(app);
+    const login = async () => {
+      const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
+      const setCookie = response.headers['set-cookie'] as string;
+      return { cookie: setCookie.split(';')[0]!, csrf: response.json<{ csrfToken: string }>().csrfToken };
+    };
+    const post = (headers: Record<string, string>, payload: Record<string, unknown>) => app.inject({ method: 'POST', url: '/api/send', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json', ...headers }, payload }).then(response => response);
+    return { app, send, login, post };
+  }
+
+  it('reflects the send mode in capabilities', async () => {
+    for (const [mode, expected] of [['off', { state: 'unavailable', reasonCode: 'SEND_DISABLED' }], ['dry-run', { state: 'available', reasonCode: 'SEND_DRY_RUN' }], ['live', { state: 'available', reasonCode: 'SEND_READY' }]] as const) {
+      const { app, login } = await sendFixture(mode);
+      const { cookie } = await login();
+      const caps = await app.inject({ url: '/api/capabilities', headers: { host: HOST, cookie } });
+      expect(caps.json<{ features: Record<string, unknown> }>().features.send).toEqual(expected);
+    }
+  });
+
+  it('does not expose the send route when sending is off', async () => {
+    const { post, login } = await sendFixture('off');
+    const { cookie, csrf } = await login();
+    const response = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('requires this session CSRF token and a valid session', async () => {
+    const { post, send, login } = await sendFixture('dry-run');
+    const { cookie, csrf } = await login();
+    expect((await post({ cookie }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID })).statusCode).toBe(403);
+    expect((await post({ 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID })).statusCode).toBe(401);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a validated dry-run send and returns only the state', async () => {
+    const { post, send, login } = await sendFixture('dry-run');
+    const { cookie, csrf } = await login();
+    const response = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'Synthetic outgoing', attemptId: UUID });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ state: 'dry_run' });
+    expect(send).toHaveBeenCalledWith({ chatId: 'C'.repeat(43), text: 'Synthetic outgoing', attemptId: UUID });
+    expect(response.body).not.toContain('Synthetic outgoing');
+  });
+
+  it('rejects malformed bodies before dispatch', async () => {
+    const { post, send, login } = await sendFixture('dry-run');
+    const { cookie, csrf } = await login();
+    for (const payload of [{ text: 'hi' }, { chatId: 'C'.repeat(43), text: 'hi' }, { chatId: 'short', text: 'hi', attemptId: UUID }, { chatId: 'C'.repeat(43), text: 'hi', attemptId: UUID, extra: 1 }, { chatId: 'C'.repeat(43), attemptId: UUID }]) {
+      expect((await post({ cookie, 'x-csrf-token': csrf }, payload)).statusCode).toBe(400);
+    }
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('limits sends per minute per session', async () => {
+    const { post, login } = await sendFixture('live');
+    const { cookie, csrf } = await login();
+    for (let i = 0; i < 10; i++) expect((await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: `m${i}`, attemptId: UUID })).statusCode).toBe(200);
+    const eleventh = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'm10', attemptId: UUID });
+    expect(eleventh.statusCode).toBe(429);
   });
 });

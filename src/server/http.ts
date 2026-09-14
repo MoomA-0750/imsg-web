@@ -7,6 +7,8 @@ import { Auth, equal, tokenValid, type Session } from './auth.js';
 import { WebError } from './web-error.js';
 import type { ReadSource } from '../shared/web-types.js';
 import type { AttachmentSource } from './attachments.js';
+import type { Sender } from './send-service.js';
+import { sendCapability } from './capabilities.js';
 
 const COOKIE = '__Host-imsg_session';
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
@@ -15,7 +17,7 @@ export function checkedOrigin(value: string): URL {
   if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
   return u;
 }
-export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; webDir?: string }) {
+export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; webDir?: string }) {
   const origin = checkedOrigin(options.origin);
   const app = Fastify({ logger: false, bodyLimit: 2048, requestTimeout: 15_000, connectionTimeout: 15_000, keepAliveTimeout: 5000, return503OnClosing: true, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   await app.register(cookie);
@@ -88,7 +90,11 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     if (typeof raw !== 'string' || !/^(?:[1-9]\d{0,2}|1000)$/.test(raw)) throw new WebError('INVALID_LIMIT', 400);
     const n = Number(raw); if (n < 50 || n > 1000 || n % 50) throw new WebError('INVALID_LIMIT', 400); return n;
   };
-  app.get('/api/capabilities', async () => options.source.capabilities());
+  app.get('/api/capabilities', async () => {
+    const snapshot = await options.source.capabilities();
+    if (options.sender) snapshot.features.send = sendCapability(options.sender.mode);
+    return snapshot;
+  });
   app.get('/api/chats', async request => options.source.chats(limit((request.query as Record<string, unknown>).limit)));
   app.get('/api/chats/:id/messages', async request => {
     const id = (request.params as { id: string }).id;
@@ -103,6 +109,26 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     return reply.type(file.type).header('content-length', file.size).header('content-disposition', 'inline')
       .header('content-security-policy', "default-src 'none'; sandbox").send(file.stream);
   });
+  if (options.sender && options.sender.mode !== 'off') {
+    const sender = options.sender;
+    // A send-specific ceiling on top of the general per-session rate: a mutation deserves a tighter bound.
+    const sendWindows = new Map<string, { window: number; count: number }>();
+    const SEND_PER_MIN = 10;
+    app.post('/api/send', { schema: { body: { type: 'object', additionalProperties: false, required: ['text', 'attemptId'], properties: {
+      chatId: { type: 'string', minLength: 43, maxLength: 43 },
+      to: { type: 'string', minLength: 1, maxLength: 256 },
+      text: { type: 'string', minLength: 1, maxLength: 16384 },
+      attemptId: { type: 'string', minLength: 36, maxLength: 36 },
+    } } } }, async request => {
+      const session = authenticated.get(request)!;
+      const now = Date.now();
+      const window = sendWindows.get(session.hash);
+      if (!window || now - window.window >= 60_000) sendWindows.set(session.hash, { window: now, count: 1 });
+      else if (++window.count > SEND_PER_MIN) throw new WebError('RATE_LIMITED', 429);
+      const body = request.body as { chatId?: string; to?: string; text: string; attemptId: string };
+      return sender.send({ ...(body.chatId !== undefined ? { chatId: body.chatId } : {}), ...(body.to !== undefined ? { to: body.to } : {}), text: body.text, attemptId: body.attemptId });
+    });
+  }
   if (options.webDir) {
     // Enumerate generated assets, never map arbitrary URL paths to the filesystem.
     const index = await readFile(join(options.webDir, 'index.html'));

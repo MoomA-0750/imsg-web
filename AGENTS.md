@@ -2,14 +2,24 @@
 
 ## Project boundary
 
-This repository implements a single-owner, self-hosted, read-only iMessage Web
-UI. Sending, read-state changes and typing are not approved.
+This repository implements a single-owner, self-hosted iMessage Web UI. Reading
+is the core; **sending** is approved and being added on the `send-messages`
+branch as a **separate, off-by-default** path (`src/server/send-service.ts`,
+`src/server/rpc/send-client.ts`). Read-state changes and typing are still not
+approved.
 
+- Sending is its own path. It never reuses the read-only RPC client or its
+  method allowlist; the read allowlist stays `status`, `chats.list`,
+  `messages.history`, `watch.subscribe`, `watch.unsubscribe`. The send path is
+  `send.tracked` only, over the AppleScript transport (no IMCore injection, no
+  SIP change). It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
+  and validates without dispatching. Do not enable live sending, and do not
+  perform a real send, without the owner's approval each time.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived
   from screen structure or component state.
 - Do not weaken authentication, exact Origin/Host checks, Secure cookies,
-  loopback-only binding, the RPC method allowlist or response bounds, including
-  for development or previews.
+  loopback-only binding, the read RPC method allowlist, the send method
+  restriction, CSRF, or response bounds, including for development or previews.
 - Never log or commit message text, recipients, chat/message IDs, owner keys,
   cookies, local database paths, raw RPC responses or private machine inventory.
 - Do not change SIP/TCC, request permissions, launch or repair Messages.app,

@@ -171,6 +171,8 @@ export class LiveSource implements ReadSource, AttachmentSource {
     if (CONVERTIBLE.has(entry.type)) convertible.push(entry);
     return { id, kind: 'image', sticker: a.sticker, preview: entry.root === 'previews' };
   }
+  /** Opaque chat id → the chat's guid, only if it belongs to the current epoch. For the send path. */
+  resolveChatGuid(id: string): string | undefined { return this.#map.get(id)?.guid; }
   #newClient(): Client {
     return this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context, args: [...RPC_ARGS] });
   }

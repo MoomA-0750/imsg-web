@@ -13,7 +13,8 @@ import { isObject } from './rpc/errors.js';
 export const TESTED_VERSIONS = ['0.14.2', '0.15.1', '0.15.4'] as const;
 export type Reason = 'SUPPORTED' | 'RPC_STATUS_INVALID' | 'VERSION_UNTESTED'
   | 'DATABASE_UNAVAILABLE' | 'METHOD_UNAVAILABLE' | 'CONTACTS_UNAVAILABLE'
-  | 'CLI_STATUS_INVALID' | 'STATUS_PROBE_DISABLED' | 'SIP_ENABLED' | 'FEATURE_UNAVAILABLE' | 'NOT_IMPLEMENTED';
+  | 'CLI_STATUS_INVALID' | 'STATUS_PROBE_DISABLED' | 'SIP_ENABLED' | 'FEATURE_UNAVAILABLE' | 'NOT_IMPLEMENTED'
+  | 'SEND_DISABLED' | 'SEND_DRY_RUN' | 'SEND_READY';
 export type Capability = { state: 'available' | 'unavailable' | 'unknown'; reasonCode: Reason };
 export type Status = {
   version: string; protocolVersion: number; databaseReady: boolean;
@@ -35,6 +36,10 @@ export function parseStatus(input: unknown): Status | undefined {
 }
 
 const cap = (state: Capability['state'], reasonCode: Reason): Capability => ({ state, reasonCode });
+/** Send is not derived from the read RPC status; it reflects how the server is configured to send. */
+export function sendCapability(mode: 'off' | 'dry-run' | 'live'): Capability {
+  return mode === 'off' ? cap('unavailable', 'SEND_DISABLED') : cap('available', mode === 'dry-run' ? 'SEND_DRY_RUN' : 'SEND_READY');
+}
 export function capabilities(rpc: unknown, cli?: unknown): Record<'chats' | 'history' | 'watch' | 'contacts' | 'read' | 'typing' | 'send', Capability> {
   const status = parseStatus(rpc);
   const invalid = status === undefined ? 'RPC_STATUS_INVALID'

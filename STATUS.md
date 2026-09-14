@@ -22,6 +22,19 @@ Two app fixes came out of that work and are in: the reader now passes
 `--contacts-from-address-book`, and `status` is reused for 60 seconds instead of
 running on every request.
 
+## Sending (in progress, branch `send-messages`)
+
+The owner approved adding sending. Phase 1 (server) is in: a separate send
+client and service (`src/server/rpc/send-client.ts`, `src/server/send-service.ts`)
+that never reuse the read-only path, a `POST /api/send` route (owner key + CSRF
++ its own rate limit), `send.tracked` over the AppleScript transport, and a
+capability that reflects the mode. It is **off by default**; `IMSG_WEB_SEND`
+selects `dry-run` (validate + resolve target, dispatch nothing) or `live`.
+Reply-into-a-chat and send-to-a-handle are both supported; text only. All tested
+with synthetic fixtures — nothing real is sent. Next: Phase 2 UI (compose +
+confirm), Phase 3 failure UX, Phase 4 owner enables live on the Mac (Messages
+signed in + an Automation grant) and sends one message to their own number.
+
 ## Next
 
 1. Owner keeps using the M1 trial for a few days. Watch memory, log size and

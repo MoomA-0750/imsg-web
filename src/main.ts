@@ -9,6 +9,8 @@ import { OwnerStore } from './server/owner-store.js';
 import { adminCommand } from './server/admin.js';
 import { LiveSource } from './server/live-source.js';
 import { ImageConverter } from './server/image-convert.js';
+import { SendService, type SendMode } from './server/send-service.js';
+import { SendClient } from './server/rpc/send-client.js';
 import { startRuntime } from './server/runtime.js';
 
 // stdout contains a secret only for explicitly requested setup/rotation. No request logging.
@@ -30,7 +32,12 @@ async function main() {
   if (!executable || !isAbsolute(executable) || executable.includes('\0') || !origin || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
   const tmpDir = await ensureChildTmpDir(directory);
   const context = buildChildEnv({ tmpDir, cwd: tmpDir });
-  const runtime = await startRuntime({ store, source: new LiveSource({ executable, context, expectedDatabasePath: context.databasePath, ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context }) } : {}) }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  const source = new LiveSource({ executable, context, expectedDatabasePath: context.databasePath, ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context }) } : {}) });
+  // Sending is off unless explicitly configured, and only on macOS. IMSG_WEB_SEND=dry-run resolves and validates but sends nothing.
+  const sendSetting = process.platform === 'darwin' ? process.env.IMSG_WEB_SEND : undefined;
+  const sendMode: SendMode = sendSetting === '1' || sendSetting === 'live' ? 'live' : sendSetting === 'dry-run' ? 'dry-run' : 'off';
+  const sender = new SendService({ mode: sendMode, resolveChatGuid: id => source.resolveChatGuid(id), clientFactory: () => new SendClient({ executable, context }) });
+  const runtime = await startRuntime({ store, source, sender, origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;
