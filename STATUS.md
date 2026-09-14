@@ -29,10 +29,13 @@ running on every request.
 2. Then the iMac, the same way (`docs/operations.md`), watching for the stale
    bridge lock issue noted in the findings.
 
-Optional, on branch `attachment-images` (not merged; M1 trial pending): shows
-images that are on the Mac, and link cards (needs `imsg-patches/link-preview`).
-Findings and the serving rules are in
-`docs/real-data-findings.md`. Profile pictures were looked at and not built.
+Branch `attachment-images` (not merged) shows images that are on the Mac and
+link cards (needs `imsg-patches/link-preview`). It has been running on the M1
+since 2026-09-14 (release `717939f`): the owner confirmed images show and link
+cards open in a new tab. HEIC images do not display in the owner's browser; they
+fall back to the "this browser cannot show this format" line. Findings and the
+serving rules are in `docs/real-data-findings.md`. Profile pictures were looked
+at and not built.
 
 ## Leftovers on the Macs
 
