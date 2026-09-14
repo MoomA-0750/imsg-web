@@ -24,7 +24,8 @@ Browser -> Tailscale Serve HTTPS :443 -> http://127.0.0.1:8787 -> imsg rpc (read
 ```
 ~/Library/Application Support/imsg-web/   (0700)
   runtime/node-v24.20.0-<arch>/           official Node, checksum verified
-  releases/<commit>/                      dist, package files, node_modules, imsg
+  releases/<commit>/                      dist, package files, node_modules,
+                                          imsg + its two .bundle directories
   state/                                  owner hash (0600), lock
   logs/                                   stdout / stderr (0600)
 ```

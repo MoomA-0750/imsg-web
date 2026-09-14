@@ -28,6 +28,14 @@ repository when the project was simplified on 2026-09-14.
   bridge is installed, `status` exchanges files with that bridge each time. It
   is now reused for 60 seconds.
 
+## Found in the first M1 trial (2026-09-14)
+
+- **`imsg` needs its resource bundles beside it.** Copied alone into a release
+  it crashed on the first request, and the UI could only say it could not
+  refresh. With `PhoneNumberKit_PhoneNumberKit.bundle` and
+  `SQLite.swift_SQLite.bundle` next to it: status 491 ms cold, chats 42 ms,
+  history 51 ms. Build notes in `imsg-patches/README.md` now say so.
+
 ## Known and not yet resolved
 
 - **Intel with a stale bridge lock.** The iMac also runs the owner's separate

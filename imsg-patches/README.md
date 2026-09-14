@@ -29,9 +29,16 @@ git apply <repo>/imsg-patches/contact-source/imsg-0.15.4.patch
 swift build -c release --product imsg --force-resolved-versions
 ```
 
-Use the real file, `.build/out/Products/Release/imsg`; `.build/release` is a
-symlink to it. Copy it into the release directory described in
-`docs/operations.md`.
+Use the real directory, `.build/out/Products/Release/`; `.build/release` is a
+symlink to it. Copy **`imsg` together with the two resource bundles beside it**
+into the release directory described in `docs/operations.md`:
+
+```sh
+cp -R imsg PhoneNumberKit_PhoneNumberKit.bundle SQLite.swift_SQLite.bundle <release>/
+```
+
+`imsg` alone crashes on its first request (SIGTRAP, "unable to find bundle named
+PhoneNumberKit_PhoneNumberKit"); it looks for the bundles next to itself.
 
 Swift 6.1.2 (Command Line Tools, Intel) resolves one more dependency than the
 committed lock lists (`sqlcipher.swift` 4.19.0); Swift 6.4 does not. Both
