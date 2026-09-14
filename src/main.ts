@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
 import { adminCommand } from './server/admin.js';
 import { LiveSource } from './server/live-source.js';
+import { ImageConverter } from './server/image-convert.js';
 import { startRuntime } from './server/runtime.js';
 
 // stdout contains a secret only for explicitly requested setup/rotation. No request logging.
@@ -29,7 +30,7 @@ async function main() {
   if (!executable || !isAbsolute(executable) || executable.includes('\0') || !origin || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
   const tmpDir = await ensureChildTmpDir(directory);
   const context = buildChildEnv({ tmpDir, cwd: tmpDir });
-  const runtime = await startRuntime({ store, source: new LiveSource({ executable, context, expectedDatabasePath: context.databasePath }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  const runtime = await startRuntime({ store, source: new LiveSource({ executable, context, expectedDatabasePath: context.databasePath, ...(process.platform === 'darwin' ? { converter: new ImageConverter({ executable: '/usr/bin/sips', context }) } : {}) }), origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;

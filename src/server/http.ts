@@ -98,7 +98,7 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
   app.get('/api/attachments/:id', { exposeHeadRoute: false }, async (request, reply) => {
     const id = (request.params as { id: string }).id;
     if (!tokenValid(id)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
-    const file = await options.source.attachment(id);
+    const file = await options.source.attachment(id, request.headers.accept);
     // The type comes from a fixed image allowlist. The response may not run anything even if opened directly.
     return reply.type(file.type).header('content-length', file.size).header('content-disposition', 'inline')
       .header('content-security-policy', "default-src 'none'; sandbox").send(file.stream);

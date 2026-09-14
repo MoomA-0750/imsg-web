@@ -3,6 +3,7 @@ import { realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView } from '../shared/web-types.js';
 import { IMAGE_TYPES, openAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
+import type { ImageConverter } from './image-convert.js';
 import { ReadonlyAdapter, type Attachment } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
 import type { ChildContext } from './child-env.js';
@@ -43,6 +44,8 @@ export type SourceOptions = {
    */
   expectedDatabasePath: string;
   factory?: () => Client;
+  /** Converts HEIC and JPEG XL for browsers that cannot draw them. Absent: originals are served. */
+  converter?: ImageConverter;
 };
 export function clip(text: string, length: number) {
   const cut = text.length > length;
@@ -200,13 +203,13 @@ export class LiveSource implements ReadSource, AttachmentSource {
    * go through the imsg reader queue: the file is read by this process, and the
    * path was already checked to be inside the Messages attachments folder.
    */
-  async attachment(id: string): Promise<AttachmentFile> {
+  async attachment(id: string, accept?: string): Promise<AttachmentFile> {
     this.#ensureActive();
     const file = this.#files.get(id);
     if (!file) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     this.#attachmentRoot ??= realpath(join(dirname(this.options.expectedDatabasePath), 'Attachments'));
     const root = await this.#attachmentRoot.catch(() => { this.#attachmentRoot = undefined; throw new WebError('ATTACHMENT_UNAVAILABLE', 404); });
-    return openAttachment(root, file.path, file.type);
+    return openAttachment(root, file.path, file.type, this.options.converter && { converter: this.options.converter, accept });
   }
   capabilities(): Promise<CapabilitySnapshot> {
     return this.#queue('capabilities', async () => {

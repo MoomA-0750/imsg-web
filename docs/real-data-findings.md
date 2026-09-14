@@ -81,6 +81,20 @@ so files are checked by their first bytes and served with the type found there.
 The card opens the link in a new tab with no referrer; only absolute http(s)
 URLs become links.
 
+**HEIC and JPEG XL.** The owner's browser drew neither, so they are converted
+on the Mac with the system `sips`, unless the browser's `Accept` names the
+original type (Safari names HEIC and gets the original). macOS 27 on the M1 can
+write AVIF and JPEG but only read WebP, so the target is AVIF when accepted,
+else JPEG; a failed conversion falls back to JPEG, then to the original. `sips`
+works on a copy of the checked bytes in a private directory under the child
+TMPDIR, which is removed afterwards. Two facts about `sips` shaped this: it
+exits 0 when it fails (success is judged by the output's first bytes), and
+`-Z` also enlarges (it is applied only to images larger than 2048 px). On the
+M1, under load, a first view took about 0.5–2.5 s for AVIF and 0.5–1.8 s for
+JPEG; AVIF was roughly half the size. Conversions are kept in memory (64 MiB)
+and repeat views took a few milliseconds. At most two run at once. An older
+macOS that cannot write AVIF simply gets JPEG.
+
 How images are served (branch `attachment-images`): history registers an
 opaque per-epoch ID only for a present image of an allowed type (JPEG, PNG,
 GIF, WebP, HEIC/HEIF, JPEG XL; never SVG). `/api/attachments/:id` needs a
