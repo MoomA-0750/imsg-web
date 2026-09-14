@@ -81,12 +81,14 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
     } finally { await client.close(); }
     await f.source.close();
     const rows = await f.audit(), spawns = rows.filter(row => row.kind === 'spawn'), requests = rows.filter(row => row.kind === 'request');
-    expect(spawns.map(row => row.args)).toEqual([['rpc'], ['rpc'], ['rpc']]);
+    // The two source readers name their contact source; the directly built client keeps the bare default.
+    expect(spawns.map(row => row.args)).toEqual([['rpc', '--contacts-from-address-book'], ['rpc', '--contacts-from-address-book'], ['rpc']]);
     const launches = vi.mocked(spawn).mock.calls.slice(spawnStart);
     expect(launches.map(call => call[0])).toEqual(Array(3).fill(f.executable));
     expect(launches.map(call => call[1])).toEqual(spawns.map(row => row.args));
     for (const call of launches) expect(call[2]).toMatchObject({ shell: false });
-    expect(requests.map(row => row.method)).toEqual(['status', 'status', 'status', 'chats.list', 'status', 'messages.history', 'status', 'watch.subscribe', 'watch.unsubscribe']);
+    // One status for the whole UI cycle: the bootstrap's result is reused until it expires.
+    expect(requests.map(row => row.method)).toEqual(['status', 'chats.list', 'messages.history', 'status', 'watch.subscribe', 'watch.unsubscribe']);
     expect(requests.filter(row => !ALLOWED.includes(row.method!))).toEqual([]);
     expect(requests.filter(row => FORBIDDEN.includes(row.method!))).toEqual([]);
     for (const row of requests) {

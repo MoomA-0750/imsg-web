@@ -10,6 +10,22 @@ import { capabilities } from './capabilities.js';
 import { WebError } from './web-error.js';
 
 type Client = Pick<ReadonlyRpcClient, 'request' | 'close' | 'closed'>;
+/**
+ * The contact name source must be named explicitly. Upstream picks the
+ * AddressBook store only inside an SSH session; under a LaunchAgent it falls to
+ * Contacts.framework, where a self-built binary has no grant and no name
+ * resolves. The flag comes from imsg-patches/contact-source, so a stock imsg
+ * refuses to start rather than silently showing no names.
+ */
+export const RPC_ARGS = ['rpc', '--contacts-from-address-book'] as const;
+/**
+ * `status` is reused for this long. The UI asks for capabilities, chats and
+ * history every poll, and each used to run its own status, which on a Mac with
+ * the Messages bridge installed is an IPC exchange with that bridge. The
+ * database identity is still checked on every request, so a replaced chat.db
+ * is caught immediately; only readiness and version changes wait for expiry.
+ */
+export const STATUS_TTL_MS = 60_000;
 export type SourceOptions = {
   executable: string;
   /** The exact environment and cwd for every imsg child this source starts. */
@@ -35,6 +51,7 @@ export class LiveSource implements ReadSource {
   #client: Client | undefined;
   #adapter: ReadonlyAdapter | undefined;
   #identity: string | undefined;
+  #status: { raw: unknown; parsed: Awaited<ReturnType<ReadonlyAdapter['status']>>['parsed']; at: number } | undefined;
   #epoch = randomBytes(16).toString('hex');
   #key = randomBytes(32);
   #map = new Map<string, { row: number; guid: string }>();
@@ -47,7 +64,7 @@ export class LiveSource implements ReadSource {
   #id(kind: string, value: string): string { return createHmac('sha256', this.#key).update(`${this.#epoch}:${kind}:${value}`).digest('base64url'); }
   #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); }
   async #retire() {
-    this.#rotateEpoch(); this.#identity = undefined;
+    this.#rotateEpoch(); this.#identity = undefined; this.#status = undefined;
     if (this.#client) {
       try { await this.#client.close(); }
       catch { this.#closeFailed = true; throw new WebError('READER_RECOVERY_REQUIRED'); }
@@ -79,10 +96,12 @@ export class LiveSource implements ReadSource {
     this.#ensureActive();
     const fresh = !this.#client;
     if (!this.#client) {
-      this.#client = this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context });
+      this.#client = this.#newClient();
       this.#adapter = new ReadonlyAdapter(this.#client as ReadonlyRpcClient);
     }
-    const { raw, parsed } = await this.#adapter!.status();
+    const cached = this.#identity !== undefined && this.#status && Date.now() - this.#status.at < STATUS_TTL_MS ? this.#status : undefined;
+    const { raw, parsed } = cached ?? await this.#adapter!.status();
+    const at = cached?.at ?? Date.now();
     this.#ensureActive();
     const db = isObject(raw) && isObject(raw.database) ? raw.database : undefined;
     // Absolute is not enough. An allow-listed environment stops stray variables
@@ -102,13 +121,16 @@ export class LiveSource implements ReadSource {
       // has been sampled, so an old handle cannot be labelled with a replacement inode.
       await this.#client!.close().catch(() => { this.#closeFailed = true; throw new WebError('READER_RECOVERY_REQUIRED'); });
       this.#ensureActive();
-      this.#client = this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context });
+      this.#client = this.#newClient();
       this.#adapter = new ReadonlyAdapter(this.#client as ReadonlyRpcClient);
-      this.#identity = identity;
+      this.#identity = identity; this.#status = { raw, parsed, at };
       return this.#context();
     }
-    this.#identity = identity;
+    this.#identity = identity; this.#status = { raw, parsed, at };
     return { raw, path, identity, epoch: this.#epoch, adapter: this.#adapter! };
+  }
+  #newClient(): Client {
+    return this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context, args: [...RPC_ARGS] });
   }
   #ensureActive() { if (this.#stopped || this.#closeFailed) throw new WebError('READER_RECOVERY_REQUIRED'); }
   async #verify(path: string, identity: string, epoch: string) {

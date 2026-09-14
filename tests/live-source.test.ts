@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, open, rename, writeFile, rm, unlink, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { LiveSource, clip } from '../src/server/live-source.js';
+import { LiveSource, STATUS_TTL_MS, clip } from '../src/server/live-source.js';
 import { testContext } from './helpers/child-context.js';
 const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn(), forbiddenSpawn: vi.fn() }));
 vi.mock('../src/server/cli-status.js', () => ({ cliStatus: forbiddenCli }));
@@ -112,6 +112,32 @@ describe('B04 DB generation and reader lifetime', () => {
       expect(forbiddenCli).not.toHaveBeenCalled();
       expect(forbiddenSpawn).not.toHaveBeenCalled();
     } finally { clock.mockRestore(); }
+  });
+  it('runs one status per status interval, not one per request', async () => {
+    const f = await setup();
+    const clock = vi.spyOn(Date, 'now');
+    const statuses = () => f.calls.filter(method => method === 'status').length;
+    try {
+      clock.mockReturnValue(1_000_000);
+      const chats = await f.source.chats(50);
+      await f.source.capabilities(); await f.source.history(chats.chats[0]!.id, 50);
+      expect(statuses()).toBe(1);
+      clock.mockReturnValue(1_000_000 + STATUS_TTL_MS - 1);
+      await f.source.capabilities();
+      expect(statuses()).toBe(1);
+      clock.mockReturnValue(1_000_000 + STATUS_TTL_MS);
+      await f.source.capabilities(); await f.source.chats(50);
+      expect(statuses()).toBe(2);
+    } finally { clock.mockRestore(); }
+  });
+  it('still catches a replaced database while status is being reused, and asks again afterwards', async () => {
+    const f = await setup(); const old = await f.source.chats(50);
+    await f.replace();
+    await expect(f.source.chats(50)).rejects.toMatchObject({ code: 'DB_CHANGED', status: 409 });
+    const before = f.calls.filter(method => method === 'status').length;
+    const fresh = await f.source.chats(50);
+    expect(fresh.epoch).not.toBe(old.epoch);
+    expect(f.calls.filter(method => method === 'status').length).toBeGreaterThan(before);
   });
   it('does not report clean shutdown after RPC close fails during capability bootstrap', async () => {
     const f = await setup(); f.setFailClose();

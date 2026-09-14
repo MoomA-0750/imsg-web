@@ -14,7 +14,7 @@ const allowed = ['status', 'chats.list', 'messages.history', 'watch.subscribe', 
 const status = { version: config.version, protocol_version: 1, database: { ready: true, path: join(dir, 'chat.db') }, bridge: { ready: config.sip === 'disabled' }, contacts: { available: false }, methods: [...allowed, 'send', 'read', 'typing', 'message.edit'] };
 if (JSON.stringify(args) === JSON.stringify(['status', '--json'])) {
   process.stdout.write(JSON.stringify({ version: config.version, sip: config.sip, read_receipts: true, typing_indicators: true }));
-} else if (JSON.stringify(args) === JSON.stringify(['rpc'])) {
+} else if (args[0] === 'rpc' && (args.length === 1 || (args.length === 2 && args[1] === '--contacts-from-address-book'))) {
   const pending = new Map();
   let ended = false;
   const finish = (request, late = false) => {
