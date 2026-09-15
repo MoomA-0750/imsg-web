@@ -285,6 +285,44 @@ test('opens a picture that is here, and answers for one that is not', async ({ p
   await expect(page.locator('.lightbox')).toHaveCount(0);
 });
 
+test('zooms an opened picture with the wheel, and moves it once it is bigger than the window', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.locator('img.attachment-image')).toHaveCount(2); // once the undecodable one has given up
+  await page.getByRole('button', { name: '画像を大きく表示' }).click();
+  const box = page.locator('.lightbox'), shown = box.locator('img');
+  await expect(box).toBeVisible();
+  const zoom = () => shown.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a);
+  const at = () => shown.evaluate(el => { const m = new DOMMatrix(getComputedStyle(el).transform); return { x: m.e, y: m.f }; });
+  expect(await zoom()).toBe(1);
+
+  const view = page.viewportSize()!;
+  const middle = { x: view.width / 2, y: view.height / 2 };
+  await page.mouse.move(middle.x, middle.y);
+  await page.mouse.wheel(0, -600);
+  await expect.poll(zoom).toBeGreaterThan(2);
+  await page.waitForTimeout(250); // the scale eases into place; read it once it is there
+  const large = await zoom();
+
+  // Dragging now moves the picture instead of putting it away.
+  await page.mouse.down();
+  await page.mouse.move(middle.x, middle.y + 120, { steps: 6 });
+  await page.mouse.up();
+  await expect(box).toBeVisible(); // the pull means nothing while it is zoomed in
+  expect(await zoom()).toBeCloseTo(large, 2);
+  expect((await at()).y).toBeGreaterThan(0);
+
+  // And back out again: scrolling the other way returns it to its own size, centred.
+  await page.mouse.wheel(0, 1200);
+  await expect.poll(zoom).toBe(1);
+  await page.waitForTimeout(250);
+  expect(await at()).toEqual({ x: 0, y: 0 });
+  // It never shrinks below the size it opened at, whatever the wheel says.
+  await page.mouse.wheel(0, 2000);
+  expect(await zoom()).toBe(1);
+  await page.keyboard.press('Escape');
+});
+
 test('clicking the conversation already open leaves it where it is', async ({ page }) => {
   await login(page);
   const row = page.getByRole('button', { name: /合成テスト会話 Alpha/ });

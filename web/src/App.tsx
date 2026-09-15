@@ -13,6 +13,8 @@ const NEAR_BOTTOM = 48;
 const REVEAL_MAX = 72;
 /** Pulling an opened picture this far down puts it away. */
 const PULL_CLOSE = 90;
+/** How far in an opened picture may be taken. */
+const ZOOM_MAX = 6;
 /** A pause this long earns a line of its own, the way Messages breaks up a quiet afternoon. */
 const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
@@ -120,35 +122,132 @@ function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: Attachm
   </div>;
 }
 
-/** The picture on its own, as large as the screen allows. Escape, the button, or the backdrop closes it. */
+/**
+ * The picture on its own, as large as the screen allows, and as close as the owner wants: the wheel
+ * or a pinch scales it about whatever is under the pointer, and a drag moves it once there is more
+ * of it than fits. At its natural size a drag means something else — pulling it down puts it away —
+ * so the two never compete for the same gesture.
+ */
 function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void }) {
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [pulled, setPulled] = useState(0);
-  const from = useRef<number | undefined>(undefined);
+  const frame = useRef<HTMLDivElement | null>(null);
+  const picture = useRef<HTMLImageElement | null>(null);
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const pinch = useRef<{ gap: number; x: number; y: number } | undefined>(undefined);
+  const from = useRef<{ x: number; y: number } | undefined>(undefined);
+  /**
+   * What the gesture that is ending was. Capturing the pointer sends the click that follows to the
+   * frame whatever it began on, so the frame has to remember for itself: a click closes only when
+   * it was a click, on the space around the picture, and not the tail of a drag.
+   */
+  const gesture = useRef({ moved: false, onPicture: false });
+
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, [onClose]);
-  // Pulling the picture down puts it away, the gesture a picture opened full-screen invites. It
-  // follows the finger so the intent is visible before it is committed to, and springs back short
-  // of the distance that means it.
-  const down = (event: PointerEvent<HTMLDivElement>) => { from.current = event.clientY; };
-  const move = (event: PointerEvent<HTMLDivElement>) => {
-    if (from.current === undefined) return;
-    setPulled(Math.max(0, event.clientY - from.current));
+
+  /** Panning stops where the picture does: there is no sense dragging empty space into view. */
+  const settle = (scale: number, x: number, y: number) => {
+    const img = picture.current, hold = frame.current;
+    if (!img || !hold) return { scale, x, y };
+    const roomX = Math.max(0, (img.offsetWidth * scale - hold.clientWidth) / 2);
+    const roomY = Math.max(0, (img.offsetHeight * scale - hold.clientHeight) / 2);
+    return { scale, x: Math.min(roomX, Math.max(-roomX, x)), y: Math.min(roomY, Math.max(-roomY, y)) };
   };
-  const up = () => { if (pulled > PULL_CLOSE) onClose(); else { setPulled(0); from.current = undefined; } };
-  return <div className="lightbox fixed inset-0 z-50 flex items-center justify-center p-4 touch-none"
+
+  /**
+   * Scales about (x, y): whatever is under the pointer stays under it, which is what makes zooming
+   * feel aimed rather than arbitrary. Every decision is made from the state being replaced, so a
+   * burst of wheel or pinch events cannot compound against a scale that has not been drawn yet.
+   */
+  const zoom = (next: (current: number) => number, x: number, y: number) => setView(was => {
+    const hold = frame.current;
+    const scale = Math.min(ZOOM_MAX, Math.max(1, next(was.scale)));
+    if (!hold || scale === was.scale) return was;
+    const box = hold.getBoundingClientRect();
+    const centreX = box.left + box.width / 2, centreY = box.top + box.height / 2;
+    // Where the pointer is on the picture itself, in its unscaled coordinates.
+    const onX = (x - centreX - was.x) / was.scale, onY = (y - centreY - was.y) / was.scale;
+    return settle(scale, x - centreX - onX * scale, y - centreY - onY * scale);
+  });
+
+  useEffect(() => {
+    const el = frame.current;
+    if (!el) return;
+    // Registered by hand: the wheel must not scroll the page instead, and only a listener that says
+    // so when it is added may prevent that.
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      zoom(current => current * Math.exp(-event.deltaY / 400), event.clientX, event.clientY);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- zoom reads nothing but refs and the updater's own state
+  }, []);
+
+  const down = (event: PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.current = { moved: false, onPicture: event.target === picture.current };
+    touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touches.current.size === 2) { pinch.current = spread(touches.current); from.current = undefined; return; }
+    from.current = view.scale > 1
+      ? { x: event.clientX - view.x, y: event.clientY - view.y }
+      : { x: event.clientX, y: event.clientY };
+  };
+  const move = (event: PointerEvent<HTMLDivElement>) => {
+    if (!touches.current.has(event.pointerId)) return;
+    touches.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (touches.current.size >= 2) {
+      const now = spread(touches.current), was = pinch.current;
+      pinch.current = now;
+      if (was) zoom(current => current * (now.gap / was.gap), now.x, now.y);
+      return;
+    }
+    const start = from.current;
+    if (!start) return;
+    if (view.scale > 1) {
+      gesture.current.moved = true;
+      setView(was => settle(was.scale, event.clientX - start.x, event.clientY - start.y));
+      return;
+    }
+    const pull = Math.max(0, event.clientY - start.y);
+    if (pull > 4) gesture.current.moved = true;
+    setPulled(pull);
+  };
+  const up = (event: PointerEvent<HTMLDivElement>) => {
+    touches.current.delete(event.pointerId);
+    if (touches.current.size < 2) pinch.current = undefined;
+    if (touches.current.size > 0) return;
+    const pulling = from.current !== undefined && view.scale <= 1;
+    from.current = undefined;
+    if (pulling && pulled > PULL_CLOSE) onClose(); else setPulled(0);
+  };
+
+  const zoomed = view.scale > 1;
+  return <div ref={frame} className="lightbox fixed inset-0 z-50 flex items-center justify-center p-4 touch-none overflow-hidden"
     style={{ backgroundColor: `rgb(0 0 0 / ${Math.max(0.35, 0.85 - pulled / 500)})` }}
     role="dialog" aria-modal="true" aria-label="画像"
-    onClick={onClose} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+    onClick={() => { if (!gesture.current.moved && !gesture.current.onPicture) onClose(); }}
+    onDoubleClick={event => zoom(current => (current > 1 ? 1 : 2.5), event.clientX, event.clientY)}
+    onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
     {/* Sized against the window rather than the box around it: a grid or flex track measured from
         the picture cannot also constrain it, which let a tall one run off the screen. */}
-    <img className="max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] object-contain"
-      style={{ transform: `translateY(${pulled}px)`, opacity: Math.max(0, 1 - pulled / 400), transition: from.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
-      src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} onClick={event => event.stopPropagation()} />
+    <img ref={picture} className={`max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] object-contain ${zoomed ? 'cursor-grab' : ''}`}
+      style={{ transform: `translate(${view.x}px, ${view.y + pulled}px) scale(${view.scale})`,
+        opacity: Math.max(0, 1 - pulled / 400),
+        transition: from.current === undefined && pinch.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
+      src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} />
     <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-white/15 text-white" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
   </div>;
+}
+
+/** The distance between two pointers, and the point between them. */
+function spread(points: Map<number, { x: number; y: number }>) {
+  const [a, b] = [...points.values()];
+  return { gap: Math.hypot(a!.x - b!.x, a!.y - b!.y) || 1, x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 };
 }
 
 /** A link's card, likewise its own bubble: the preview image reaches the edges, the words do not. */
