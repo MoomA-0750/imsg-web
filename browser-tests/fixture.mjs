@@ -29,6 +29,14 @@ const TALL_PNG = solidPNG(240, 180);
 const FACE_PNG = solidPNG(64, 64);
 // A conversation long enough to scroll. #1 is the newest and sits last, so asking for a
 // larger limit adds older messages above and leaves the bottom of the list unchanged.
+// Four messages to a day, counting back from today, so the list carries several day breaks and
+// the newest of them is labelled 今日 whenever the suite runs.
+const dayOf = n => {
+  const date = new Date();
+  date.setHours(9 + (n % 4), (n * 7) % 60, 0, 0);
+  date.setDate(date.getDate() - Math.floor((n - 1) / 4));
+  return date.toISOString();
+};
 const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_, index) => {
   const n = limit - index;
   // Every third one is the owner's, so the list carries both runs and the breaks between them.
@@ -36,7 +44,7 @@ const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_,
   return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: mine, sender: mine ? null : '合成送信者 Sigma',
     // An image carries no height until it loads, so a list of them settles well after it is drawn.
     attachments: withImage ? [{ id: 'W'.repeat(43), kind: 'image', sticker: false, preview: false }] : [],
-    link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false, avatarId: null };
+    link: null, replyTo: null, reactions: [], createdAt: dayOf(n), trimmed: false, avatarId: null };
 });
 const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });

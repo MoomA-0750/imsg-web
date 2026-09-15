@@ -1,4 +1,4 @@
-import { FormEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, PointerEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Send24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 
@@ -9,6 +9,8 @@ const POLL_MS = 15_000;
 const NEAR_EDGE = 240;
 /** Within this of the bottom of a conversation counts as watching for the newest message. */
 const NEAR_BOTTOM = 48;
+/** How far the conversation slides aside to show the times. */
+const REVEAL_MAX = 72;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
 const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-xs';
 const CENTRED = 'min-h-screen grid place-items-center p-5';
@@ -32,6 +34,25 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
+
+const TIME = new Intl.DateTimeFormat('ja-JP', { hour: 'numeric', minute: '2-digit' });
+const WEEKDAY = new Intl.DateTimeFormat('ja-JP', { weekday: 'long' });
+const DAY = new Intl.DateTimeFormat('ja-JP', { dateStyle: 'short' });
+const dayKey = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+
+/** A day the owner can place without doing arithmetic: 今日, 昨日, the weekday, then the date. */
+function dayLabel(date: Date, now = new Date()): string {
+  const days = Math.round((new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    - new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()) / 86_400_000);
+  if (days === 0) return '今日';
+  if (days === 1) return '昨日';
+  return days > 1 && days < 7 ? WEEKDAY.format(date) : DAY.format(date);
+}
+const readDate = (value: string | null): Date | null => {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? null : date;
+};
 
 function dateLabel(value: string | null): string {
   if (!value) return '日時不明';
@@ -222,6 +243,10 @@ export function App() {
   const inFlight = useRef<Record<string, AbortController | undefined>>({});
 
   const viewport = useRef<HTMLDivElement | null>(null);
+  /** How far the conversation is dragged aside, and where the drag that is doing it began. */
+  const [reveal, setReveal] = useState(0);
+  const from = useRef<{ x: number; y: number } | undefined>(undefined);
+  const dragging = useRef(false);
   const chatViewport = useRef<HTMLDivElement | null>(null);
   /** Following the newest message: keep the view at the bottom as messages arrive. True until the owner scrolls up. */
   const following = useRef(true);
@@ -438,6 +463,7 @@ export function App() {
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
+    setReveal(0); from.current = undefined; dragging.current = false;
   }
 
   // Asking for one more page. The in-flight read is for the old limit, so drop it:
@@ -473,6 +499,26 @@ export function App() {
     inFlight.current.chats?.abort(); delete inFlight.current.chats;
     setChatLimit(value => Math.min(MAX, value + PAGE));
   }
+
+  // Dragging the conversation to the left uncovers the times parked off its right edge, the way
+  // Messages does it. Vertical movement is left alone: the browser scrolls, and this never starts.
+  function onRevealDown(event: PointerEvent<HTMLOListElement>) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    from.current = { x: event.clientX, y: event.clientY };
+    dragging.current = false;
+  }
+  function onRevealMove(event: PointerEvent<HTMLOListElement>) {
+    const start = from.current;
+    if (!start) return;
+    const dx = event.clientX - start.x, dy = event.clientY - start.y;
+    if (!dragging.current) {
+      if (Math.abs(dy) > Math.abs(dx) || Math.abs(dx) < 8) { if (Math.abs(dy) > 8) from.current = undefined; return; }
+      dragging.current = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    setReveal(Math.max(0, Math.min(REVEAL_MAX, -dx)));
+  }
+  function endReveal() { from.current = undefined; dragging.current = false; setReveal(0); }
 
   function onChatScroll(event: UIEvent<HTMLDivElement>) {
     const el = event.currentTarget;
@@ -528,9 +574,11 @@ export function App() {
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
-        <div className="message-area flex-1 min-h-0 overflow-auto overscroll-contain bg-linear-145 from-thread-from to-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
+        <div className="message-area flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-linear-145 from-thread-from to-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
-          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4">{messages.map((message, index) => {
+          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
+            style={{ transform: `translateX(${-reveal}px)`, transition: dragging.current ? 'none' : 'transform .18s ease' }}
+            onPointerDown={onRevealDown} onPointerMove={onRevealMove} onPointerUp={endReveal} onPointerCancel={endReveal}>{messages.flatMap((message, index) => {
             // A run is one person still talking: pulled close together, and named once at its start.
             const previous = messages[index - 1], next = messages[index + 1];
             const same = (a: MessageView | undefined) => a !== undefined && a.isFromMe === message.isFromMe && a.sender === message.sender;
@@ -541,7 +589,12 @@ export function App() {
             const corners = message.isFromMe
               ? (runs ? 'rounded-[15px_4px_4px_15px]' : 'rounded-[15px_15px_4px_15px]')
               : (runs ? 'rounded-[4px_15px_15px_4px]' : 'rounded-[15px_15px_15px_4px]');
-            return <li key={message.id} className={`flex items-end gap-2 ${index === 0 ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+            // A day opens with its own line rather than every message repeating the date.
+            const at = readDate(message.createdAt), was = readDate(previous?.createdAt ?? null);
+            const opensDay = at !== null && (was === null ? index === 0 || previous === undefined : dayKey(at) !== dayKey(was));
+            return [
+            ...(opensDay ? [<DayBreak key={`day-${message.id}`} at={at} />] : []),
+            <li key={message.id} className={`msg relative flex items-end gap-2 ${index === 0 || opensDay ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
               {facing && (same(next)
                 ? <span className="shrink-0 w-7" aria-hidden="true" />
                 : <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />)}
@@ -553,10 +606,11 @@ export function App() {
                 {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
                 {message.link && <LinkCard link={message.link} />}
                 {message.reactions.length > 0 && <Reactions list={message.reactions} />}
-                <time className={`${STAMP} block text-right`}>{dateLabel(message.createdAt)}</time>
               </div>
               </div>
-            </li>;
+              <time className="msg-time absolute left-full top-1/2 -translate-y-1/2 ml-4 w-14 whitespace-nowrap text-muted text-[.7rem]"
+                {...(at ? { dateTime: at.toISOString() } : {})}>{at ? TIME.format(at) : '日時不明'}</time>
+            </li>];
           })}</ol>}
         </div>
         {sendMode ? <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />
@@ -637,6 +691,13 @@ function Avatar({ name: rawName, avatarId, size = 'w-11 h-11 text-[.9rem]' }: { 
   for (const code of name) hash = (hash * 31 + code.codePointAt(0)!) % 360;
   return <span className={`${shape} grid place-items-center font-bold text-white`}
     style={{ backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
+}
+
+/** Where one day ends and the next begins, with the time the next one opened at. */
+function DayBreak({ at }: { at: Date }) {
+  return <li className="day-break my-7 text-center text-[.78rem] text-muted">
+    <strong className="text-ink">{dayLabel(at)}</strong> <time dateTime={at.toISOString()}>{TIME.format(at)}</time>
+  </li>;
 }
 
 function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }

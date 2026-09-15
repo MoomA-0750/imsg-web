@@ -42,6 +42,10 @@ owner every time:
   other two administration commands.
 - **Scrolling pages both lists** — up through a conversation, down through the
   list — and stops when a read returns fewer rows than it asked for.
+- **Times are not printed on every message.** A line marks where each day begins;
+  dragging the conversation to the left uncovers the time of every message beside
+  it, and lets go when you do. The times are in the page either way, so a screen
+  reader reaches them without the drag.
 
 ## Development
 

@@ -180,7 +180,7 @@ test('puts the sender’s face at the foot of their run in a group, and nowhere 
   await login(page);
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
   await expect(page.getByText('返信の合成本文')).toBeVisible();
-  const rows = page.locator('.messages > li');
+  const rows = page.locator('.messages > li.msg');
   // Delta speaks three times, then Epsilon once: one face at the end of Delta's run, one for Epsilon.
   await expect(rows.nth(0).locator('.chat-avatar')).toHaveCount(0);
   await expect(rows.nth(1).locator('.chat-avatar')).toHaveCount(0);
@@ -236,10 +236,51 @@ test('colours a sent message by the service it went out over', async ({ page }) 
   await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
 });
 
+test('marks where a day begins instead of stamping every bubble', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
+  // Four messages to a day: 13 days, so 13 breaks, and no bubble carries a stamp of its own.
+  await expect(page.locator('.messages > li.day-break')).toHaveCount(13);
+  await expect(page.locator('.bubble time')).toHaveCount(0);
+  await expect(page.locator('.messages > li.day-break').last()).toContainText('今日');
+  // The oldest day opens with its break, and every break is followed by the day it opens.
+  const rows = page.locator('.messages > li');
+  expect(await rows.first().getAttribute('class')).toContain('day-break');
+  const classes = await rows.evaluateAll(list => list.map(el => el.className));
+  for (const [at, cls] of classes.entries()) {
+    if (cls.includes('day-break')) expect(classes[at + 1]).toContain('msg');
+  }
+});
+
+test('uncovers each message’s time while the conversation is dragged aside', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
+  const area = page.locator('.message-area');
+  const list = page.locator('.messages');
+  const shift = () => list.evaluate(el => new DOMMatrix(getComputedStyle(el).transform).m41);
+  // Parked just past the right edge, in the accessibility tree but out of sight, and not scrollable to.
+  expect(await shift()).toBe(0);
+  const parked = await page.locator('.msg-time').last().boundingBox();
+  const frame = (await area.boundingBox())!;
+  expect(parked!.x).toBeGreaterThanOrEqual(frame.x + frame.width - 1);
+  expect(await area.evaluate(el => getComputedStyle(el).overflowX)).toBe('hidden');
+
+  const box = (await area.boundingBox())!;
+  await page.mouse.move(box.x + box.width - 120, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width - 220, box.y + box.height / 2, { steps: 10 });
+  await expect.poll(shift).toBe(-72); // as far as it goes, however far the drag went
+  await expect(page.locator('.msg-time').last()).toBeInViewport();
+  await page.mouse.up();
+  await expect.poll(shift).toBe(0); // and back again on release
+});
+
 test('pulls a run of messages together and gives room where the speaker changes', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
-  await expect(page.locator('.messages > li')).toHaveCount(50);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
   const gap = async (upper: string, lower: string) => {
     const a = (await page.getByText(upper, { exact: true }).boundingBox())!;
     const b = (await page.getByText(lower, { exact: true }).boundingBox())!;
@@ -254,14 +295,14 @@ test('pulls a run of messages together and gives room where the speaker changes'
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
   await expect(page.getByText('返信の合成本文')).toBeVisible();
   // Three from one sender then one from another: a name at the head of each run, not on each bubble.
-  await expect(page.locator('.messages > li')).toHaveCount(4);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(4);
   await expect(page.locator('.messages .sender')).toHaveCount(2); // outside the bubble, above it
 });
 
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
-  await expect(page.locator('.messages > li')).toHaveCount(50);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
   // #1 is the newest and sits last. The view starts on it, not on the oldest.
   await expect(page.getByText('合成メッセージ #1', { exact: true })).toBeInViewport();
   await expect(page.getByText('合成メッセージ #50', { exact: true })).not.toBeInViewport();
@@ -271,7 +312,7 @@ test('opens a conversation at its newest message, and follows the newest as more
   // A conversation with nothing older says so rather than asking for a page that is not there:
   // two messages came back where 50 were asked for.
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
-  await expect(page.locator('.messages > li')).toHaveCount(2);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(2);
   await expect(page.getByText('これより前のメッセージはありません')).toBeVisible();
   await expect(page.getByRole('button', { name: '以前のメッセージを読み込む' })).toHaveCount(0);
 });
@@ -302,7 +343,7 @@ test('stays at the newest message while images load in after the conversation is
   });
   await login(page);
   await page.getByRole('button', { name: /合成画像列 Vega/ }).click();
-  await expect(page.locator('.messages > li')).toHaveCount(50);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
   // The field names the service it will send over, as Messages does, and nothing else.
   await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'iMessage');
   await settle(page);
@@ -314,11 +355,11 @@ test('stays at the newest message while images load in after the conversation is
 test('scrolling to the top loads the previous page and leaves the view where it was', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
-  await expect(page.locator('.messages > li')).toHaveCount(50);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
   const oldest = page.getByText('合成メッセージ #50', { exact: true });
   await area(page).evaluate(el => { el.scrollTop = 0; });
   // No button was pressed: reaching the top is the request.
-  await expect(page.locator('.messages > li')).toHaveCount(100);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(100);
   await expect(page.getByText('合成メッセージ #100', { exact: true })).toBeVisible();
   // The message that was at the top is still there, still at the top of the view.
   await expect(oldest).toBeInViewport();
@@ -326,7 +367,7 @@ test('scrolling to the top loads the previous page and leaves the view where it 
   expect(box!.y - frame!.y).toBeLessThan(260);
   // Landing at the top again pages back again, and the count is honest about it.
   await area(page).evaluate(el => { el.scrollTop = 0; });
-  await expect(page.locator('.messages > li')).toHaveCount(150);
+  await expect(page.locator('.messages > li.msg')).toHaveCount(150);
 });
 
 test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
