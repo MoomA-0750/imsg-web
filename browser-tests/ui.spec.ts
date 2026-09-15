@@ -191,6 +191,16 @@ test('puts the sender’s face at the foot of their run in a group, and nowhere 
   const bubble = await rows.nth(2).locator('.bubble').boundingBox();
   expect(face!.x).toBeLessThan(bubble!.x);
   expect(Math.abs((face!.y + face!.height) - (bubble!.y + bubble!.height))).toBeLessThan(2);
+  // The name is written above the bubble rather than inside it.
+  const label = await rows.nth(3).locator('.sender').boundingBox();
+  const named = await rows.nth(3).locator('.bubble').boundingBox();
+  expect(label!.y + label!.height).toBeLessThanOrEqual(named!.y + 1);
+
+  // The corner beside the face is square, and so is the one facing the bubble above within a run.
+  const radius = (row: number) => rows.nth(row).locator('.bubble').evaluate(el => getComputedStyle(el).borderRadius);
+  expect(await radius(0)).toBe('15px 15px 15px 4px'); // opens a run: only the foot is square
+  expect(await radius(1)).toBe('4px 15px 15px 4px');  // carries on from the one above
+  expect(await radius(3)).toBe('15px 15px 15px 4px'); // a new speaker opens again
 
   // A one-to-one conversation keeps its bubbles unadorned.
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
@@ -245,7 +255,7 @@ test('pulls a run of messages together and gives room where the speaker changes'
   await expect(page.getByText('返信の合成本文')).toBeVisible();
   // Three from one sender then one from another: a name at the head of each run, not on each bubble.
   await expect(page.locator('.messages > li')).toHaveCount(4);
-  await expect(page.locator('.bubble .sender')).toHaveCount(2);
+  await expect(page.locator('.messages .sender')).toHaveCount(2); // outside the bubble, above it
 });
 
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {

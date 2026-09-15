@@ -536,18 +536,25 @@ export function App() {
             const same = (a: MessageView | undefined) => a !== undefined && a.isFromMe === message.isFromMe && a.sender === message.sender;
             const runs = same(previous);
             const facing = selected.isGroup === true && !message.isFromMe;
+            // The corner nearest the face stays square, and so does the one facing the bubble above
+            // when a run continues, so a run reads as one shape rather than a stack of separate ones.
+            const corners = message.isFromMe
+              ? (runs ? 'rounded-[15px_4px_4px_15px]' : 'rounded-[15px_15px_4px_15px]')
+              : (runs ? 'rounded-[4px_15px_15px_4px]' : 'rounded-[15px_15px_15px_4px]');
             return <li key={message.id} className={`flex items-end gap-2 ${index === 0 ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
               {facing && (same(next)
                 ? <span className="shrink-0 w-7" aria-hidden="true" />
                 : <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />)}
-              <div className={`bubble max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)] px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${message.isFromMe ? `${sentTone} rounded-[15px_4px_15px_15px]` : 'bg-surface rounded-[4px_15px_15px_15px]'}`}>
-                {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.2rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
+              <div className="flex flex-col min-w-0 max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)]">
+              {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.15rem] ml-[.85rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
+              <div className={`bubble px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${corners} ${message.isFromMe ? sentTone : 'bg-surface'}`}>
                 {message.replyTo && <ReplyQuote reply={message.replyTo} />}
                 {message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}
                 {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
                 {message.link && <LinkCard link={message.link} />}
                 {message.reactions.length > 0 && <Reactions list={message.reactions} />}
                 <time className={`${STAMP} block text-right`}>{dateLabel(message.createdAt)}</time>
+              </div>
               </div>
             </li>;
           })}</ol>}
