@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -8,7 +8,11 @@ import { WebError } from './web-error.js';
 import type { ReadSource } from '../shared/web-types.js';
 import type { AttachmentSource } from './attachments.js';
 import type { Sender } from './send-service.js';
+import type { Upload } from './uploads.js';
 import { sendCapability } from './capabilities.js';
+
+/** What the HTTP layer needs of the upload store. */
+export interface UploadSink { accept(body: Readable, name: string | undefined): Promise<Upload>; readonly maxBytes: number }
 
 const COOKIE = '__Host-imsg_session';
 const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
@@ -17,11 +21,12 @@ export function checkedOrigin(value: string): URL {
   if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
   return u;
 }
-export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; webDir?: string }) {
+export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
   const origin = checkedOrigin(options.origin);
   const app = Fastify({ logger: false, bodyLimit: 2048, requestTimeout: 15_000, connectionTimeout: 15_000, keepAliveTimeout: 5000, return503OnClosing: true, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   await app.register(cookie);
   const authenticated = new WeakMap<object, Session>();
+  const uploadsEnabled = Boolean(options.uploads && options.sender && options.sender.mode !== 'off');
   let active = 0;
   app.server.maxConnections = 64;
   app.addHook('onRequest', (request, reply, done) => {
@@ -40,7 +45,13 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     }
     if (request.method === 'POST' || request.method === 'DELETE') {
       if (request.headers.origin !== origin.origin) { reply.code(403).send({ code: 'ORIGIN_REJECTED' }); return; }
-      if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers['content-type'] ?? '')) { reply.code(415).send({ code: 'JSON_REQUIRED' }); return; }
+      // Attachment upload is the one binary route. `application/octet-stream` cannot come from an
+      // HTML form (unlike multipart or urlencoded), so the exact Origin and the CSRF header below
+      // still carry the whole CSRF defence; every other POST stays JSON-only.
+      const binary = uploadsEnabled && request.method === 'POST' && request.url.split('?')[0] === '/api/uploads';
+      const type = (request.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+      const acceptable = binary ? type === 'application/octet-stream' : /^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers['content-type'] ?? '');
+      if (!acceptable) { reply.code(415).send({ code: binary ? 'BINARY_REQUIRED' : 'JSON_REQUIRED' }); return; }
     }
     if (request.url.startsWith('/api/') && !(request.method === 'POST' && request.url === '/api/session')) {
       const session = options.auth.lookup(request.cookies[COOKIE]);
@@ -114,19 +125,40 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     // A send-specific ceiling on top of the general per-session rate: a mutation deserves a tighter bound.
     const sendWindows = new Map<string, { window: number; count: number }>();
     const SEND_PER_MIN = 10;
-    app.post('/api/send', { schema: { body: { type: 'object', additionalProperties: false, required: ['text'], properties: {
-      chatId: { type: 'string', minLength: 43, maxLength: 43 },
-      to: { type: 'string', minLength: 1, maxLength: 256 },
-      text: { type: 'string', minLength: 1, maxLength: 16384 },
-    } } } }, async request => {
+    const spend = (request: FastifyRequest) => {
       const session = authenticated.get(request)!;
       const now = Date.now();
       const window = sendWindows.get(session.hash);
       if (!window || now - window.window >= 60_000) sendWindows.set(session.hash, { window: now, count: 1 });
       else if (++window.count > SEND_PER_MIN) throw new WebError('RATE_LIMITED', 429);
-      const body = request.body as { chatId?: string; to?: string; text: string };
-      return sender.send({ ...(body.chatId !== undefined ? { chatId: body.chatId } : {}), ...(body.to !== undefined ? { to: body.to } : {}), text: body.text });
+    };
+    app.post('/api/send', { schema: { body: { type: 'object', additionalProperties: false, properties: {
+      chatId: { type: 'string', minLength: 43, maxLength: 43 },
+      to: { type: 'string', minLength: 1, maxLength: 256 },
+      text: { type: 'string', minLength: 1, maxLength: 16384 },
+      uploadId: { type: 'string', minLength: 43, maxLength: 43 },
+    } } } }, async request => {
+      spend(request);
+      const body = request.body as { chatId?: string; to?: string; text?: string; uploadId?: string };
+      return sender.send({
+        ...(body.chatId !== undefined ? { chatId: body.chatId } : {}),
+        ...(body.to !== undefined ? { to: body.to } : {}),
+        ...(body.text !== undefined ? { text: body.text } : {}),
+        ...(body.uploadId !== undefined ? { uploadId: body.uploadId } : {}),
+      });
     });
+    if (uploadsEnabled) {
+      const uploads = options.uploads!;
+      // The raw stream goes straight to disk; nothing buffers the body in memory.
+      app.addContentTypeParser('application/octet-stream', (_request, payload, done) => { done(null, payload); });
+      app.post('/api/uploads', async request => {
+        spend(request);
+        const name = (request.query as Record<string, unknown>).name;
+        const upload = await uploads.accept(request.body as Readable, typeof name === 'string' ? name : undefined);
+        // Only an opaque id and what the server made of the name; never a path.
+        return { uploadId: upload.id, bytes: upload.bytes, name: upload.name };
+      });
+    }
   }
   if (options.webDir) {
     // Enumerate generated assets, never map arbitrary URL paths to the filesystem.

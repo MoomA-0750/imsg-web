@@ -3,13 +3,14 @@
 // import below had already been evaluated.
 import { refuseTaintedLaunch } from './server/launch-guard.js';
 import { buildChildEnv, ensureChildTmpDir } from './server/child-env.js';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
 import { adminCommand } from './server/admin.js';
 import { LiveSource } from './server/live-source.js';
 import { ImageConverter } from './server/image-convert.js';
 import { SendService, type SendMode } from './server/send-service.js';
+import { UploadStore } from './server/uploads.js';
 import { SendClient } from './server/rpc/send-client.js';
 import { startRuntime } from './server/runtime.js';
 
@@ -36,8 +37,9 @@ async function main() {
   // Sending is off unless explicitly configured, and only on macOS. IMSG_WEB_SEND=dry-run resolves and validates but sends nothing.
   const sendSetting = process.platform === 'darwin' ? process.env.IMSG_WEB_SEND : undefined;
   const sendMode: SendMode = sendSetting === '1' || sendSetting === 'live' ? 'live' : sendSetting === 'dry-run' ? 'dry-run' : 'off';
-  const sender = new SendService({ mode: sendMode, resolveChatGuid: id => source.resolveChatGuid(id), clientFactory: () => new SendClient({ executable, context }) });
-  const runtime = await startRuntime({ store, source, sender, origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  const uploads = new UploadStore({ dir: join(tmpDir, 'uploads') });
+  const sender = new SendService({ mode: sendMode, resolveChatGuid: id => source.resolveChatGuid(id), clientFactory: () => new SendClient({ executable, context }), uploads });
+  const runtime = await startRuntime({ store, source, sender, uploads, origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;

@@ -14,7 +14,11 @@ approved.
   `send` only, over the AppleScript transport (no IMCore injection, no SIP
   change). Not `send.tracked`: it requires the bridge transport. imsg's error
   reports whether a send started, so a pre-dispatch failure stays distinct from
-  an ambiguous one. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
+  an ambiguous one. An attachment is uploaded first to `POST /api/uploads`: the
+  only binary route, `application/octet-stream` only (never a form encoding,
+  which a page could submit cross-site), streamed straight to a private 0700
+  directory, bounded, and deleted after the send. Everything else stays
+  JSON-only. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
   and validates without dispatching. Do not enable live sending, and do not
   perform a real send, without the owner's approval each time.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived

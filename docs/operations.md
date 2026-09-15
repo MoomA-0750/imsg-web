@@ -77,10 +77,16 @@ Add `--send dry-run` (validate and resolve a target, dispatch nothing) or
 - An Automation grant so the app's dedicated Node may control Messages (macOS
   prompts on the first send; approve it in System Settings → Privacy & Security
   → Automation). No SIP change, and no IMCore injection: sending uses the
-  AppleScript transport, text only.
+  AppleScript transport (text and/or one attachment).
 
 Start `live` with a single message to your own number, and confirm it arrives.
 Sending never reuses the read path; the read RPC allowlist is unchanged.
+
+Attachments: the browser uploads the file to `POST /api/uploads` (binary,
+streamed to `<state>/child-tmp/uploads`, at most 100 MiB, dropped after ten
+minutes if unsent) and the send passes its path to imsg. imsg then copies it
+into `~/Library/Messages/Attachments/imsg/<uuid>/` for Messages, and those
+copies accumulate there — clear them out occasionally if they add up.
 
 ## Serve
 

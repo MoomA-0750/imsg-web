@@ -54,20 +54,28 @@ function LinkCard({ link }: { link: LinkView }) {
 type SendResult = { state: 'sent' | 'failed' | 'unknown' | 'dry_run' };
 type SendMode = 'live' | 'dry-run';
 
-function Composer({ chat, mode, send, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string) => Promise<SendResult>; onSent: () => void; onAuthError: () => void }) {
+const MiB = 1024 * 1024;
+const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadId?: string) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
   const [text, setText] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
-  useEffect(() => { setText(''); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
+  const picker = useRef<HTMLInputElement | null>(null);
+  const clearFile = () => { setFile(null); if (picker.current) picker.current.value = ''; };
+  useEffect(() => { setText(''); setFile(null); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
 
   const dispatch = async () => {
     if (busy) return;
     setBusy(true); setNotice(null);
     try {
-      const result = await send(chat.id, text);
-      if (result.state === 'sent') { setText(''); setConfirming(false); setNotice({ kind: 'ok', text: '送信しました。' }); onSent(); }
-      else if (result.state === 'dry_run') { setText(''); setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
+      // The attachment is uploaded first; the send then refers to it by an opaque id.
+      const uploaded = file ? await upload(file) : undefined;
+      const result = await send(chat.id, text, uploaded?.uploadId);
+      if (result.state === 'sent') { setText(''); clearFile(); setConfirming(false); setNotice({ kind: 'ok', text: '送信しました。' }); onSent(); }
+      else if (result.state === 'dry_run') { setText(''); clearFile(); setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
       // Not sent (imsg reported it never started): the text is kept for a safe edit-and-resend.
       else if (result.state === 'failed') { setConfirming(false); setNotice({ kind: 'error', text: '送信できませんでした（送信されていません）。宛先や内容を確認して、もう一度お試しください。' }); }
       // May or may not have gone out: do not silently resend.
@@ -76,17 +84,20 @@ function Composer({ chat, mode, send, onSent, onAuthError }: { chat: ChatView; m
       const status = (error as ApiError).status;
       if (status === 401) { onAuthError(); return; }
       setConfirming(false);
-      setNotice({ kind: 'error', text: status === 429 ? '送信数の上限に達しました。しばらく待ってください。' : status === 409 ? '会話が更新されました。開き直してください。' : status === 400 ? '送信内容を確認してください（空、長すぎる、宛先が無効 など）。' : '送信できませんでした。' });
+      setNotice({ kind: 'error', text: status === 413 ? 'ファイルが大きすぎます。' : status === 429 ? '送信数の上限に達しました。しばらく待ってください。' : status === 409 ? '会話が更新されました。開き直してください。' : status === 400 ? '送信内容を確認してください（空、長すぎる、宛先が無効 など）。' : '送信できませんでした。' });
     } finally { setBusy(false); }
   };
 
-  return <form className="composer" onSubmit={event => { event.preventDefault(); if (text.trim() && !confirming) { setNotice(null); setConfirming(true); } }}>
+  const ready = text.trim() !== '' || file !== null;
+  return <form className="composer" onSubmit={event => { event.preventDefault(); if (ready && !confirming) { setNotice(null); setConfirming(true); } }}>
     {mode === 'dry-run' && <p className="composer-banner" role="status">テスト送信モードです。実際には送信されません。</p>}
     <textarea value={text} onChange={event => { setText(event.target.value); setConfirming(false); }} placeholder="メッセージを入力（送信前に確認します）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
+    <input ref={picker} type="file" hidden aria-label="添付ファイルを選ぶ" onChange={event => { setFile(event.target.files?.[0] ?? null); setConfirming(false); setNotice(null); }} />
+    {file && <p className="composer-file">添付: {file.name}（{sizeLabel(file.size)}）<button type="button" className="secondary compact" onClick={() => { clearFile(); setConfirming(false); }} disabled={busy}>外す</button></p>}
     {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     {!confirming
-      ? <div className="composer-actions"><button type="submit" disabled={busy || text.trim() === ''}>{busy ? '送信中…' : '送信'}</button></div>
-      : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
+      ? <div className="composer-actions"><button type="button" className="secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
+      : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に{file ? `「${file.name}」を添付して` : ''}送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
   </form>;
 }
 
@@ -211,10 +222,20 @@ export function App() {
     }
   }, [loseSession, run, switchEpoch]);
 
-  const sendMessage = useCallback(async (chatId: string, text: string): Promise<SendResult> => {
+  const sendMessage = useCallback(async (chatId: string, text: string, uploadId?: string): Promise<SendResult> => {
     const token = session?.csrfToken;
     if (!token) { const error = new Error('no session') as ApiError; error.status = 401; throw error; }
-    return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify({ chatId, text }) });
+    const body: Record<string, string> = { chatId };
+    if (text.trim() !== '') body.text = text;
+    if (uploadId) body.uploadId = uploadId;
+    return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify(body) });
+  }, [session]);
+
+  const uploadFile = useCallback(async (file: File): Promise<{ uploadId: string }> => {
+    const token = session?.csrfToken;
+    if (!token) { const error = new Error('no session') as ApiError; error.status = 401; throw error; }
+    // Raw bytes, streamed: no base64 inflation. octet-stream cannot come from an HTML form, so CSRF cover is unchanged.
+    return api<{ uploadId: string }>(`/api/uploads?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-CSRF-Token': token }, body: file });
   }, [session]);
 
   useEffect(() => {
@@ -306,7 +327,7 @@ export function App() {
     {epochNotice && <div className="notice" role="status">{epochNotice}</div>}
     <div className="panes">
       <aside className="chat-pane" aria-label="会話一覧"><div className="pane-heading"><div><h1>会話</h1><p>{chats.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadChats()} disabled={chatsBusy} aria-label="会話一覧を更新">↻</button></div>{chatError && <ErrorBar text={chatError} retry={loadChats} />}{chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list">{chats.map(chat => <li key={chat.id}><button className={selected?.id === chat.id ? 'chat active' : 'chat'} onClick={() => choose(chat)}><span className="chat-top"><strong>{chat.name || '名前のない会話'}{chat.trimmed && <span className="trim">（省略）</span>}</strong><time>{dateLabel(chat.lastMessageAt)}</time></span><span className="chat-meta">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span></button></li>)}</ul>}<LoadMore value={chatLimit} busy={chatsBusy} onMore={() => setChatLimit(value => Math.min(MAX, value + PAGE))} /></aside>
-      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} />{sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} onSent={() => void loadHistory()} onAuthError={loseSession} />}</>}</main>
+      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} />{sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />}</>}</main>
     </div>
   </div>;
 }

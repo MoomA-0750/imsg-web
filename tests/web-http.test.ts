@@ -381,7 +381,7 @@ describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
   it('rejects malformed bodies before dispatch', async () => {
     const { post, send, login } = await sendFixture('dry-run');
     const { cookie, csrf } = await login();
-    for (const payload of [{}, { text: '' }, { chatId: 'short', text: 'hi' }, { chatId: 'C'.repeat(43), text: 'hi', extra: 1 }, { to: 'x'.repeat(300), text: 'hi' }]) {
+    for (const payload of [{ text: 123 }, { text: '' }, { chatId: 'short', text: 'hi' }, { chatId: 'C'.repeat(43), text: 'hi', extra: 1 }, { to: 'x'.repeat(300), text: 'hi' }, { text: 'hi', uploadId: 'short' }]) {
       expect((await post({ cookie, 'x-csrf-token': csrf }, payload)).statusCode).toBe(400);
     }
     expect(send).not.toHaveBeenCalled();
@@ -393,5 +393,95 @@ describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
     for (let i = 0; i < 10; i++) expect((await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: `m${i}` })).statusCode).toBe(200);
     const eleventh = await post({ cookie, 'x-csrf-token': csrf }, { chatId: 'C'.repeat(43), text: 'm10' });
     expect(eleventh.statusCode).toBe(429);
+  });
+});
+
+describe('B09 attachment upload (synthetic, binary route)', () => {
+  const NAME = '写真 1.jpg';
+  async function uploadFixture(mode: 'off' | 'dry-run' | 'live' = 'dry-run', maxBytes = 1024) {
+    let now = 1_000_000;
+    const auth = new Auth(hashKey(KEY), () => now);
+    const source = {
+      chats: vi.fn<ReadSource['chats']>(async limit => ({ ...CHAT, limit })),
+      history: vi.fn<ReadSource['history']>(async (_id, limit) => ({ ...HISTORY, limit })),
+      capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: {} })),
+      close: vi.fn<ReadSource['close']>(async () => {}),
+      attachment: vi.fn<AttachmentSource['attachment']>(async () => { throw new WebError('ATTACHMENT_UNAVAILABLE', 404); }),
+    };
+    const accepted: { name: string | undefined; bytes: number }[] = [];
+    const uploads = {
+      maxBytes,
+      accept: vi.fn(async (body: Readable, name: string | undefined) => {
+        let bytes = 0;
+        for await (const chunk of body) bytes += (chunk as Buffer).length;
+        if (bytes > maxBytes) throw new WebError('UPLOAD_TOO_LARGE', 413);
+        accepted.push({ name, bytes });
+        return { id: 'U'.repeat(43), dir: '/tmp/u', path: `/tmp/u/${name ?? 'attachment'}`, name: name ?? 'attachment', bytes, created: 0 };
+      }),
+    };
+    const sender: Sender = { mode, send: vi.fn<Sender['send']>(async () => ({ state: 'dry_run' })) };
+    const app = await createApp({ origin: ORIGIN, auth, source, sender, uploads });
+    apps.push(app);
+    const login = async () => {
+      const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
+      const setCookie = response.headers['set-cookie'] as string;
+      return { cookie: setCookie.split(';')[0]!, csrf: response.json<{ csrfToken: string }>().csrfToken };
+    };
+    const put = (headers: Record<string, string>, payload: string | Buffer, query = `?name=${encodeURIComponent(NAME)}`) =>
+      app.inject({ method: 'POST', url: `/api/uploads${query}`, headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/octet-stream', ...headers }, payload }).then(response => response);
+    return { app, uploads, accepted, login, put };
+  }
+
+  it('accepts raw bytes with the owner filename and returns only an opaque id', async () => {
+    const { put, accepted, login } = await uploadFixture();
+    const { cookie, csrf } = await login();
+    const response = await put({ cookie, 'x-csrf-token': csrf }, 'binary-bytes');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ uploadId: 'U'.repeat(43), bytes: 12, name: NAME });
+    expect(accepted).toEqual([{ name: NAME, bytes: 12 }]);
+    expect(response.body).not.toContain('/tmp/u'); // no path reaches the browser
+  });
+
+  it('still requires the session, this session CSRF token and the exact Origin', async () => {
+    const { put, uploads, login } = await uploadFixture();
+    const { cookie, csrf } = await login();
+    expect((await put({ cookie }, 'x')).statusCode).toBe(403); // no CSRF header
+    expect((await put({ 'x-csrf-token': csrf }, 'x')).statusCode).toBe(401); // no session
+    expect((await put({ cookie, 'x-csrf-token': csrf, origin: 'https://evil.synthetic.test' }, 'x')).statusCode).toBe(403);
+    expect(uploads.accept).not.toHaveBeenCalled();
+  });
+
+  it('takes only application/octet-stream, never a form encoding', async () => {
+    const { put, uploads, login } = await uploadFixture();
+    const { cookie, csrf } = await login();
+    for (const type of ['multipart/form-data; boundary=x', 'application/x-www-form-urlencoded', 'text/plain', 'application/json']) {
+      const response = await put({ cookie, 'x-csrf-token': csrf, 'content-type': type }, 'x');
+      expect(response.statusCode).toBe(415);
+      expect(response.json()).toEqual({ code: 'BINARY_REQUIRED' });
+    }
+    expect(uploads.accept).not.toHaveBeenCalled();
+  });
+
+  it('keeps every other POST JSON-only', async () => {
+    const { app, login } = await uploadFixture();
+    const { cookie, csrf } = await login();
+    const response = await app.inject({ method: 'POST', url: '/api/send', headers: { host: HOST, origin: ORIGIN, cookie, 'x-csrf-token': csrf, 'content-type': 'application/octet-stream' }, payload: 'x' });
+    expect(response.statusCode).toBe(415);
+    expect(response.json()).toEqual({ code: 'JSON_REQUIRED' });
+  });
+
+  it('refuses a body past the ceiling', async () => {
+    const { put, login } = await uploadFixture('dry-run', 8);
+    const { cookie, csrf } = await login();
+    const response = await put({ cookie, 'x-csrf-token': csrf }, Buffer.alloc(64, 1));
+    expect(response.statusCode).toBe(413);
+    expect(response.json()).toEqual({ code: 'UPLOAD_TOO_LARGE' });
+  });
+
+  it('is not exposed at all when sending is off', async () => {
+    const { put, login } = await uploadFixture('off');
+    const { cookie, csrf } = await login();
+    // With uploads disabled the route is absent, and the binary content type is no longer accepted either.
+    expect((await put({ cookie, 'x-csrf-token': csrf }, 'x')).statusCode).toBe(415);
   });
 });

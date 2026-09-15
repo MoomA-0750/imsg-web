@@ -30,12 +30,12 @@ that never reuse the read-only path, a `POST /api/send` route (owner key + CSRF
 + its own rate limit), plain `send` over the AppleScript transport, and a
 capability that reflects the mode. It is **off by default**; `IMSG_WEB_SEND`
 selects `dry-run` (validate + resolve target, dispatch nothing) or `live`.
-Reply-into-a-chat and send-to-a-handle are both supported; text only. All tested
+Reply-into-a-chat and send-to-a-handle are both supported. All tested
 with synthetic fixtures — nothing real is sent.
 
 Phase 2 (UI) is in: a composer under the open conversation that requires an
-explicit confirm before sending, shows the outcome, and on an ambiguous result
-keeps the text and the same attempt_id so a retry cannot double-send. It appears
+explicit confirm before sending, shows the outcome, and keeps the text when a
+send failed or was ambiguous. It appears
 only when the send capability is available, with a banner in dry-run. Failure,
 rate-limit and stale-chat messages are handled (Phase 3 essentials).
 
@@ -47,8 +47,15 @@ AppleScript transport ("send.tracked requires bridge transport"). Fixed to plain
 (not-started → failed/safe-to-retry, otherwise unknown).
 
 2026-09-15: a real message sent successfully from the web UI on the M1 (release
-`6ea8900`, `--send live`). Sending now works end to end (reply into a chat, text
-only, over AppleScript). Live sending is currently enabled on the M1.
+`6ea8900`, `--send live`). Sending works end to end over AppleScript. Live
+sending is currently enabled on the M1.
+
+Attachments can now be sent too: the browser uploads raw bytes to
+`POST /api/uploads` (the one binary route, `application/octet-stream`, streamed
+to a private 0700 directory, 100 MiB ceiling, 10-minute TTL, deleted after the
+send), and the send refers to it by an opaque id. Text, file, or both. No
+silent compression — iMessage has its own size limit, which a large file will
+find. Not yet tried live.
 
 Note: `send-messages` is off `main` and does not include the notifications
 commit (`6427ffc`, branch `attachment-images`); the branches still need

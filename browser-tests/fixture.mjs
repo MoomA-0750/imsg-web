@@ -37,12 +37,20 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
   },
   async close() {},
+}, uploads: {
+  // Synthetic upload sink: counts the streamed bytes, writes nothing, returns an opaque id.
+  maxBytes: 100 * 1024 * 1024,
+  async accept(body, name) {
+    let bytes = 0;
+    for await (const chunk of body) bytes += chunk.length;
+    return { id: 'U'.repeat(43), dir: '/synthetic', path: `/synthetic/${name ?? 'attachment'}`, name: name ?? 'attachment', bytes, created: 0 };
+  },
 }, sender: {
   // Synthetic in-process sender: never touches imsg or Messages. Outcome chosen by markers in the text.
   mode: 'live',
   async send({ text }) {
-    if (String(text).includes('UNKNOWN')) return { state: 'unknown' };
-    if (String(text).includes('FAIL')) return { state: 'failed', code: 'synthetic' };
+    if (String(text ?? '').includes('UNKNOWN')) return { state: 'unknown' };
+    if (String(text ?? '').includes('FAIL')) return { state: 'failed', code: 'synthetic' };
     return { state: 'sent' };
   },
 } });

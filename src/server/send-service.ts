@@ -1,5 +1,6 @@
 import { SendClient, type SendReply } from './rpc/send-client.js';
 import { isObject } from './rpc/errors.js';
+import type { Upload } from './uploads.js';
 import { WebError } from './web-error.js';
 
 /** off: sending is not offered. dry-run: everything runs but no message is dispatched. live: real sends. */
@@ -11,7 +12,7 @@ export type SendMode = 'off' | 'dry-run' | 'live';
  * dry_run: validated and resolved a target, but nothing was dispatched.
  */
 export type SendState = 'sent' | 'failed' | 'unknown' | 'dry_run';
-export type SendInput = { chatId?: string; to?: string; text: string };
+export type SendInput = { chatId?: string; to?: string; text?: string; uploadId?: string };
 export type SendResult = { state: SendState };
 
 export const TEXT_MAX = 8000;
@@ -19,12 +20,20 @@ export const TEXT_MAX = 8000;
 const PHONE = /^\+?[0-9][0-9\s()\-.]{3,30}$/;
 const EMAIL = /^[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{1,64}$/;
 
+/** Just what the send path needs of the upload store, so tests need no filesystem. */
+export interface UploadSource {
+  take(id: string): Upload | undefined;
+  discard(upload: Upload): Promise<void>;
+}
+
 export type SendServiceOptions = {
   mode: SendMode;
   /** Opaque chat id → the chat's guid in the current epoch, or undefined if unknown/stale. */
   resolveChatGuid: (id: string) => string | undefined;
   /** Makes a one-shot send child. Only called in 'live' mode. */
   clientFactory: () => SendClient;
+  /** Absent: attachments cannot be sent. */
+  uploads?: UploadSource;
 };
 
 export interface Sender {
@@ -57,34 +66,48 @@ export class SendService implements Sender {
 
   async send(input: SendInput): Promise<SendResult> {
     if (this.options.mode === 'off') throw new WebError('SEND_DISABLED', 403);
-    if (typeof input.text !== 'string') throw new WebError('SEND_PARAMS_INVALID', 400);
-    if (input.text.trim() === '') throw new WebError('SEND_EMPTY', 400);
-    if ([...input.text].length > TEXT_MAX) throw new WebError('SEND_TOO_LONG', 400);
+    const text = typeof input.text === 'string' ? input.text : '';
+    if (input.text !== undefined && typeof input.text !== 'string') throw new WebError('SEND_PARAMS_INVALID', 400);
+    if ([...text].length > TEXT_MAX) throw new WebError('SEND_TOO_LONG', 400);
 
-    const hasChat = typeof input.chatId === 'string' && input.chatId !== '';
-    const hasTo = typeof input.to === 'string' && input.to !== '';
-    if (hasChat === hasTo) throw new WebError('SEND_TARGET_INVALID', 400); // exactly one of chatId / to
-    const target: Record<string, unknown> = {};
-    if (hasChat) {
-      const guid = this.options.resolveChatGuid(input.chatId!);
-      if (!guid) throw new WebError('STALE_CHAT', 409);
-      target.chat_guid = guid;
-    } else {
-      const recipient = input.to!.trim();
-      if (!PHONE.test(recipient) && !EMAIL.test(recipient)) throw new WebError('SEND_RECIPIENT_INVALID', 400);
-      target.to = recipient;
+    // An attachment may travel with or without text; without one, text is required.
+    let upload: Upload | undefined;
+    if (input.uploadId !== undefined) {
+      if (!this.options.uploads) throw new WebError('SEND_ATTACHMENT_UNSUPPORTED', 400);
+      upload = this.options.uploads.take(input.uploadId);
+      if (!upload) throw new WebError('UPLOAD_UNKNOWN', 409);
     }
+    try {
+      if (!upload && text.trim() === '') throw new WebError('SEND_EMPTY', 400);
 
-    // The target is resolved and the text validated even in dry-run, so only the dispatch itself is skipped.
-    if (this.options.mode === 'dry-run') return { state: 'dry_run' };
+      const hasChat = typeof input.chatId === 'string' && input.chatId !== '';
+      const hasTo = typeof input.to === 'string' && input.to !== '';
+      if (hasChat === hasTo) throw new WebError('SEND_TARGET_INVALID', 400); // exactly one of chatId / to
+      const target: Record<string, unknown> = {};
+      if (hasChat) {
+        const guid = this.options.resolveChatGuid(input.chatId!);
+        if (!guid) throw new WebError('STALE_CHAT', 409);
+        target.chat_guid = guid;
+      } else {
+        const recipient = input.to!.trim();
+        if (!PHONE.test(recipient) && !EMAIL.test(recipient)) throw new WebError('SEND_RECIPIENT_INVALID', 400);
+        target.to = recipient;
+      }
 
-    const params = { ...target, text: input.text, transport: 'applescript', service: 'auto' };
-    // One live send at a time: two osascript-driven sends must not overlap.
-    const run = this.#tail.then(() => this.options.clientFactory().send(params));
-    this.#tail = run.catch(() => {});
-    const reply = await run;
-    if (reply.ok) return { state: 'sent' };
-    if (reply.ambiguous) return { state: 'unknown' };
-    return { state: classifyError(reply) };
+      // The target is resolved and the text validated even in dry-run, so only the dispatch itself is skipped.
+      if (this.options.mode === 'dry-run') return { state: 'dry_run' };
+
+      const params = { ...target, text, ...(upload ? { file: upload.path } : {}), transport: 'applescript', service: 'auto' };
+      // One live send at a time: two osascript-driven sends must not overlap.
+      const run = this.#tail.then(() => this.options.clientFactory().send(params));
+      this.#tail = run.catch(() => {});
+      const reply = await run;
+      if (reply.ok) return { state: 'sent' };
+      if (reply.ambiguous) return { state: 'unknown' };
+      return { state: classifyError(reply) };
+    } finally {
+      // imsg copies the file into Messages' own attachments area, so our temporary one never outlives the send.
+      if (upload) await this.options.uploads!.discard(upload);
+    }
   }
 }

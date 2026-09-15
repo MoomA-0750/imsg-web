@@ -91,6 +91,34 @@ test('composes and sends only after an explicit confirm, and is honest about eac
   await expect(page.getByText('送信されていません', { exact: false })).toBeVisible();
   await expect(box).toHaveValue('FAIL な送信');
 });
+test('attaches a file: uploads the raw bytes first, names it in the confirm, then sends by id', async ({ page }) => {
+  const uploads: { url: string; type: string | undefined; bytes: number }[] = [];
+  const sends: Record<string, unknown>[] = [];
+  await page.route('**/api/uploads*', async route => {
+    const request = route.request();
+    uploads.push({ url: request.url(), type: request.headers()['content-type'], bytes: (request.postDataBuffer() ?? Buffer.alloc(0)).length });
+    await route.continue();
+  });
+  await page.route('**/api/send', async route => { sends.push(route.request().postDataJSON()); await route.continue(); });
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  await page.getByLabel('添付ファイルを選ぶ').setInputFiles({ name: '写真 1.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-image-bytes') });
+  await expect(page.getByText('添付: 写真 1.png', { exact: false })).toBeVisible();
+  // Choosing a file must not upload or send anything yet.
+  expect(uploads).toEqual([]);
+  expect(sends).toEqual([]);
+  await page.getByRole('button', { name: '送信', exact: true }).click();
+  await expect(page.getByText('「写真 1.png」を添付して送信しますか？', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: '送信する', exact: true }).click();
+  await expect(page.getByText('送信しました。')).toBeVisible();
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]!.type).toBe('application/octet-stream'); // raw bytes, not multipart or base64
+  expect(uploads[0]!.bytes).toBe('synthetic-image-bytes'.length);
+  expect(decodeURIComponent(new URL(uploads[0]!.url).searchParams.get('name') ?? '')).toBe('写真 1.png');
+  expect(sends).toEqual([{ chatId: 'C'.repeat(43), uploadId: 'U'.repeat(43) }]); // file only: no text, no path
+  await expect(page.getByText('添付:', { exact: false })).toHaveCount(0);
+});
 test('B05 mobile360/dark/keyboard and long synthetic content does not overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 }); await page.emulateMedia({ colorScheme: 'dark' });
   await login(page);
