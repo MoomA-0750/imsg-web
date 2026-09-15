@@ -527,10 +527,13 @@ export function App() {
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
         <div className="message-area flex-1 min-h-0 overflow-auto overscroll-contain bg-linear-145 from-thread-from to-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
-          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4">{messages.map(message =>
-            <li key={message.id} className={`flex my-[.55rem] ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4">{messages.map((message, index) => {
+            // A run is one person still talking: pulled close together, and named once at its start.
+            const previous = messages[index - 1];
+            const runs = previous !== undefined && previous.isFromMe === message.isFromMe && previous.sender === message.sender;
+            return <li key={message.id} className={`flex ${index === 0 ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
               <div className={`bubble max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)] px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${message.isFromMe ? `${sentTone} rounded-[15px_4px_15px_15px]` : 'bg-surface rounded-[4px_15px_15px_15px]'}`}>
-                {selected.isGroup === true && message.sender && <span className="sender block mb-[.2rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
+                {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.2rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
                 {message.replyTo && <ReplyQuote reply={message.replyTo} />}
                 {message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}
                 {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
@@ -538,7 +541,8 @@ export function App() {
                 {message.reactions.length > 0 && <Reactions list={message.reactions} />}
                 <time className={`${STAMP} block text-right`}>{dateLabel(message.createdAt)}</time>
               </div>
-            </li>)}</ol>}
+            </li>;
+          })}</ol>}
         </div>
         {sendMode ? <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />
           : capability === null && capabilityError !== '' ? <ErrorBar text="送信できるか確認できていません。" retry={loadCapabilities} /> : null}

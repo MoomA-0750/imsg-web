@@ -30,7 +30,9 @@ const TALL_PNG = solidPNG(240, 180);
 // larger limit adds older messages above and leaves the bottom of the list unchanged.
 const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_, index) => {
   const n = limit - index;
-  return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: false, sender: '合成送信者 Sigma',
+  // Every third one is the owner's, so the list carries both runs and the breaks between them.
+  const mine = n % 3 === 0;
+  return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: mine, sender: mine ? null : '合成送信者 Sigma',
     // An image carries no height until it loads, so a list of them settles well after it is drawn.
     attachments: withImage ? [{ id: 'W'.repeat(43), kind: 'image', sticker: false, preview: false }] : [],
     link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false };

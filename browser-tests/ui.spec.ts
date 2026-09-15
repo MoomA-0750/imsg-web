@@ -182,10 +182,31 @@ test('colours a sent message by the service it went out over', async ({ page }) 
   await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
 });
 
+test('pulls a run of messages together and gives room where the speaker changes', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  await expect(page.locator('.messages > li')).toHaveCount(50);
+  const gap = async (upper: string, lower: string) => {
+    const a = (await page.getByText(upper, { exact: true }).boundingBox())!;
+    const b = (await page.getByText(lower, { exact: true }).boundingBox())!;
+    return b.y - (a.y + a.height);
+  };
+  // Every third message is the owner's: #2→#1 is one person still talking, #3→#2 is a change.
+  const run = await gap('合成メッセージ #2', '合成メッセージ #1');
+  const change = await gap('合成メッセージ #3', '合成メッセージ #2');
+  expect(change).toBeGreaterThan(run + 12);
+
+  // In a group, the name is written once at the top of a run rather than over every bubble.
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.getByText('返信の合成本文')).toBeVisible();
+  await expect(page.locator('.messages > li')).toHaveCount(4); // all four from one sender
+  await expect(page.locator('.bubble .sender')).toHaveCount(1);
+});
+
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
-  await expect(page.locator('.messages li')).toHaveCount(50);
+  await expect(page.locator('.messages > li')).toHaveCount(50);
   // #1 is the newest and sits last. The view starts on it, not on the oldest.
   await expect(page.getByText('合成メッセージ #1', { exact: true })).toBeInViewport();
   await expect(page.getByText('合成メッセージ #50', { exact: true })).not.toBeInViewport();
@@ -195,7 +216,7 @@ test('opens a conversation at its newest message, and follows the newest as more
   // A conversation with nothing older says so rather than asking for a page that is not there:
   // two messages came back where 50 were asked for.
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
-  await expect(page.locator('.messages li')).toHaveCount(2);
+  await expect(page.locator('.messages > li')).toHaveCount(2);
   await expect(page.getByText('これより前のメッセージはありません')).toBeVisible();
   await expect(page.getByRole('button', { name: '以前のメッセージを読み込む' })).toHaveCount(0);
 });
@@ -226,7 +247,7 @@ test('stays at the newest message while images load in after the conversation is
   });
   await login(page);
   await page.getByRole('button', { name: /合成画像列 Vega/ }).click();
-  await expect(page.locator('.messages li')).toHaveCount(50);
+  await expect(page.locator('.messages > li')).toHaveCount(50);
   // The field names the service it will send over, as Messages does, and nothing else.
   await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'iMessage');
   await settle(page);
@@ -238,11 +259,11 @@ test('stays at the newest message while images load in after the conversation is
 test('scrolling to the top loads the previous page and leaves the view where it was', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
-  await expect(page.locator('.messages li')).toHaveCount(50);
+  await expect(page.locator('.messages > li')).toHaveCount(50);
   const oldest = page.getByText('合成メッセージ #50', { exact: true });
   await area(page).evaluate(el => { el.scrollTop = 0; });
   // No button was pressed: reaching the top is the request.
-  await expect(page.locator('.messages li')).toHaveCount(100);
+  await expect(page.locator('.messages > li')).toHaveCount(100);
   await expect(page.getByText('合成メッセージ #100', { exact: true })).toBeVisible();
   // The message that was at the top is still there, still at the top of the view.
   await expect(oldest).toBeInViewport();
@@ -250,7 +271,7 @@ test('scrolling to the top loads the previous page and leaves the view where it 
   expect(box!.y - frame!.y).toBeLessThan(260);
   // Landing at the top again pages back again, and the count is honest about it.
   await area(page).evaluate(el => { el.scrollTop = 0; });
-  await expect(page.locator('.messages li')).toHaveCount(150);
+  await expect(page.locator('.messages > li')).toHaveCount(150);
 });
 
 test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
