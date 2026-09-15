@@ -183,7 +183,8 @@ test('stays at the newest message while images load in after the conversation is
   await login(page);
   await page.getByRole('button', { name: /合成画像列 Vega/ }).click();
   await expect(page.locator('.messages li')).toHaveCount(50);
-  await expect(page.getByPlaceholder('メッセージを入力', { exact: false })).toBeVisible();
+  // The field names the service it will send over, as Messages does, and nothing else.
+  await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'iMessage');
   await settle(page);
   await expect(page.getByText('合成メッセージ #1', { exact: true })).toBeInViewport();
   const { top, height, view } = await metrics(page);
@@ -247,6 +248,11 @@ test('keeps the composer on one line, the field and both round buttons the same 
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
   await expect(page.getByLabel('メッセージを入力')).toBeVisible();
   const box = async (name: string) => (await page.getByLabel(name).boundingBox())!;
+  // An SMS conversation says so instead; the placeholder never wraps the field onto a second line.
+  await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click();
+  await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'SMS');
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'iMessage');
   const [add, field, send] = [await box('添付ファイルを追加'), await box('メッセージを入力'), await box('送信')];
   expect([add!.height, send!.height]).toEqual([field!.height, field!.height]);
   expect(add!.width).toBe(add!.height); // circular

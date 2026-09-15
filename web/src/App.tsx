@@ -187,7 +187,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
       <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
         value={text} onChange={event => setText(event.target.value)}
         onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
-        placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
+        placeholder={chat.service === 'iMessage' ? 'iMessage' : 'SMS'} rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
       <button type="submit" className={`${ROUND} border-0 bg-accent text-white enabled:hover:bg-accent-strong`} disabled={busy || !ready} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
     </div>
   </form>;
