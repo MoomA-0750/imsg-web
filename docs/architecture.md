@@ -47,6 +47,27 @@ The full application plan is a single Mac-local Node server serving a static Rea
 
 No reconnect queue, message mirror, or mutation implementation is needed to validate read contracts. A shared mutation client and an isolated read client are future alternatives: the former needs non-killing recovery semantics; the latter adds a process. Do not silently extend this read-only client to send.
 
+## Styling
+
+Tailwind v4, through `@tailwindcss/vite`; no CDN, no config file. `web/src/style.css`
+holds the whole styling layer:
+
+- The palette is defined once as plain custom properties on `:root`, with a
+  `prefers-color-scheme: dark` block redefining the same names. `@theme inline`
+  hands those names to Tailwind, so `bg-surface` compiles to
+  `background: var(--surface)` and the dark theme follows from the palette alone
+  — no element carries a `dark:` twin. Change a colour in one place.
+- `--breakpoint-pane: 600px` is where the two panes stop stacking. Below it they
+  slide over one another; the `pane:` prefix carries the side-by-side layout.
+- `.btn`, `.btn-secondary` and `.btn-compact` are the only component classes,
+  because those shapes recur and would otherwise drift apart.
+
+Everything else is utilities in the markup, so a single element can be changed
+where it is written. Elements also keep their semantic class (`bubble`,
+`message-area`, `reply-quote`, …) as a hook with no styling attached: the browser
+tests select on them, and they say what a thing is where a wall of utilities does
+not.
+
 ## Primary sources
 
 - [imsg v0.15.1 RPC](https://github.com/openclaw/imsg/blob/v0.15.1/docs/rpc.md)

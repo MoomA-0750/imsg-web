@@ -1,120 +1,106 @@
-:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", sans-serif; color: #17231d; background: #eef3ef; font-synthesis: none; --surface:#fff; --soft:#f5f8f6; --line:#d7e1da; --muted:#617068; --green:#20734a; --green-strong:#155c3a; --green-soft:#dff1e7; --danger:#a63737; }
-* { box-sizing: border-box; }
-body { margin:0; min-width:320px; min-height:100vh; }
-button,input { font:inherit; }
-button { cursor:pointer; border:0; border-radius:10px; padding:.72rem 1rem; background:var(--green); color:#fff; font-weight:700; }
-button:hover:not(:disabled) { background:var(--green-strong); }
-button:disabled { cursor:default; opacity:.55; }
-button:focus-visible,input:focus-visible { outline:3px solid #68ad89; outline-offset:2px; }
-.center { min-height:100vh; display:grid; place-items:center; padding:1.25rem; }
-.login-card { width:min(100%, 430px); padding:2rem; border:1px solid var(--line); border-radius:18px; background:var(--surface); box-shadow:0 18px 45px #173d2820; }
-.brand { color:var(--green); font-weight:800; letter-spacing:.04em; }
-h1 { margin:.25rem 0; font-size:1.25rem; line-height:1.3; overflow-wrap:anywhere; }
-.login-card h1 { margin-top:.75rem; font-size:1.75rem; }
-.muted { color:var(--muted); }
-form { display:grid; gap:.75rem; margin-top:1.5rem; }
-label { font-weight:700; }
-input { width:100%; border:1px solid #a9b8ae; border-radius:10px; padding:.8rem; background:var(--surface); color:inherit; }
-.error { color:var(--danger); margin:.25rem 0 0; }
-.app { height:100vh; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:var(--surface); }
-header { flex:0 0 auto; min-height:62px; padding:.7rem 1rem; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:1rem; }
-header strong { font-size:1.15rem; color:var(--green-strong); }
-.header-actions { display:flex; align-items:center; gap:.65rem; }
-.capability { color:var(--muted); font-size:.78rem; }
-.secondary { color:var(--green-strong); background:var(--soft); border:1px solid var(--line); }
-.secondary:hover:not(:disabled) { background:var(--green-soft); }
-.compact { padding:.5rem .7rem; font-size:.82rem; }
-.notice { flex:0 0 auto; padding:.65rem 1rem; background:#fff2c9; color:#694d00; border-bottom:1px solid #ead58c; }
-.panes { flex:1; min-height:0; display:grid; grid-template-columns:minmax(280px, 35%) 1fr; }
-.chat-pane,.detail-pane { min-width:0; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
-.chat-pane { border-right:1px solid var(--line); background:var(--soft); }
-.pane-heading { min-height:64px; padding:.85rem 1rem; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:.75rem; }
-.back { flex:0 0 auto; width:42px; height:42px; padding:0; border-radius:50%; color:var(--green-strong); background:var(--green-soft); font-size:1.25rem; }
-.back { display:none; }
-.chat-list,.messages { list-style:none; margin:0; padding:0; }
-.chat-area { flex:1; min-height:0; overflow:auto; display:flex; flex-direction:column; }
-.chat-list li { border-bottom:1px solid var(--line); }
-.chat { display:block; width:100%; border-radius:0; padding:.9rem 1rem; background:transparent; color:inherit; text-align:left; }
-.chat:hover:not(:disabled),.chat.active { background:var(--green-soft); }
-.chat-top { display:flex; justify-content:space-between; align-items:start; gap:.75rem; }
-.chat-top strong { overflow-wrap:anywhere; min-width:0; }
-time { flex:0 0 auto; color:var(--muted); font-size:.72rem; }
-.chat-meta { display:block; margin-top:.35rem; color:var(--muted); font-size:.8rem; overflow-wrap:anywhere; }
-.trim { color:var(--muted); font-size:.75em; }
-/* The message area is the scroller, not the list: the "older" strip scrolls with the messages,
-   and the element that owns the scroll position stays mounted while a conversation is empty. */
-.message-area { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; background:linear-gradient(145deg, #f8fbf9, #eef5f0); }
-.messages { padding:1rem; }
-.list-note { margin:0; padding:.75rem 1rem; text-align:center; color:var(--muted); font-size:.75rem; }
-.messages li { display:flex; margin:.55rem 0; }
-.messages .mine { justify-content:flex-end; }
-.bubble { max-width:min(75%, 720px); padding:.7rem .85rem; background:var(--surface); border:1px solid var(--line); border-radius:4px 15px 15px 15px; box-shadow:0 2px 8px #1837250a; }
-.mine .bubble { background:var(--green-soft); border-radius:15px 4px 15px 15px; }
-.bubble p { margin:0 0 .4rem; white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.5; }
-.bubble time { display:block; text-align:right; }
-.bubble .sender { display:block; margin-bottom:.2rem; color:var(--muted); font-size:.8em; font-weight:600; overflow-wrap:anywhere; }
-.bubble .attachment { color:var(--muted); font-size:.9em; }
-.bubble .attachment-image { display:block; max-width:100%; max-height:20rem; margin-bottom:.3rem; border-radius:.6rem; }
-.bubble .attachment-image.sticker { max-height:8rem; border-radius:0; }
-.bubble .attachment-preview { margin:0 0 .3rem; }
-.bubble .attachment-preview img { margin-bottom:.15rem; }
-.bubble .attachment-preview figcaption { color:var(--muted); font-size:.78em; }
-.link-card { display:flex; flex-direction:column; margin:.2rem 0 .4rem; max-width:22rem; overflow:hidden; border:1px solid var(--line); border-radius:12px; background:var(--soft); color:inherit; text-decoration:none; }
-.link-card:hover, .link-card:focus-visible { border-color:var(--green); }
-.link-card img { display:block; width:100%; max-height:12rem; object-fit:cover; }
-.link-body { display:flex; flex-direction:column; gap:.15rem; padding:.55rem .7rem; min-width:0; overflow-wrap:anywhere; }
-.link-body strong { line-height:1.35; }
-.link-summary { color:var(--muted); font-size:.85em; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-.link-site { color:var(--muted); font-size:.78em; }
-.empty { flex:1; display:grid; place-items:center; min-height:140px; padding:2rem; text-align:center; color:var(--muted); }
-.error-bar { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.65rem 1rem; background:#fff0f0; color:var(--danger); font-size:.85rem; }
+@import "tailwindcss";
 
-@media (max-width: 600px) {
-  header { min-height:56px; }
-  .capability { display:none; }
-  .panes { display:block; position:relative; overflow:hidden; }
-  .chat-pane,.detail-pane { position:absolute; inset:0; transition:transform .18s ease; }
-  .chat-pane { border:0; transform:translateX(0); }
-  .detail-pane { visibility:hidden; background:var(--surface); transform:translateX(100%); }
-  .show-detail .chat-pane { visibility:hidden; transform:translateX(-100%); }
-  .show-detail .detail-pane { visibility:visible; transform:translateX(0); }
-  .back { display:block; }
-  .detail-heading h1 { min-width:0; flex:1; }
-  .bubble { max-width:88%; }
-  .login-card { padding:1.35rem; }
+/*
+ * The palette lives once, here, as plain custom properties, and the dark block below
+ * redefines the same names. `@theme inline` hands those names to Tailwind without
+ * baking in their values, so `bg-surface` compiles to `background: var(--surface)`
+ * and the whole UI follows the palette instead of every element carrying a `dark:`
+ * twin. Change a colour here and it changes everywhere it is used.
+ */
+:root {
+  --ink: #17231d;
+  --page: #eef3ef;
+  --surface: #fff;
+  --soft: #f5f8f6;
+  --line: #d7e1da;
+  --field: #a9b8ae;
+  --muted: #617068;
+  --green: #20734a;
+  --green-strong: #155c3a;
+  --green-soft: #dff1e7;
+  --danger: #a63737;
+  --danger-soft: #fff0f0;
+  --warn: #8a6d1f;
+  --notice: #fff2c9;
+  --notice-ink: #694d00;
+  --notice-line: #ead58c;
+  /* The two stops of the wash behind a conversation. */
+  --thread-from: #f8fbf9;
+  --thread-to: #eef5f0;
 }
 
-@media (prefers-reduced-motion: reduce) { .chat-pane,.detail-pane { transition:none; } }
 @media (prefers-color-scheme: dark) {
-  :root { color:#e5eee8; background:#101713; --surface:#18221c; --soft:#121b16; --line:#314039; --muted:#a7b6ad; --green:#4eaa78; --green-strong:#83d1a5; --green-soft:#203d2d; --danger:#ffabab; }
-  .app { background:var(--surface); }
-  .message-area { background:linear-gradient(145deg, #152019, #101713); }
-  .notice { background:#463a14; color:#ffe39a; border-color:#6c5922; }
-  .error-bar { background:#3c2020; }
+  :root {
+    --ink: #e5eee8;
+    --page: #101713;
+    --surface: #18221c;
+    --soft: #121b16;
+    --line: #314039;
+    --field: #4a5b51;
+    --muted: #a7b6ad;
+    --green: #4eaa78;
+    --green-strong: #83d1a5;
+    --green-soft: #203d2d;
+    --danger: #ffabab;
+    --danger-soft: #3c2020;
+    --warn: #d8b45f;
+    --notice: #463a14;
+    --notice-ink: #ffe39a;
+    --notice-line: #6c5922;
+    --thread-from: #152019;
+    --thread-to: #101713;
+  }
 }
 
-/* Send composer (send-messages branch) */
-.composer { flex:0 0 auto; display:flex; flex-direction:column; gap:.5rem; padding:.7rem 1rem; border-top:1px solid var(--line); background:var(--surface); }
-.composer textarea { width:100%; resize:vertical; min-height:2.6rem; border:1px solid #a9b8ae; border-radius:10px; padding:.6rem .7rem; font:inherit; background:var(--surface); color:inherit; }
-.composer-banner { margin:0; color:var(--muted); font-size:.8rem; }
-.composer-notice { margin:0; font-size:.85rem; }
-.composer-notice.ok { color:var(--green-strong); }
-.composer-notice.warn { color:#8a6d1f; }
-.composer-notice.error { color:var(--danger); }
-.composer-actions { display:flex; justify-content:flex-end; }
-.composer-confirm { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; }
-.composer-confirm span { flex:1 1 auto; min-width:0; color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }
-.composer-files { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.4rem; }
-.composer-files li { display:flex; align-items:center; gap:.6rem; color:var(--muted); font-size:.85rem; }
-.composer-file-name { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
-.composer-thumb { flex:0 0 auto; width:2.6rem; height:2.6rem; border-radius:8px; border:1px solid var(--line); object-fit:cover; background:var(--soft); }
-.composer-thumb.placeholder { display:flex; align-items:center; justify-content:center; font-size:.65rem; color:var(--muted); }
-.composer-actions { gap:.6rem; }
+@theme inline {
+  --color-ink: var(--ink);
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-soft: var(--soft);
+  --color-line: var(--line);
+  --color-field: var(--field);
+  --color-muted: var(--muted);
+  --color-green: var(--green);
+  --color-green-strong: var(--green-strong);
+  --color-green-soft: var(--green-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-notice: var(--notice);
+  --color-notice-ink: var(--notice-ink);
+  --color-notice-line: var(--notice-line);
+  --color-thread-from: var(--thread-from);
+  --color-thread-to: var(--thread-to);
 
-/* Reply context and tapbacks */
-.reply-quote { display:block; margin:0 0 .35rem; padding:.3rem .5rem; border-left:3px solid var(--line); background:var(--soft); border-radius:0 8px 8px 0; color:var(--muted); font-size:.85em; white-space:pre-wrap; overflow-wrap:anywhere; }
-.reply-sender { display:block; font-weight:600; font-size:.92em; }
-.reactions { list-style:none; display:flex; flex-wrap:wrap; gap:.3rem; margin:.1rem 0 .3rem; padding:0; }
-.reactions li { display:inline-flex; align-items:center; gap:.15rem; padding:.1rem .4rem; border:1px solid var(--line); border-radius:999px; background:var(--surface); font-size:.85em; }
-.reaction-count { color:var(--muted); font-size:.85em; }
-.visually-hidden { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", sans-serif;
+  /* Below this the two panes stack and slide over one another instead of sitting side by side. */
+  --breakpoint-pane: 600px;
+}
+
+@layer base {
+  html { color-scheme: light dark; }
+  body {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    color: var(--ink);
+    background: var(--page);
+  }
+  button, input, textarea { font: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: default; opacity: .55; }
+  :focus-visible { outline: 3px solid #68ad89; outline-offset: 2px; }
+}
+
+/*
+ * Two button shapes, because they appear in half a dozen places and copying a dozen
+ * utilities into each would make them drift apart. Everything else is styled in the
+ * markup, where it can be changed one element at a time.
+ */
+@layer components {
+  .btn { @apply rounded-[10px] border-0 px-4 py-3 font-bold text-white bg-green enabled:hover:bg-green-strong; }
+  .btn-secondary { @apply rounded-[10px] border border-line px-4 py-3 font-bold text-green-strong bg-soft enabled:hover:bg-green-soft; }
+  .btn-compact { @apply px-[.7rem] py-2 text-[.82rem]; }
+}

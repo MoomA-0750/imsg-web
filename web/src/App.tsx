@@ -8,6 +8,16 @@ const POLL_MS = 15_000;
 const NEAR_EDGE = 240;
 /** Within this of the bottom of a conversation counts as watching for the newest message. */
 const NEAR_BOTTOM = 48;
+/** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
+const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-xs';
+const CENTRED = 'min-h-screen grid place-items-center p-5';
+const FIELD = 'w-full rounded-[10px] border border-field p-[.8rem] bg-surface text-inherit';
+/** Below `pane:` the two panes stack, one sliding over the other; from there on they sit side by side. */
+const HEADING = 'flex items-center gap-3 min-h-[64px] px-4 py-[.85rem] border-b border-line';
+const PANE_TITLE = 'my-1 text-[1.25rem] leading-tight [overflow-wrap:anywhere]';
+const TRIM = 'text-muted text-[.75em]';
+const STAMP = 'shrink-0 text-muted text-[.72rem]';
+const PANE = 'flex flex-col min-w-0 min-h-0 overflow-hidden absolute inset-0 transition-transform duration-200 motion-reduce:transition-none pane:static pane:visible pane:translate-x-0';
 
 type Session = { csrfToken: string; mode: 'readonly' };
 type ApiError = Error & { status?: number };
@@ -33,11 +43,11 @@ const ATTACHMENT_LABEL = { image: '画像', video: '動画', file: '添付ファ
 function Attachment({ item }: { item: AttachmentView }) {
   const [failed, setFailed] = useState(false);
   if (item.id && !failed) {
-    const image = <img className={item.sticker ? 'attachment-image sticker' : 'attachment-image'} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
-    return item.preview ? <figure className="attachment-preview">{image}<figcaption>サムネイル（元の画像はこのMacにありません）</figcaption></figure> : image;
+    const image = <img className={`attachment-image block max-w-full ${item.sticker ? 'sticker max-h-32 rounded-none' : 'max-h-80 rounded-[.6rem]'} ${item.preview ? 'mb-[.15rem]' : 'mb-[.3rem]'}`} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+    return item.preview ? <figure className="attachment-preview m-0 mb-[.3rem]">{image}<figcaption className="text-muted text-[.78em]">サムネイル（元の画像はこのMacにありません）</figcaption></figure> : image;
   }
   const reason = item.preview || !item.id ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません') : 'このブラウザでは表示できない形式です';
-  return <p className="attachment">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
+  return <p className="attachment m-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
 }
 
 function LinkCard({ link }: { link: LinkView }) {
@@ -49,23 +59,23 @@ function LinkCard({ link }: { link: LinkView }) {
     host = url.hostname;
   } catch { return null; }
   const imageId = link.image?.id;
-  return <a className="link-card" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-    {imageId && !imageFailed && <img src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
-    <span className="link-body"><strong>{link.title || host}</strong>{link.summary && <span className="link-summary">{link.summary}</span>}<span className="link-site">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
+  return <a className="link-card flex flex-col mt-[.2rem] mb-[.4rem] max-w-[22rem] overflow-hidden rounded-xl border border-line bg-soft text-inherit no-underline hover:border-green focus-visible:border-green" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+    {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
+    <span className="link-body flex flex-col gap-[.15rem] px-[.7rem] py-[.55rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
   </a>;
 }
 
 function ReplyQuote({ reply }: { reply: ReplyView }) {
-  return <p className="reply-quote"><span className="reply-sender">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="trim">（省略）</span>}</p>;
+  return <p className="reply-quote block m-0 mb-[.35rem] px-2 py-[.3rem] border-l-[3px] border-line bg-soft rounded-r-lg text-muted text-[.85em] whitespace-pre-wrap [overflow-wrap:anywhere]"><span className="block font-semibold text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}</p>;
 }
 
 function Reactions({ list }: { list: ReactionView[] }) {
-  return <ul className="reactions">{list.map(reaction => {
+  return <ul className="reactions flex flex-wrap gap-[.3rem] list-none mt-[.1rem] mb-[.3rem] p-0">{list.map(reaction => {
     const who = [...reaction.senders, ...(reaction.fromMe ? ['自分'] : [])];
-    return <li key={`${reaction.kind}:${reaction.emoji}`} title={who.length > 0 ? who.join('、') : reaction.kind}>
+    return <li key={`${reaction.kind}:${reaction.emoji}`} className="inline-flex items-center gap-[.15rem] px-[.4rem] py-[.1rem] border border-line rounded-full bg-surface text-[.85em]" title={who.length > 0 ? who.join('、') : reaction.kind}>
       <span aria-hidden="true">{reaction.emoji || '•'}</span>
-      {reaction.count > 1 && <span className="reaction-count">{reaction.count}</span>}
-      <span className="visually-hidden">{`${who.length > 0 ? `${who.join('、')}の` : ''}リアクション${reaction.count > 1 ? ` ${reaction.count}件` : ''}`}</span>
+      {reaction.count > 1 && <span className="text-muted text-[.85em]">{reaction.count}</span>}
+      <span className="sr-only">{`${who.length > 0 ? `${who.join('、')}の` : ''}リアクション${reaction.count > 1 ? ` ${reaction.count}件` : ''}`}</span>
     </li>;
   })}</ul>;
 }
@@ -77,6 +87,7 @@ const MiB = 1024 * 1024;
 const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const FILES_MAX = 10;
+const NOTICE_COLOUR = { ok: 'text-green-strong', warn: 'text-warn', error: 'text-danger' } as const;
 
 /** A local preview of a chosen file; the object URL is revoked when the choice changes. */
 function Thumbnail({ file }: { file: File }) {
@@ -89,8 +100,9 @@ function Thumbnail({ file }: { file: File }) {
     return () => { URL.revokeObjectURL(created); setUrl(null); };
   }, [file]);
   // Nothing is uploaded to draw this, and a format the browser cannot decode (HEIC) falls back to the name.
-  if (url && !failed) return <img className="composer-thumb" src={url} alt="" onError={() => setFailed(true)} />;
-  return <span className="composer-thumb placeholder" aria-hidden="true">{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>;
+  const shape = 'composer-thumb shrink-0 w-[2.6rem] h-[2.6rem] rounded-lg border border-line object-cover bg-soft';
+  if (url && !failed) return <img className={shape} src={url} alt="" onError={() => setFailed(true)} />;
+  return <span className={`${shape} placeholder flex items-center justify-center text-[.65rem] text-muted`} aria-hidden="true">{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>;
 }
 
 function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadIds: string[]) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
@@ -142,14 +154,14 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   // No confirmation step: the owner asked for sending to be immediate. Double submission is still
   // held off while one is in flight, and every outcome is reported honestly.
   const submit = () => { if (ready && !busy) void dispatch(); };
-  return <form className="composer" onSubmit={event => { event.preventDefault(); submit(); }}>
-    {mode === 'dry-run' && <p className="composer-banner" role="status">テスト送信モードです。実際には送信されません。</p>}
-    <textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }} placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
+  return <form className="composer shrink-0 flex flex-col gap-2 px-4 py-[.7rem] border-t border-line bg-surface" onSubmit={event => { event.preventDefault(); submit(); }}>
+    {mode === 'dry-run' && <p className="m-0 text-muted text-[.8rem]" role="status">テスト送信モードです。実際には送信されません。</p>}
+    <textarea className="w-full resize-y min-h-[2.6rem] rounded-[10px] border border-field px-[.7rem] py-[.6rem] bg-surface text-inherit" value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }} placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
-    {files.length > 0 && <ul className="composer-files">{files.map((file, index) => <li key={`${file.name}:${index}`}><Thumbnail file={file} /><span className="composer-file-name">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="secondary compact" onClick={() => setFiles(rest => rest.filter((_, at) => at !== index))} disabled={busy}>外す</button></li>)}</ul>}
-    {files.length > 1 && <p className="composer-banner">添付は1件ずつ別のメッセージとして送られます。</p>}
-    {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
-    <div className="composer-actions"><button type="button" className="secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
+    {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-col gap-[.4rem]">{files.map((file, index) => <li key={`${file.name}:${index}`} className="flex items-center gap-[.6rem] text-muted text-[.85rem]"><Thumbnail file={file} /><span className="grow min-w-0 [overflow-wrap:anywhere]">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="btn-secondary btn-compact" onClick={() => setFiles(rest => rest.filter((_, at) => at !== index))} disabled={busy}>外す</button></li>)}</ul>}
+    {files.length > 1 && <p className="m-0 text-muted text-[.8rem]">添付は1件ずつ別のメッセージとして送られます。</p>}
+    {notice && <p className={`m-0 text-[.85rem] ${NOTICE_COLOUR[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
+    <div className="flex justify-end gap-[.6rem]"><button type="button" className="btn-secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" className="btn" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
   </form>;
 }
 
@@ -453,34 +465,85 @@ export function App() {
     if (el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_EDGE) loadMoreChats();
   }
 
-  if (checking) return <main className="center"><p role="status">セッションを確認しています…</p></main>;
-  if (!session) return <main className="center"><section className="login-card" aria-labelledby="login-title"><div className="brand">imsg Web</div><h1 id="login-title">メッセージを見る</h1><p className="muted">所有者キーでログインしてください。このアプリはキーを保存しません（ブラウザーへの保存はご自身で選べます）。</p><form onSubmit={login}><label htmlFor="owner-key">所有者キー</label><input id="owner-key" type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus /><button disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>{loginError && <p className="error" role="alert">{loginError}</p>}</form></section></main>;
+  if (checking) return <main className={CENTRED}><p role="status">セッションを確認しています…</p></main>;
+  if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#173d2820]" aria-labelledby="login-title">
+    <div className="text-green font-extrabold tracking-[.04em]">imsg Web</div>
+    <h1 id="login-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
+    <p className="text-muted">所有者キーでログインしてください。このアプリはキーを保存しません（ブラウザーへの保存はご自身で選べます）。</p>
+    <form className="grid gap-3 mt-6" onSubmit={login}>
+      <label className="font-bold" htmlFor="owner-key">所有者キー</label>
+      <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus />
+      <button className="btn" disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>
+      {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}
+    </form>
+  </section></main>;
 
   const featureValues = capability ? Object.values(capability.features) : [];
   const availableCount = featureValues.filter(value => value.state === 'available').length;
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
-  return <div className={`app ${selected ? 'show-detail' : ''}`}>
-    <header><div><strong>imsg Web</strong></div><div className="header-actions"><span className="capability" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span><button className="secondary compact" onClick={() => void logout()}>ログアウト</button></div></header>
-    {epochNotice && <div className="notice" role="status">{epochNotice}</div>}
-    <div className="panes">
-      <aside className="chat-pane" aria-label="会話一覧"><div className="pane-heading"><h1>会話</h1></div>{chatError && <ErrorBar text={chatError} retry={loadChats} />}<div className="chat-area" ref={chatViewport} onScroll={onChatScroll}>{chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list">{chats.map(chat => <li key={chat.id}><button className={selected?.id === chat.id ? 'chat active' : 'chat'} onClick={() => choose(chat)}><span className="chat-top"><strong>{chat.name || '名前のない会話'}{chat.trimmed && <span className="trim">（省略）</span>}</strong><time>{dateLabel(chat.lastMessageAt)}</time></span><span className="chat-meta">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span></button></li>)}</ul>}{chats.length > 0 && (chatsPending ? <p className="list-note" role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className="list-note">表示上限の{MAX}件です</p> : null)}</div></aside>
-      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><h1>{selected.name || '名前のない会話'}</h1></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" ref={viewport} onScroll={onScroll} aria-live="polite">{messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.replyTo && <ReplyQuote reply={message.replyTo} />}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}{message.reactions.length > 0 && <Reactions list={message.reactions} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div>{sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />}</>}</main>
+  return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
+    <header className="shrink-0 min-h-[56px] pane:min-h-[62px] px-4 py-[.7rem] border-b border-line flex justify-between items-center gap-4">
+      <div><strong className="text-[1.15rem] text-green-strong">imsg Web</strong></div>
+      <div className="flex items-center gap-[.65rem]">
+        <span className="hidden pane:inline text-muted text-[.78rem]" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span>
+        <button className="btn-secondary btn-compact" onClick={() => void logout()}>ログアウト</button>
+      </div>
+    </header>
+    {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
+    <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
+      <aside className={`chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
+        <div className={HEADING}><h1 className={PANE_TITLE}>会話</h1></div>
+        {chatError && <ErrorBar text={chatError} retry={loadChats} />}
+        <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col" ref={chatViewport} onScroll={onChatScroll}>
+          {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
+            <li key={chat.id} className="border-b border-line">
+              <button className={`block w-full rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-green-soft ${selected?.id === chat.id ? 'bg-green-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
+                <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
+                <span className="block mt-[.35rem] text-muted text-[.8rem] [overflow-wrap:anywhere]">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span>
+              </button>
+            </li>)}</ul>}
+          {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE} role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
+        </div>
+      </aside>
+      <main className={`detail-pane ${PANE} bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
+        <div className={HEADING}>
+          <button className="back shrink-0 w-[42px] h-[42px] p-0 rounded-full text-green-strong bg-green-soft text-[1.25rem] pane:hidden" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button>
+          <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
+        </div>
+        {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
+        <div className="message-area flex-1 min-h-0 overflow-auto overscroll-contain bg-linear-145 from-thread-from to-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
+          {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
+          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4">{messages.map(message =>
+            <li key={message.id} className={`flex my-[.55rem] ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+              <div className={`bubble max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)] px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#1837250a] ${message.isFromMe ? 'bg-green-soft rounded-[15px_4px_15px_15px]' : 'bg-surface rounded-[4px_15px_15px_15px]'}`}>
+                {selected.isGroup === true && message.sender && <span className="sender block mb-[.2rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
+                {message.replyTo && <ReplyQuote reply={message.replyTo} />}
+                {message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}
+                {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
+                {message.link && <LinkCard link={message.link} />}
+                {message.reactions.length > 0 && <Reactions list={message.reactions} />}
+                <time className={`${STAMP} block text-right`}>{dateLabel(message.createdAt)}</time>
+              </div>
+            </li>)}</ol>}
+        </div>
+        {sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />}
+      </>}</main>
     </div>
   </div>;
 }
 
-function Empty({ text }: { text: string }) { return <div className="empty" role="status">{text}</div>; }
-function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar" role="alert"><span>{text}</span><button className="secondary compact" onClick={() => void retry()}>再試行</button></div>; }
+function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }
+function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-[.65rem] bg-danger-soft text-danger text-[.85rem]" role="alert"><span>{text}</span><button className="btn-secondary btn-compact" onClick={() => void retry()}>再試行</button></div>; }
 /**
  * Sits above the oldest message, so it is out of sight until the owner scrolls up to it —
  * by which point scrolling has usually already asked for the next page. The button is the
  * fallback for when it has not: a list too short to scroll, or a read that failed.
  */
 function Older({ pending, more, ceiling, onMore }: { pending: boolean; more: boolean; ceiling: boolean; onMore: () => void }) {
-  return <div className="list-note">{
+  return <div className={LIST_NOTE}>{
     pending ? <span role="status">以前のメッセージを読み込んでいます…</span>
     : ceiling ? <span>表示上限の{MAX}件です</span>
-    : more ? <button className="secondary compact" onClick={onMore}>以前のメッセージを読み込む</button>
+    : more ? <button className="btn-secondary btn-compact" onClick={onMore}>以前のメッセージを読み込む</button>
     : <span>これより前のメッセージはありません</span>}</div>;
 }
