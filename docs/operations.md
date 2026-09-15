@@ -26,8 +26,9 @@ Browser -> Tailscale Serve HTTPS :443 -> http://127.0.0.1:8787 -> imsg rpc (read
   runtime/node-v24.20.0-<arch>/           official Node, checksum verified
   releases/<commit>/                      dist, package files, node_modules,
                                           imsg + its two .bundle directories
-  state/                                  owner hash (0600), lock
+  state/                                  owner credential (0600), lock
   logs/                                   stdout / stderr (0600)
+  imsg-web                                administration wrapper (0700)
 ```
 
 Do not run production from the repository or a temp directory, and do not use a
@@ -68,9 +69,19 @@ Two kinds of secret get the owner in, and only one is active at a time.
   chosen password *is* guessable, the file holds a salted scrypt derivation
   (N=2^16, ~150 ms per attempt) rather than a bare hash.
 
+`scripts/imsg-web.sh` is installed at `<base>/imsg-web` (0700) as part of a deploy, so the
+administration commands stay the same however many releases come and go: it picks the newest
+release and the runtime beside it, and supplies the state directory.
+
 ```sh
-printf '%s' 'the-password' | IMSG_WEB_STATE_DIR=<state> <release>/… set-password
+"$HOME/Library/Application Support/imsg-web/imsg-web" auth set-password   # asks, without echo
+"$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate         # prints a new key
+"$HOME/Library/Application Support/imsg-web/imsg-web" auth revoke-all
+"$HOME/Library/Application Support/imsg-web/imsg-web" auth status
 ```
+
+The sign-in screen carries `auth rotate` behind a "パスワードを忘れた場合" link, so being locked
+out does not mean going looking for this file.
 
 Either way the secret never goes into chat, logs, argv, environment or this
 repository, and setting one signs every session out. A password is weaker than a

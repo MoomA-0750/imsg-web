@@ -497,13 +497,13 @@ export function App() {
   if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="login-title">
     <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
     <h1 id="login-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
-    <p className="text-muted">入力したパスワードは、このアプリ側には残りません（ブラウザーへの保存はご自身で選べます）。</p>
     <form className="grid gap-3 mt-6" onSubmit={login}>
       <label className="font-bold" htmlFor="owner-key">パスワード</label>
       <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus />
       <button className="btn" disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>
       {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}
     </form>
+    <Forgotten />
   </section></main>;
 
   // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
@@ -562,6 +562,24 @@ export function App() {
     </div>
   </div>;
 }
+
+/**
+ * The way back in, where someone locked out will look for it: a link, and nothing else, until it
+ * is asked for. The command is the wrapper installed beside the releases, so it says the same
+ * thing however many times a new one is deployed.
+ */
+function Forgotten() {
+  const [open, setOpen] = useState(false);
+  if (!open) return <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-[.85rem] underline underline-offset-2 hover:text-accent" onClick={() => setOpen(true)}>パスワードを忘れた場合</button>;
+  return <div className="mt-4 grid gap-2 text-[.85rem] text-muted">
+    <strong className="text-ink">パスワードを忘れた場合</strong>
+    <p className="m-0">Mac本体のターミナルで実行してください（SSH経由では拒否されます）。</p>
+    <pre className="m-0 p-3 rounded-lg bg-soft border border-line text-[.8em] whitespace-pre-wrap [overflow-wrap:anywhere] text-ink">{RECOVER}</pre>
+    <p className="m-0">表示されたキーでログインできます。末尾を <code>auth set-password</code> に変えれば、そのまま新しいパスワードを設定できます。どちらも全端末でログアウトされます。</p>
+  </div>;
+}
+
+const RECOVER = '"$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate';
 
 function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }
 function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-[.65rem] bg-danger-soft text-danger text-[.85rem]" role="alert"><span>{text}</span><button className="btn-secondary btn-compact" onClick={() => void retry()}>再試行</button></div>; }

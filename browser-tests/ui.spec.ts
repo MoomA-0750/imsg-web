@@ -33,6 +33,25 @@ async function login(page: Page) {
   await expect(listed(page)).toBeVisible();
   shared = await page.context().cookies();
 }
+test('the sign-in screen offers a way back in, as a link until it is asked for', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByLabel('パスワード')).toBeVisible();
+  const link = page.getByRole('button', { name: 'パスワードを忘れた場合' });
+  await expect(link).toBeVisible();
+  await expect(page.getByText('auth rotate')).toHaveCount(0); // nothing but the link, until asked
+  await link.click();
+  await expect(link).toHaveCount(0);
+  await expect(page.getByText('auth rotate')).toBeVisible();
+  await expect(page.getByText('SSH経由では拒否されます')).toBeVisible();
+  await expect(page.getByText('auth set-password')).toBeVisible();
+  // One line, and it stays inside the card at a phone's width.
+  await page.setViewportSize({ width: 360, height: 900 });
+  const card = await page.locator('.login-card').boundingBox();
+  const block = await page.locator('pre').boundingBox();
+  expect(block!.x).toBeGreaterThanOrEqual(card!.x);
+  expect(block!.x + block!.width).toBeLessThanOrEqual(card!.x + card!.width + 1);
+});
+
 test('says nothing about features it does not offer, and admits when it could not ask', async ({ page }) => {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
     chats: { state: 'available', reasonCode: 'SUPPORTED' },
