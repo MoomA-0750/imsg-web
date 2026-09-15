@@ -509,17 +509,12 @@ export function App() {
   // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
   // the way Messages colours it. imsg reports the service per conversation, not per message.
   const sentTone = selected?.service === 'iMessage' ? 'sent-imessage bg-sent-imessage' : 'sent-other bg-sent-other';
-  const featureValues = capability ? Object.values(capability.features) : [];
-  const availableCount = featureValues.filter(value => value.state === 'available').length;
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
     <header className="shrink-0 min-h-[56px] pane:min-h-[62px] px-4 py-[.7rem] border-b border-line flex justify-between items-center gap-4">
       <div><strong className="text-[1.15rem] text-accent-strong">imsg Web</strong></div>
-      <div className="flex items-center gap-[.65rem]">
-        <span className="hidden pane:inline text-muted text-[.78rem]" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span>
-        <button className="btn-secondary btn-compact" onClick={() => void logout()}>ログアウト</button>
-      </div>
+      <button className="btn-secondary btn-compact" onClick={() => void logout()}>ログアウト</button>
     </header>
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
     <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
@@ -561,7 +556,8 @@ export function App() {
               </div>
             </li>)}</ol>}
         </div>
-        {sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />}
+        {sendMode ? <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />
+          : capability === null && capabilityError !== '' ? <ErrorBar text="送信できるか確認できていません。" retry={loadCapabilities} /> : null}
       </>}</main>
     </div>
   </div>;

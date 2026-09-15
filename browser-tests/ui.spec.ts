@@ -33,15 +33,24 @@ async function login(page: Page) {
   await expect(listed(page)).toBeVisible();
   shared = await page.context().cookies();
 }
-test('says nothing about read-state or typing while they are unknown', async ({ page }) => {
+test('says nothing about features it does not offer, and admits when it could not ask', async ({ page }) => {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
     chats: { state: 'available', reasonCode: 'SUPPORTED' },
     read: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' },
     typing: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' },
   } } }));
   await login(page);
-  await expect(page.getByText('機能 1/3')).toBeVisible(); // counted as not available, and left at that
-  await expect(page.getByText(/SIP|許可|権限|既読|入力中/)).toHaveCount(0);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  // Read-state and typing are not offered, so nothing is said about them or about why.
+  await expect(page.getByText(/SIP|許可|権限|既読|入力中|機能/)).toHaveCount(0);
+  await expect(page.getByLabel('メッセージを入力')).toHaveCount(0); // send absent: no composer
+  // But a read that never succeeded is not the same as a feature being off.
+  await page.unroute('**/api/capabilities');
+  await page.route('**/api/capabilities', route => route.fulfill({ status: 503, json: { code: 'READ_UNAVAILABLE' } }));
+  await page.reload();
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByText('送信できるか確認できていません。')).toBeVisible();
 });
 test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and no durable private state', async ({ page, context }) => {
   await login(page);
