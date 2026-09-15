@@ -1,15 +1,16 @@
 # imsg-web
 
-A single-owner, self-hosted, **read-only** iMessage web UI for macOS, built on
-the [`imsg`](https://github.com/openclaw/imsg) CLI. Each Mac runs its own
-instance, reached over Tailscale and protected by an owner key.
+A single-owner, self-hosted iMessage web UI for macOS, built on the
+[`imsg`](https://github.com/openclaw/imsg) CLI. Each Mac runs its own instance,
+reached over Tailscale and protected by an owner key. Reading is the core;
+sending is a separate path that is off unless configured.
 
 Implemented: owner login, sessions and key rotation; conversation list and
 history with 15-second refresh; images from attachments that are on the Mac,
 or Messages' cached thumbnail when the image was never downloaded;
-link cards from the preview Messages stored; a responsive UI. Not implemented:
-sending, read-state changes, typing, search, video and other attachment types,
-profile pictures.
+link cards from the preview Messages stored; sending text and attachments
+(off by default; see `docs/operations.md`); a responsive UI. Not implemented:
+read-state changes, typing, search, profile pictures.
 
 ## Development
 

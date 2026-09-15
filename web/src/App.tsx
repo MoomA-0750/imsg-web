@@ -355,7 +355,7 @@ export function App() {
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className={`app ${selected ? 'show-detail' : ''}`}>
-    <header><div><strong>imsg Web</strong><span className="mode">閲覧専用・15秒更新</span></div><div className="header-actions"><span className="capability" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span><button className="secondary compact" onClick={() => void logout()}>ログアウト</button></div></header>
+    <header><div><strong>imsg Web</strong></div><div className="header-actions"><span className="capability" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span><button className="secondary compact" onClick={() => void logout()}>ログアウト</button></div></header>
     {featureValues.some(feature => feature.reasonCode === 'STATUS_PROBE_DISABLED') && <p role="status">既読・入力中の機能状態は未確認です。安全に確認する機能はまだ実装されていません。</p>}
     {epochNotice && <div className="notice" role="status">{epochNotice}</div>}
     <div className="panes">
