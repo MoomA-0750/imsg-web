@@ -33,21 +33,39 @@ async function login(page: Page) {
   await expect(listed(page)).toBeVisible();
   shared = await page.context().cookies();
 }
-test('the sign-in screen offers a way back in, as a link until it is asked for', async ({ page }) => {
+test('the sign-in screen offers a way back in: a link, then a screen of its own with copyable commands', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/');
   await expect(page.getByLabel('パスワード')).toBeVisible();
   const link = page.getByRole('button', { name: 'パスワードを忘れた場合' });
-  await expect(link).toBeVisible();
   await expect(page.getByText('auth rotate')).toHaveCount(0); // nothing but the link, until asked
   await link.click();
-  await expect(link).toHaveCount(0);
-  await expect(page.getByText('auth rotate')).toBeVisible();
+
+  // The guide replaces the form rather than growing under it.
+  await expect(page.getByLabel('パスワード', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'パスワードを忘れた場合' })).toBeVisible();
   await expect(page.getByText('SSH経由では拒否されます')).toBeVisible();
-  await expect(page.getByText('auth set-password')).toBeVisible();
-  // One line, and it stays inside the card at a phone's width.
+  // Both commands in full, each saying what it does.
+  const commands = page.locator('pre');
+  await expect(commands).toHaveCount(2);
+  await expect(commands.nth(0)).toHaveText('"$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate');
+  await expect(commands.nth(1)).toHaveText('"$HOME/Library/Application Support/imsg-web/imsg-web" auth set-password');
+  await expect(page.getByText('ランダムな43文字のキー', { exact: false })).toBeVisible();
+
+  await page.getByRole('button', { name: /2\. 新しいパスワードを決めるのコマンドをコピー/ }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText()))
+    .toBe('"$HOME/Library/Application Support/imsg-web/imsg-web" auth set-password');
+
+  // Back to signing in, with nothing typed carried over.
+  await page.getByRole('button', { name: 'ログイン画面へ戻る' }).click();
+  await expect(page.getByLabel('パスワード')).toBeVisible();
+  await expect(page.getByText('auth rotate')).toHaveCount(0);
+
+  // It stays inside the card at a phone's width.
   await page.setViewportSize({ width: 360, height: 900 });
+  await link.click();
   const card = await page.locator('.login-card').boundingBox();
-  const block = await page.locator('pre').boundingBox();
+  const block = await page.locator('pre').first().boundingBox();
   expect(block!.x).toBeGreaterThanOrEqual(card!.x);
   expect(block!.x + block!.width).toBeLessThanOrEqual(card!.x + card!.width + 1);
 });

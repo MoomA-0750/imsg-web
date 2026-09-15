@@ -1,5 +1,5 @@
 import { FormEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Add24Regular, ArrowLeft24Regular, Dismiss12Regular, Send24Filled } from '@fluentui/react-icons';
+import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Send24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 
 const PAGE = 50;
@@ -199,6 +199,7 @@ export function App() {
   const [key, setKey] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [chats, setChats] = useState<ChatView[]>([]);
   const [chatLimit, setChatLimit] = useState(PAGE);
@@ -495,6 +496,7 @@ export function App() {
 
   if (checking) return <main className={CENTRED}><p role="status">セッションを確認しています…</p></main>;
   if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="login-title">
+    {recovering ? <Recovery onBack={() => setRecovering(false)} /> : <>
     <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
     <h1 id="login-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
     <form className="grid gap-3 mt-6" onSubmit={login}>
@@ -503,7 +505,8 @@ export function App() {
       <button className="btn" disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>
       {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}
     </form>
-    <Forgotten />
+    <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-[.85rem] underline underline-offset-2 hover:text-accent" onClick={() => setRecovering(true)}>パスワードを忘れた場合</button>
+    </>}
   </section></main>;
 
   // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
@@ -568,18 +571,53 @@ export function App() {
  * is asked for. The command is the wrapper installed beside the releases, so it says the same
  * thing however many times a new one is deployed.
  */
-function Forgotten() {
-  const [open, setOpen] = useState(false);
-  if (!open) return <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-[.85rem] underline underline-offset-2 hover:text-accent" onClick={() => setOpen(true)}>パスワードを忘れた場合</button>;
-  return <div className="mt-4 grid gap-2 text-[.85rem] text-muted">
-    <strong className="text-ink">パスワードを忘れた場合</strong>
-    <p className="m-0">Mac本体のターミナルで実行してください（SSH経由では拒否されます）。</p>
-    <pre className="m-0 p-3 rounded-lg bg-soft border border-line text-[.8em] whitespace-pre-wrap [overflow-wrap:anywhere] text-ink">{RECOVER}</pre>
-    <p className="m-0">表示されたキーでログインできます。末尾を <code>auth set-password</code> に変えれば、そのまま新しいパスワードを設定できます。どちらも全端末でログアウトされます。</p>
+/** One command, what it does, and a way to take it without retyping. */
+function Command({ title, command, effect }: { title: string; command: string; effect: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (state !== 'copied') return;
+    const timer = window.setTimeout(() => setState('idle'), 2000);
+    return () => clearTimeout(timer);
+  }, [state]);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(command); setState('copied'); }
+    catch { setState('failed'); }
+  };
+  return <div className="grid gap-1.5">
+    <strong className="text-ink">{title}</strong>
+    <div className="relative">
+      <pre className="m-0 p-3 pr-12 rounded-lg bg-soft border border-line text-[.78em] whitespace-pre-wrap [overflow-wrap:anywhere] text-ink">{command}</pre>
+      <button type="button" onClick={() => void copy()} aria-label={`${title}のコマンドをコピー`}
+        className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-8 h-8 p-0 rounded-lg border-0 bg-transparent text-muted hover:text-accent-strong hover:bg-surface">
+        {state === 'copied' ? <Checkmark24Regular /> : <Copy24Regular />}
+      </button>
+      <span className="sr-only" role="status">{state === 'copied' ? 'コピーしました' : ''}</span>
+    </div>
+    <p className="m-0">{effect}</p>
+    {state === 'failed' && <p className="m-0 text-danger" role="alert">コピーできませんでした。手で入力してください。</p>}
   </div>;
 }
 
-const RECOVER = '"$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate';
+const CLI = '"$HOME/Library/Application Support/imsg-web/imsg-web"';
+
+/**
+ * A screen of its own inside the card rather than an expanding panel: someone who is locked out
+ * is reading, not filling in a form, and the form has nothing to offer them until they are done.
+ */
+function Recovery({ onBack }: { onBack: () => void }) {
+  return <div className="grid gap-4 text-[.85rem] text-muted">
+    <div className="flex items-center gap-3">
+      <button type="button" onClick={onBack} aria-label="ログイン画面へ戻る"
+        className="shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full text-accent-strong bg-accent-soft"><ArrowLeft24Regular /></button>
+      <h1 className="m-0 text-[1.25rem] leading-tight text-ink">パスワードを忘れた場合</h1>
+    </div>
+    <p className="m-0">下のコマンドを、Mac本体のターミナルで実行してください（SSH経由では拒否されます）。どちらも、実行すると全端末でログアウトされます。</p>
+    <Command title="1. ログインできるようにする" command={`${CLI} auth rotate`}
+      effect="ランダムな43文字のキーが画面に表示されます。それをこのログイン画面のパスワード欄に入力すると入れます。" />
+    <Command title="2. 新しいパスワードを決める" command={`${CLI} auth set-password`}
+      effect="新しいパスワードの入力を求められます（打っても画面には表示されません）。8文字以上で、英字と数字を1文字以上ずつ含めてください。設定すると、1のキーは使えなくなります。" />
+  </div>;
+}
 
 function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }
 function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-[.65rem] bg-danger-soft text-danger text-[.85rem]" role="alert"><span>{text}</span><button className="btn-secondary btn-compact" onClick={() => void retry()}>再試行</button></div>; }
