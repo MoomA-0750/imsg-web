@@ -59,7 +59,10 @@ send), and the send refers to them by opaque ids. Text, files, or both. Up to
 batch stops at the first that does not go, reporting how far it got. The
 composer previews each chosen file locally (blob URL; `img-src` allows `blob:`).
 No silent compression — iMessage has its own size limit, which a large file will
-find. Single-image sending was confirmed live on the M1; batches not yet.
+find. Confirmed live on the M1 by the owner: a single image, several images at once
+(each arriving as its own message), adding to the selection over several trips
+to the picker, local thumbnails, and sending with Ctrl+Enter. A part-way batch
+failure has not been exercised live (covered by synthetic tests only).
 
 Note: `send-messages` is off `main` and does not include the notifications
 commit (`6427ffc`, branch `attachment-images`); the branches still need
