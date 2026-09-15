@@ -188,16 +188,16 @@ test('puts the sender’s face at the foot of their run in a group, and nowhere 
   await expect(rows.nth(3).locator('span.chat-avatar')).toHaveText('合E'); // no picture: initials
   // It sits at the foot of the bubble, not beside its top.
   const face = await rows.nth(2).locator('.chat-avatar').boundingBox();
-  const bubble = await rows.nth(2).locator('.bubble').boundingBox();
+  const bubble = await rows.nth(2).locator('.bubble').last().boundingBox();
   expect(face!.x).toBeLessThan(bubble!.x);
   expect(Math.abs((face!.y + face!.height) - (bubble!.y + bubble!.height))).toBeLessThan(2);
   // The name is written above the bubble rather than inside it.
   const label = await rows.nth(3).locator('.sender').boundingBox();
-  const named = await rows.nth(3).locator('.bubble').boundingBox();
+  const named = await rows.nth(3).locator('.bubble').first().boundingBox();
   expect(label!.y + label!.height).toBeLessThanOrEqual(named!.y + 1);
 
   // The corner beside the face is square, and so is the one facing the bubble above within a run.
-  const radius = (row: number) => rows.nth(row).locator('.bubble').evaluate(el => getComputedStyle(el).borderRadius);
+  const radius = (row: number) => rows.nth(row).locator('.bubble').first().evaluate(el => getComputedStyle(el).borderRadius);
   expect(await radius(0)).toBe('24px 24px 24px 4px'); // opens a run: only the foot is square
   expect(await radius(1)).toBe('4px 24px 24px 4px');  // carries on from the one above
   expect(await radius(3)).toBe('24px 24px 24px 4px'); // a new speaker opens again
@@ -234,6 +234,36 @@ test('colours a sent message by the service it went out over', async ({ page }) 
   expect(await colour()).not.toBe(blue);
   // Only what was sent is coloured; what came in is not.
   await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
+});
+
+test('gives a picture a bubble of its own, filled to the edges, apart from the words', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成画像列 Vega/ }).click();
+  await expect(page.getByText('合成メッセージ #1', { exact: true })).toBeVisible();
+  // Every message here carries a picture and a line of text: two bubbles, not one.
+  // The oldest, which opens its run: the corners below depend on that.
+  const row = page.locator('.messages > li.msg').first();
+  const bubbles = row.locator('.bubble');
+  await expect(bubbles).toHaveCount(2);
+  const picture = bubbles.first(), words = bubbles.last();
+  await expect(picture.locator('img.attachment-image')).toHaveCount(1);
+  await expect(words).toHaveText(/合成メッセージ #50/);
+
+  // The picture reaches every edge of its bubble; the words keep their padding.
+  const shape = await picture.evaluate(el => {
+    const img = el.querySelector('img')!.getBoundingClientRect(), box = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return { padding: style.padding, clipped: style.overflow,
+      left: img.left - box.left, right: box.right - img.right, top: img.top - box.top, bottom: box.bottom - img.bottom };
+  });
+  expect(shape.padding).toBe('0px');
+  expect(shape.clipped).toBe('hidden'); // so the corners cut the picture rather than the picture squaring them
+  for (const edge of [shape.left, shape.right, shape.top, shape.bottom]) expect(edge).toBeLessThanOrEqual(1);
+  expect(await words.evaluate(el => getComputedStyle(el).paddingLeft)).not.toBe('0px');
+
+  // The two are joined: the head keeps its round corner, the foot carries the tail.
+  expect(await picture.evaluate(el => getComputedStyle(el).borderTopLeftRadius)).toBe('24px');
+  expect(await words.evaluate(el => getComputedStyle(el).borderTopLeftRadius)).toBe('4px');
 });
 
 test('rounds a one-line bubble into a pill, and centres what is written in it', async ({ page }) => {

@@ -1,4 +1,4 @@
-import { FormEvent, PointerEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Send24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 
@@ -63,30 +63,62 @@ function dateLabel(value: string | null): string {
 }
 
 const ATTACHMENT_LABEL = { image: '画像', video: '動画', file: '添付ファイル' } as const;
-
-function Attachment({ item }: { item: AttachmentView }) {
-  const [failed, setFailed] = useState(false);
-  if (item.id && !failed) {
-    const image = <img className={`attachment-image block max-w-full ${item.sticker ? 'sticker max-h-32 rounded-none' : 'max-h-80 rounded-[.6rem]'} ${item.preview ? 'mb-[.15rem]' : 'mb-[.3rem]'} last:mb-0`} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
-    return item.preview ? <figure className="attachment-preview m-0 mb-[.3rem] last:mb-0">{image}<figcaption className="text-muted text-[.78em]">サムネイル（元の画像はこのMacにありません）</figcaption></figure> : image;
-  }
-  const reason = item.preview || !item.id ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません') : 'このブラウザでは表示できない形式です';
-  return <p className="attachment m-0 mb-[.3rem] last:mb-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
+/** One bubble's worth of a message: a picture, the words, or a link's card. */
+type Part = { key: string; media: AttachmentView } | { key: string; text: true } | { key: string; link: LinkView; host: string };
+const SHELL = 'bubble border border-line shadow-[0_2px_8px_#0f1f3a0f] overflow-hidden';
+const PAD = 'px-[.85rem] py-[.7rem]';
+/**
+ * The corner nearest the speaker is square: it is the tail, and it is also what joins one bubble to
+ * the next, whether that is the same person talking again or the same message continuing in a
+ * second bubble. Half a line's height on the others, so a one-line bubble comes out a pill.
+ */
+const corners = (fromMe: boolean, joined: boolean) => fromMe
+  ? (joined ? 'rounded-[24px_4px_4px_24px]' : 'rounded-[24px_24px_4px_24px]')
+  : (joined ? 'rounded-[4px_24px_24px_4px]' : 'rounded-[24px_24px_24px_4px]');
+/** Only an absolute http(s) link is worth a card; anything else is left as the text it came in. */
+function webHost(url: string): string | null {
+  try { const parsed = new URL(url); return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.hostname : null; }
+  catch { return null; }
 }
 
-function LinkCard({ link }: { link: LinkView }) {
+/**
+ * A picture gets a bubble of its own with no padding, so it reaches the edges. What cannot be shown
+ * falls back to a line of text, and that line wants its padding back.
+ */
+function MediaBubble({ item, shape, tone, quote, tail }: { item: AttachmentView; shape: string; tone: string; quote: ReactNode; tail: ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  if (item.id && !failed) {
+    const image = <img className={`attachment-image block max-w-full h-auto ${item.sticker ? 'sticker max-h-32' : 'max-h-96'}`}
+      src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'}
+      loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+    return <div className={`${SHELL} ${shape} ${tone} p-0 w-fit`}>
+      {quote && <div className={`${PAD} pb-0`}>{quote}</div>}
+      {item.preview
+        ? <figure className="attachment-preview m-0">{image}<figcaption className="px-[.85rem] py-[.4rem] text-muted text-[.78em]">サムネイル（元の画像はこのMacにありません）</figcaption></figure>
+        : image}
+      {tail && <div className={`${PAD} pt-[.4rem]`}>{tail}</div>}
+    </div>;
+  }
+  const reason = item.preview || !item.id ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません') : 'このブラウザでは表示できない形式です';
+  return <div className={`${SHELL} ${shape} ${tone} ${PAD}`}>
+    {quote}
+    <p className="attachment m-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>
+    {tail}
+  </div>;
+}
+
+/** A link's card, likewise its own bubble: the preview image reaches the edges, the words do not. */
+function LinkBubble({ link, host, shape, tone, quote, tail }: { link: LinkView; host: string; shape: string; tone: string; quote: ReactNode; tail: ReactNode }) {
   const [imageFailed, setImageFailed] = useState(false);
-  let host: string;
-  try {
-    const url = new URL(link.url);
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-    host = url.hostname;
-  } catch { return null; }
   const imageId = link.image?.id;
-  return <a className="link-card flex flex-col mt-[.2rem] mb-[.4rem] last:mb-0 max-w-[22rem] overflow-hidden rounded-xl border border-line bg-soft text-inherit no-underline hover:border-accent focus-visible:border-accent" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-    {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
-    <span className="link-body flex flex-col gap-[.15rem] px-[.7rem] py-[.55rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
-  </a>;
+  return <div className={`${SHELL} ${shape} ${tone} p-0 max-w-[22rem]`}>
+    {quote && <div className={`${PAD} pb-0`}>{quote}</div>}
+    <a className="link-card flex flex-col text-inherit no-underline" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+      {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
+      <span className="link-body flex flex-col gap-[.15rem] px-[.85rem] py-[.6rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
+    </a>
+    {tail && <div className={`${PAD} pt-0`}>{tail}</div>}
+  </div>;
 }
 
 function ReplyQuote({ reply }: { reply: ReplyView }) {
@@ -586,11 +618,16 @@ export function App() {
             const same = (a: MessageView | undefined) => a !== undefined && a.isFromMe === message.isFromMe && a.sender === message.sender;
             const runs = same(previous);
             const facing = selected.isGroup === true && !message.isFromMe;
-            // The corner nearest the face stays square, and so does the one facing the bubble above
-            // when a run continues, so a run reads as one shape rather than a stack of separate ones.
-            const corners = message.isFromMe
-              ? (runs ? 'rounded-[24px_4px_4px_24px]' : 'rounded-[24px_24px_4px_24px]')
-              : (runs ? 'rounded-[4px_24px_24px_4px]' : 'rounded-[24px_24px_24px_4px]');
+            // What a message is made of, each piece in a bubble of its own: a picture is not a
+            // sentence, and a card is not either, so neither belongs inside the words' padding.
+            const tone = message.isFromMe ? sentTone : 'bg-surface';
+            const host = message.link ? webHost(message.link.url) : null;
+            const parts: Part[] = [
+              ...message.attachments.map((item, at) => ({ key: item.id ?? `a${at}`, media: item })),
+              ...(message.text || (message.attachments.length === 0 && !host)
+                ? [{ key: 'text', text: true as const }] : []),
+              ...(message.link && host !== null ? [{ key: 'link', link: message.link, host }] : []),
+            ];
             // A line goes in where a day begins, and where a conversation resumes after a pause,
             // rather than every message repeating the date.
             const at = readDate(message.createdAt), was = readDate(previous?.createdAt ?? null);
@@ -605,12 +642,21 @@ export function App() {
                 : <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />)}
               <div className="flex flex-col min-w-0 max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)]">
               {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.15rem] ml-[.85rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
-              <div className={`bubble px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${corners} ${message.isFromMe ? sentTone : 'bg-surface'}`}>
-                {message.replyTo && <ReplyQuote reply={message.replyTo} />}
-                {message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}
-                {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] last:mb-0 whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
-                {message.link && <LinkCard link={message.link} />}
-                {message.reactions.length > 0 && <Reactions list={message.reactions} />}
+              <div className={`flex flex-col gap-1 ${message.isFromMe ? 'items-end' : 'items-start'}`}>
+                {parts.map((part, at) => {
+                  const shape = corners(message.isFromMe, runs || at > 0);
+                  // The quote belongs to the head of the message and the tapbacks to its foot,
+                  // wherever those happen to fall among its pieces.
+                  const quote = at === 0 && message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null;
+                  const tail = at === parts.length - 1 && message.reactions.length > 0 ? <Reactions list={message.reactions} /> : null;
+                  if ('media' in part) return <MediaBubble key={part.key} item={part.media} shape={shape} tone={tone} quote={quote} tail={tail} />;
+                  if ('link' in part) return <LinkBubble key={part.key} link={part.link} host={part.host} shape={shape} tone={tone} quote={quote} tail={tail} />;
+                  return <div key={part.key} className={`${SHELL} ${shape} ${tone} ${PAD}`}>
+                    {quote}
+                    <p className="m-0 whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>
+                    {tail}
+                  </div>;
+                })}
               </div>
               </div>
               <time className="msg-time absolute left-full top-1/2 -translate-y-1/2 ml-4 w-14 whitespace-nowrap text-muted text-[.7rem]"
