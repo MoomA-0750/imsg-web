@@ -570,15 +570,16 @@ test('sends on click or Ctrl+Enter, with no confirmation step, and is honest abo
   // Typing alone must not send.
   expect(sends).toEqual([]);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('送信しました。')).toBeVisible();
-  expect(sends).toEqual([{ chatId: 'C'.repeat(43), text: '合成の送信メッセージ' }]);
+  // Nothing is announced when it works: the emptied field is the confirmation.
   await expect(box).toHaveValue('');
+  await expect(page.locator('.composer p')).toHaveCount(0);
+  expect(sends).toEqual([{ chatId: 'C'.repeat(43), text: '合成の送信メッセージ' }]);
   // Ctrl+Enter sends too; a plain Enter only adds a newline.
   await box.fill('キーボードからの送信');
   await box.press('Enter');
   expect(sends).toHaveLength(1);
   await box.press('Control+Enter');
-  await expect(page.getByText('送信しました。')).toBeVisible();
+  await expect(box).toHaveValue('');
   expect(sends).toHaveLength(2);
   expect(sends[1]).toMatchObject({ chatId: 'C'.repeat(43) });
   await expect(box).toHaveValue('');
@@ -652,7 +653,7 @@ test('records from the microphone, keeps it as an attachment to listen back to, 
 
   await page.getByLabel('メッセージを入力').fill('録音に添える合成本文');
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('送信しました。')).toBeVisible();
+  await expect(page.locator('.composer-voice')).toHaveCount(0); // it went, and said nothing about it
   // One upload, marked as a recording so the Mac may re-encode it, and big enough to be sound.
   expect(uploads).toHaveLength(1);
   expect(uploads[0]!.url).toContain('voice=1');
@@ -724,7 +725,7 @@ test('attaches a file: uploads the raw bytes first, names it in the confirm, the
   expect(uploads).toEqual([]);
   expect(sends).toEqual([]);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('送信しました。')).toBeVisible();
+  await expect(page.locator('.composer-files li')).toHaveCount(0);
   expect(uploads).toHaveLength(1);
   expect(uploads[0]!.type).toBe('application/octet-stream'); // raw bytes, not multipart or base64
   expect(uploads[0]!.bytes).toBe('synthetic-image-bytes'.length);
@@ -760,7 +761,7 @@ test('previews each chosen file locally and sends several as several messages', 
   await rows.nth(2).getByRole('button', { name: /を外す$/ }).click();
   await expect(rows).toHaveCount(2);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('2件すべて送信しました。')).toBeVisible();
+  await expect(rows).toHaveCount(0);
   expect(uploads).toHaveLength(2); // one upload per file, before a single send call
   expect(sends).toEqual([{ chatId: 'C'.repeat(43), uploadIds: ['U'.repeat(43), 'U'.repeat(43)] }]);
   await expect(rows).toHaveCount(0);

@@ -26,8 +26,10 @@ owner every time:
 - **Attachments go one per message.** imsg sends a single file per send, so ten
   files arrive as ten messages, in the order they were chosen, with any text on
   the first. A batch stops at the first that does not go and says how far it got.
-- **Sending is immediate** — no confirmation. Ctrl+Enter or ⌘+Enter sends, and so
-  does the round button. The field is labelled with the service it will send
+- **Sending is immediate** — no confirmation, and nothing is said when it works:
+  the message appearing and the composer emptying is the confirmation. Only a
+  failure, or a send whose outcome imsg could not vouch for, puts a line on the
+  screen. Ctrl+Enter or ⌘+Enter sends, and so does the round button. The field is labelled with the service it will send
   over, `iMessage` or `SMS`, and nothing else.
 - **A blue bubble means iMessage, green means anything else** (SMS, RCS, or a
   service imsg did not report), the way Messages colours them. imsg reports the

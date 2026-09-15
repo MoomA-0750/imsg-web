@@ -37,7 +37,31 @@ const AUDIO_UTI: Record<string, string> = {
   'public.aiff-audio': 'audio/aiff',
   'public.aifc-audio': 'audio/aiff',
 };
-const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: text(a.mime_type).toLowerCase() || AUDIO_UTI[text(a.uti).toLowerCase()] || '', missing: a.missing !== false, sticker: a.is_sticker === true });
+/**
+ * The same audio under the names different senders write it by. Messages records a file this app
+ * sent itself as `audio/x-m4a`, so without this a recording came back unplayable the moment it
+ * arrived. The name only gets the attachment as far as being offered; the bytes still decide.
+ */
+const AUDIO_ALIAS: Record<string, string> = {
+  'audio/mp4': 'audio/mp4', 'audio/x-m4a': 'audio/mp4', 'audio/m4a': 'audio/mp4',
+  'audio/mp4a-latm': 'audio/mp4', 'audio/aac': 'audio/mp4', 'audio/3gpp': 'audio/mp4', 'audio/3gpp2': 'audio/mp4',
+  'audio/wav': 'audio/wav', 'audio/x-wav': 'audio/wav', 'audio/wave': 'audio/wav', 'audio/vnd.wave': 'audio/wav',
+  'audio/mpeg': 'audio/mpeg', 'audio/mp3': 'audio/mpeg', 'audio/x-mpeg': 'audio/mpeg', 'audio/mpeg3': 'audio/mpeg',
+  'audio/aiff': 'audio/aiff', 'audio/x-aiff': 'audio/aiff', 'audio/amr': 'audio/amr', 'audio/x-caf': 'audio/x-caf',
+};
+/**
+ * What the attachment is, under one name. Audio is the only kind that needs the help: a name this
+ * app has never seen falls back to the UTI, which macOS is stricter about writing than a sender is
+ * about the mime type.
+ */
+const mediaType = (a: Record<string, unknown>): string => {
+  const byUti = AUDIO_UTI[text(a.uti).toLowerCase()];
+  const declared = text(a.mime_type).toLowerCase();
+  if (declared === '') return byUti ?? '';
+  if (!declared.startsWith('audio/')) return declared;
+  return AUDIO_ALIAS[declared] ?? byUti ?? declared;
+};
+const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: mediaType(a), missing: a.missing !== false, sticker: a.is_sticker === true });
 /**
  * A threaded reply, and only that. `reply_to_guid` is not one: Messages sets it on
  * ordinary messages too, usually to the one just before, so trusting it turns every

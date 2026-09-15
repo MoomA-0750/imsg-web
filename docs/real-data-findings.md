@@ -202,6 +202,14 @@ but it is Messages' own flag, set by how the message was sent. Nothing sent
 through AppleScript can set it, so a recording sent from here arrives as an audio
 attachment that plays, not as a native voice bubble.
 
+**The same audio under two names (2026-09-15).** The first recording sent from the
+web UI came back unplayable. Messages recorded it as `audio/x-m4a` with UTI
+`com.apple.m4a-audio` — the app only recognised `audio/mp4`, so it minted no id
+and the bubble said the file was not here. Audio types are now reduced to one
+name each before anything is offered, and a name the app has never seen falls
+back to the UTI, which macOS is stricter about writing than a sender is about the
+mime type. The bytes still decide what is actually served.
+
 `afconvert` (`/usr/bin/afconvert`, present on the M1) reads the format from the
 bytes rather than the name, reports failure honestly — exit 1, no output file,
 unlike `sips` — and converted 3 seconds of 16 kHz mono in 26 ms: 96 KB of PCM to

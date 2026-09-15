@@ -72,6 +72,26 @@ describe('readonly adapter contracts (synthetic)', () => {
     ]);
     expect(second!.attachments).toHaveLength(32);
   });
+  it('calls audio by one name however it was written down, and by its UTI when it has no name', async () => {
+    const { adapter, request } = setup();
+    request.mockResolvedValue({ messages: [
+      { id: 1, chat_id: 7, guid: 'm1', text: '', is_from_me: true, attachments: [
+        // What Messages records for a file this app sent itself.
+        { original_path: '/synthetic/Attachments/sent.m4a', mime_type: 'audio/x-m4a', uti: 'com.apple.m4a-audio', missing: false },
+        { original_path: '/synthetic/Attachments/note.wav', mime_type: 'AUDIO/X-WAV', missing: false },
+        // A voice message: no mime type at all, only the UTI.
+        { original_path: '/synthetic/Attachments/voice.caf', mime_type: '', uti: 'com.apple.coreaudio-format', missing: false },
+        // Not audio, and not to be renamed by any of this.
+        { original_path: '/synthetic/Attachments/clip.mp4', mime_type: 'video/mp4', uti: 'public.mpeg-4', missing: false },
+        { original_path: '/synthetic/Attachments/odd', mime_type: '', uti: 'dyn.synthetic', missing: false },
+        // A name nothing here knows: the UTI macOS wrote is the better answer.
+        { original_path: '/synthetic/Attachments/strange.m4a', mime_type: 'audio/synthetic-unknown', uti: 'com.apple.m4a-audio', missing: false },
+      ] },
+    ] });
+    const [message] = await adapter.history(7, 1);
+    expect(message!.attachments.map(a => a.type)).toEqual(['audio/mp4', 'audio/wav', 'audio/x-caf', 'video/mp4', '', 'audio/mp4']);
+  });
+
   it('accepts a link preview only with an absolute http(s) URL', async () => {
     const { adapter, request } = setup();
     const message = (id: number, link_preview: unknown) => ({ id, chat_id: 7, guid: `m${id}`, text: '', is_from_me: false, link_preview });

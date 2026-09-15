@@ -508,7 +508,9 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
       // Several attachments are several messages, so a batch can stop part way; say exactly how far it got.
       const done = result.sent ?? 0, total = result.total ?? 0;
       const progress = total > 1 ? `${total}件中${done}件を送信しました。` : '';
-      if (result.state === 'sent') { setText(''); clearFiles(); setNotice({ kind: 'ok', text: total > 1 ? `${total}件すべて送信しました。` : '送信しました。' }); onSent(); }
+      // Nothing is said when a send works: the message appearing in the conversation, and the
+      // composer emptying, is the whole of the news. Only what went wrong is worth a line.
+      if (result.state === 'sent') { setText(''); clearFiles(); onSent(); }
       else if (result.state === 'dry_run') { setText(''); clearFiles(); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
       // Not sent (imsg reported it never started): what is left is kept for a safe edit-and-resend.
       else if (result.state === 'failed') { if (done > 0) onSent(); setNotice({ kind: 'error', text: `${progress}続きは送信できませんでした（送信されていません）。宛先や内容を確認してください。` }); }
