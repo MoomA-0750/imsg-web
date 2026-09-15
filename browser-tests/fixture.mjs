@@ -10,6 +10,7 @@ import { WebError } from '../dist/server/web-error.js';
 import { Readable } from 'node:stream';
 import { crc32, deflateSync } from 'node:zlib';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+void PNG; // kept for reference: the smallest possible image, once used where a taller one is needed now
 // A PNG with real dimensions, so a message grows by a visible amount when its image loads.
 // One flat colour, so the pixels compress to nothing however large the picture is.
 function solidPNG(width, height) {
@@ -27,6 +28,8 @@ function solidPNG(width, height) {
 }
 const TALL_PNG = solidPNG(240, 180);
 const FACE_PNG = solidPNG(64, 64);
+// Taller than any window it will be opened in, which is what a photograph from a phone is.
+const PORTRAIT_PNG = solidPNG(400, 2400);
 // A conversation long enough to scroll. #1 is the newest and sits last, so asking for a
 // larger limit adds older messages above and leaves the bottom of the list unchanged.
 // Four messages to a day, counting back from today, so the list carries several day breaks and
@@ -88,9 +91,9 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async attachment(id) {
-    // P is a real 1×1 PNG; T (a thumbnail) and W are 240×180, so a picture has something to cover;
+    // P is 400×2400, taller than the window; T (a thumbnail) and W are 240×180;
     // Q claims to be HEIC but is not decodable.
-    const body = id === 'P'.repeat(43) ? PNG : id === 'T'.repeat(43) || id === 'W'.repeat(43) ? TALL_PNG
+    const body = id === 'P'.repeat(43) ? PORTRAIT_PNG : id === 'T'.repeat(43) || id === 'W'.repeat(43) ? TALL_PNG
       : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
     if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };

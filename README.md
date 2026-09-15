@@ -43,7 +43,8 @@ owner every time:
 - **Scrolling pages both lists** — up through a conversation, down through the
   list — and stops when a read returns fewer rows than it asked for.
 - **A picture opens.** Clicking one that is on the Mac shows it as large as the
-  window allows; Escape or the backdrop closes it. Messages' cached thumbnail of
+  window allows, however tall it is; Escape, the backdrop, or pulling it down
+  closes it. Messages' cached thumbnail of
   a picture that was never downloaded cannot open any larger, so clicking it says
   so over the picture for a couple of seconds. Nothing is written under a
   thumbnail otherwise: the two look alike until you try.

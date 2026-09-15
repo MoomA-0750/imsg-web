@@ -136,7 +136,7 @@ test('names senders only in group chats; shows images it can, and says why for t
   // Nothing is written under a thumbnail: the two look alike, and the caption said so every time.
   await expect(page.getByText('サムネイル', { exact: false })).toHaveCount(0);
   await expect(thumbnail).toHaveAttribute('alt', '添付画像（元の画像はこのMacにありません）');
-  await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(1);
+  await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(400);
   await expect(page.getByText('画像（このブラウザでは表示できない形式です）')).toBeVisible();
   await expect(page.getByText('画像（このMacに保存されていないか、表示できない形式です）')).toBeVisible();
   await expect(page.getByText('動画（この画面では表示できません）')).toBeVisible();
@@ -259,12 +259,30 @@ test('opens a picture that is here, and answers for one that is not', async ({ p
   const box = page.locator('.lightbox');
   await expect(box).toBeVisible();
   await expect(box.locator('img')).toHaveAttribute('src', `/api/attachments/${'P'.repeat(43)}`);
-  // Larger than it was in the conversation, and no bigger than the window.
+  // A photograph taller than the window is brought inside it, not spilled past the edges.
   const shown = (await box.locator('img').boundingBox())!, view = page.viewportSize()!;
+  expect(await box.locator('img').evaluate(img => (img as HTMLImageElement).naturalHeight)).toBe(2400);
   expect(shown.width).toBeLessThanOrEqual(view.width);
   expect(shown.height).toBeLessThanOrEqual(view.height);
+  expect(shown.y).toBeGreaterThanOrEqual(0);
   await page.keyboard.press('Escape');
   await expect(box).toHaveCount(0);
+
+  // Pulling it down puts it away; a pull too short to mean it does not.
+  const pull = async (distance: number) => {
+    await page.getByRole('button', { name: '画像を大きく表示' }).click();
+    await expect(page.locator('.lightbox')).toBeVisible();
+    const middle = { x: view.width / 2, y: view.height / 2 };
+    await page.mouse.move(middle.x, middle.y);
+    await page.mouse.down();
+    await page.mouse.move(middle.x, middle.y + distance, { steps: 8 });
+    await page.mouse.up();
+  };
+  await pull(40);
+  await expect(page.locator('.lightbox')).toBeVisible(); // held on to
+  await page.keyboard.press('Escape');
+  await pull(200);
+  await expect(page.locator('.lightbox')).toHaveCount(0);
 });
 
 test('clicking the conversation already open leaves it where it is', async ({ page }) => {

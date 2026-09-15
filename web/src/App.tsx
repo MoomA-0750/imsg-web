@@ -11,6 +11,8 @@ const NEAR_EDGE = 240;
 const NEAR_BOTTOM = 48;
 /** How far the conversation slides aside to show the times. */
 const REVEAL_MAX = 72;
+/** Pulling an opened picture this far down puts it away. */
+const PULL_CLOSE = 90;
 /** A pause this long earns a line of its own, the way Messages breaks up a quiet afternoon. */
 const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
@@ -97,7 +99,7 @@ function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: Attachm
     const image = <img className={`attachment-image block max-w-full h-auto ${item.sticker ? 'sticker max-h-32' : 'max-h-96'}`}
       src={`/api/attachments/${encodeURIComponent(item.id)}`}
       alt={item.preview ? '添付画像（元の画像はこのMacにありません）' : '添付画像'}
-      loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+      loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />;
     return <div className={`${SHELL} ${shape} ${tone} p-0 w-fit`}>
       {quote && <div className={`${PAD} pb-0`}>{quote}</div>}
       <button type="button" className="attachment-open relative block p-0 border-0 bg-transparent"
@@ -120,13 +122,31 @@ function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: Attachm
 
 /** The picture on its own, as large as the screen allows. Escape, the button, or the backdrop closes it. */
 function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void }) {
+  const [pulled, setPulled] = useState(0);
+  const from = useRef<number | undefined>(undefined);
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
   }, [onClose]);
-  return <div className="lightbox fixed inset-0 z-50 grid place-items-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label="画像" onClick={onClose}>
-    <img className="max-w-full max-h-full object-contain" src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" onClick={event => event.stopPropagation()} />
+  // Pulling the picture down puts it away, the gesture a picture opened full-screen invites. It
+  // follows the finger so the intent is visible before it is committed to, and springs back short
+  // of the distance that means it.
+  const down = (event: PointerEvent<HTMLDivElement>) => { from.current = event.clientY; };
+  const move = (event: PointerEvent<HTMLDivElement>) => {
+    if (from.current === undefined) return;
+    setPulled(Math.max(0, event.clientY - from.current));
+  };
+  const up = () => { if (pulled > PULL_CLOSE) onClose(); else { setPulled(0); from.current = undefined; } };
+  return <div className="lightbox fixed inset-0 z-50 flex items-center justify-center p-4 touch-none"
+    style={{ backgroundColor: `rgb(0 0 0 / ${Math.max(0.35, 0.85 - pulled / 500)})` }}
+    role="dialog" aria-modal="true" aria-label="画像"
+    onClick={onClose} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
+    {/* Sized against the window rather than the box around it: a grid or flex track measured from
+        the picture cannot also constrain it, which let a tall one run off the screen. */}
+    <img className="max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] object-contain"
+      style={{ transform: `translateY(${pulled}px)`, opacity: Math.max(0, 1 - pulled / 400), transition: from.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
+      src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} onClick={event => event.stopPropagation()} />
     <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-white/15 text-white" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
   </div>;
 }
@@ -138,7 +158,7 @@ function LinkBubble({ link, host, shape, tone, quote, tail }: { link: LinkView; 
   return <div className={`${SHELL} ${shape} ${tone} p-0 max-w-[22rem]`}>
     {quote && <div className={`${PAD} pb-0`}>{quote}</div>}
     <a className="link-card flex flex-col text-inherit no-underline" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
-      {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
+      {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setImageFailed(true)} />}
       <span className="link-body flex flex-col gap-[.15rem] px-[.85rem] py-[.6rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
     </a>
     {tail && <div className={`${PAD} pt-0`}>{tail}</div>}
