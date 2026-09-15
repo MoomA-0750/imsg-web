@@ -82,6 +82,19 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
   const clearFiles = () => { setFiles([]); if (picker.current) picker.current.value = ''; };
+  /** Picking again adds to the selection instead of replacing it; the same file twice is ignored. */
+  const addFiles = (chosen: File[]) => {
+    const merged = [...files];
+    let overflow = false;
+    for (const file of chosen) {
+      if (merged.some(have => have.name === file.name && have.size === file.size && have.lastModified === file.lastModified)) continue;
+      if (merged.length >= FILES_MAX) { overflow = true; continue; }
+      merged.push(file);
+    }
+    setFiles(merged);
+    setConfirming(false);
+    setNotice(overflow ? { kind: 'warn', text: `添付は${FILES_MAX}件までです。超えた分は追加していません。` } : null);
+  };
   useEffect(() => { setText(''); setFiles([]); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
 
   const dispatch = async () => {
@@ -113,7 +126,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   return <form className="composer" onSubmit={event => { event.preventDefault(); if (ready && !confirming) { setNotice(null); setConfirming(true); } }}>
     {mode === 'dry-run' && <p className="composer-banner" role="status">テスト送信モードです。実際には送信されません。</p>}
     <textarea value={text} onChange={event => { setText(event.target.value); setConfirming(false); }} placeholder="メッセージを入力（送信前に確認します）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
-    <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { setFiles([...(event.target.files ?? [])].slice(0, FILES_MAX)); setConfirming(false); setNotice(null); }} />
+    <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
     {files.length > 0 && <ul className="composer-files">{files.map((file, index) => <li key={`${file.name}:${index}`}><Thumbnail file={file} /><span className="composer-file-name">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="secondary compact" onClick={() => { setFiles(rest => rest.filter((_, at) => at !== index)); setConfirming(false); }} disabled={busy}>外す</button></li>)}</ul>}
     {files.length > 1 && <p className="composer-banner">添付は1件ずつ別のメッセージとして送られます。</p>}
     {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}

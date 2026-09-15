@@ -1,5 +1,15 @@
 import { test, expect, type Page } from '@playwright/test';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+// Real files on disk, so re-picking one keeps its identity (name, size, lastModified) as it would for the owner.
+const scratch = mkdtempSync(join(tmpdir(), 'iw-attach-'));
+const onDisk = (name: string, body: Buffer) => { const path = join(scratch, name); writeFileSync(path, body); return path; };
+const FILE_ONE = onDisk('one.png', PNG);
+const FILE_TWO = onDisk('two.png', PNG);
+const FILE_THREE = onDisk('three.png', PNG);
+const FILE_NOTES = onDisk('notes.txt', Buffer.from('synthetic'));
 async function login(page: Page) {
   await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43));
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
@@ -129,12 +139,14 @@ test('previews each chosen file locally and sends several as several messages', 
   await login(page);
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
-  await page.getByLabel('添付ファイルを選ぶ').setInputFiles([
-    { name: 'one.png', mimeType: 'image/png', buffer: PNG },
-    { name: 'two.png', mimeType: 'image/png', buffer: PNG },
-    { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic') },
-  ]);
+  await page.getByLabel('添付ファイルを選ぶ').setInputFiles([FILE_ONE, FILE_TWO, FILE_NOTES]);
   const rows = page.locator('.composer-files li');
+  await expect(rows).toHaveCount(3);
+  // Picking again adds to the selection rather than replacing it, and ignores a file already chosen.
+  await page.getByLabel('添付ファイルを選ぶ').setInputFiles([FILE_ONE, FILE_THREE]);
+  await expect(rows).toHaveCount(4);
+  await expect(page.getByText('three.png', { exact: false })).toBeVisible();
+  await rows.nth(3).getByRole('button', { name: '外す' }).click();
   await expect(rows).toHaveCount(3);
   // Images preview from a local blob URL; a non-image gets a placeholder. Nothing is uploaded to draw them.
   const thumbs = page.locator('.composer-files img.composer-thumb');
