@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { ContactPhotos, contactName, loadContactPhotos, readPhoto } from '../src/server/contact-photos.js';
+import { ContactPhotos, contactName, handleKey, loadContactPhotos, readPhoto } from '../src/server/contact-photos.js';
 
 const JPEG = Buffer.concat([Buffer.from('ffd8ffe000104a464946', 'hex'), Buffer.alloc(64, 7)]);
 const PNG = Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.alloc(64, 9)]);
@@ -15,7 +15,7 @@ const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 
 /** Builds address book stores with the columns and layout the real ones have. */
-async function addressBook(sources: { nickname?: string; first?: string; last?: string; picture?: Buffer }[][]) {
+async function addressBook(sources: { nickname?: string; first?: string; last?: string; picture?: Buffer; phones?: string[]; emails?: string[] }[][]) {
   const dir = await mkdtemp(join(tmpdir(), 'iw-ab-'));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   sources.forEach(() => {});
@@ -24,8 +24,16 @@ async function addressBook(sources: { nickname?: string; first?: string; last?: 
     await mkdir(holder, { recursive: true });
     const db = new DatabaseSync(join(holder, 'AddressBook-v22.abcddb'));
     db.exec('CREATE TABLE ZABCDRECORD (Z_PK INTEGER PRIMARY KEY, ZNICKNAME TEXT, ZFIRSTNAME TEXT, ZLASTNAME TEXT, ZTHUMBNAILIMAGEDATA BLOB, ZIMAGEDATA BLOB)');
+    db.exec('CREATE TABLE ZABCDPHONENUMBER (Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZFULLNUMBER TEXT)');
+    db.exec('CREATE TABLE ZABCDEMAILADDRESS (Z_PK INTEGER PRIMARY KEY, ZOWNER INTEGER, ZADDRESS TEXT)');
     const insert = db.prepare('INSERT INTO ZABCDRECORD (ZNICKNAME, ZFIRSTNAME, ZLASTNAME, ZTHUMBNAILIMAGEDATA, ZIMAGEDATA) VALUES (?, ?, ?, ?, NULL)');
-    for (const r of records) insert.run(r.nickname ?? null, r.first ?? null, r.last ?? null, r.picture ?? null);
+    const phone = db.prepare('INSERT INTO ZABCDPHONENUMBER (ZOWNER, ZFULLNUMBER) VALUES (?, ?)');
+    const email = db.prepare('INSERT INTO ZABCDEMAILADDRESS (ZOWNER, ZADDRESS) VALUES (?, ?)');
+    for (const r of records) {
+      const owner = insert.run(r.nickname ?? null, r.first ?? null, r.last ?? null, r.picture ?? null).lastInsertRowid;
+      for (const number of r.phones ?? []) phone.run(owner, number);
+      for (const address of r.emails ?? []) email.run(owner, address);
+    }
     db.close();
   }
   return dir;
@@ -58,22 +66,48 @@ describe('contact pictures (synthetic address book)', () => {
       [{ nickname: '重複', picture: stored(PNG) }],             // the same name, a different face
     ]);
     const photos = await loadContactPhotos(dir);
-    expect([...photos.keys()].sort()).toEqual(['合成 太郎', '本体 連絡先']);
-    expect(photos.get('合成 太郎')).toEqual({ bytes: JPEG, type: 'image/jpeg' });
-    expect(photos.get('重複')).toBeUndefined();
+    expect([...photos.names.keys()].sort()).toEqual(['合成 太郎', '本体 連絡先']);
+    expect(photos.names.get('合成 太郎')).toEqual({ bytes: JPEG, type: 'image/jpeg' });
+    expect(photos.names.get('重複')).toBeUndefined();
+  });
+
+  it('compares a number by its last digits and an address by its letters', () => {
+    expect(handleKey('+81 90-1234-5678')).toBe(handleKey('09012345678')); // one number, two ways of writing it
+    expect(handleKey('SOMEONE@Example.invalid')).toBe('someone@example.invalid');
+    expect(handleKey('0312345678')).not.toBe(handleKey('0987654321'));
+    expect(handleKey('7654321')).toBe('7654321'); // short enough to stand as it is
+    for (const empty of ['', '   ', '+-()']) expect(handleKey(empty)).toBeNull();
+  });
+
+  it('finds a picture by the handles a card carries, and refuses one two contacts could claim', async () => {
+    const dir = await addressBook([
+      [{ first: '合成', last: '太郎', picture: stored(JPEG), phones: ['+81 90-1234-5678', '090-1234-5678'], emails: ['Taro@Example.invalid'] },
+       { first: '別の', last: '人', picture: stored(PNG), phones: ['03-1111-2222'] },
+       { first: 'そっくり', last: '番号', picture: stored(JPEG), phones: ['+81 3 1111 2222'] }],        // ends the same
+      [{ first: '合成', last: '太郎', picture: stored(JPEG), phones: ['09012345678'] }],                 // the same card, synced
+      [{ first: '写真なし', last: '連絡先', phones: ['08000000000'] }],
+    ]);
+    const photos = new ContactPhotos(dir);
+    await photos.refresh();
+    // The card lists its number twice and appears in two stores; that is still one person.
+    expect(photos.forHandle('+819012345678')).toEqual({ bytes: JPEG, type: 'image/jpeg' });
+    expect(photos.forHandle('taro@example.invalid')).toEqual({ bytes: JPEG, type: 'image/jpeg' });
+    expect(photos.forHandle('+81311112222')).toBeUndefined();    // two contacts end alike: neither is shown
+    expect(photos.forHandle('+818000000000')).toBeUndefined();   // a real contact, with no picture to give
+    expect(photos.forHandle('')).toBeUndefined();
   });
 
   it('treats an unreadable address book as simply having no pictures', async () => {
-    expect((await loadContactPhotos(join(tmpdir(), 'iw-ab-absent'))).size).toBe(0);
+    expect((await loadContactPhotos(join(tmpdir(), 'iw-ab-absent'))).names.size).toBe(0);
     const dir = await mkdtemp(join(tmpdir(), 'iw-ab-'));
     cleanups.push(() => rm(dir, { recursive: true, force: true }));
     await writeFile(join(dir, 'AddressBook-v22.abcddb'), 'not a database');
-    expect((await loadContactPhotos(dir)).size).toBe(0);
+    expect((await loadContactPhotos(dir)).names.size).toBe(0);
     // An older store left behind by a migration is not read at all.
     const old = await mkdtemp(join(tmpdir(), 'iw-ab-'));
     cleanups.push(() => rm(old, { recursive: true, force: true }));
     await writeFile(join(old, 'AddressBook-v21.abcddb'), 'older');
-    expect((await loadContactPhotos(old)).size).toBe(0);
+    expect((await loadContactPhotos(old)).names.size).toBe(0);
   });
 
   it('holds what it read until the time is up, then reads again', async () => {

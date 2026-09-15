@@ -35,6 +35,8 @@ const PREVIEW_READS = 50;
 const MAX_REMEMBERED_PREVIEWS = 2000;
 export const PREVIEW_MAX = 100;
 const ATTACHMENT_WORD: Record<string, string> = { image: '画像', video: '動画', audio: '音声' };
+/** How many of a group's members its row can show at once before the faces stop being faces. */
+const FACES_MAX = 4;
 /** Servable images remembered per epoch; the oldest are forgotten first. */
 export const MAX_REMEMBERED_ATTACHMENTS = 4000;
 /** How many of the newest convertible images a history response prepares ahead of viewing. */
@@ -241,7 +243,7 @@ export class LiveSource implements ReadSource, AttachmentSource {
       return { epoch: this.#epoch, limit, chats: rows.map(row => {
         const id = this.#id('chat', row.guid); this.#map.set(id, { row: row.id, guid: row.guid });
         const name = clip(row.name, 512);
-        return { id, name: name.value, service: row.service === 'iMessage' || row.service === 'SMS' ? row.service : 'Other', isGroup: row.isGroup, unreadCount: row.unreadCount, lastMessageAt: row.lastMessageAt, trimmed: name.trimmed, preview: shown.get(row.guid) ?? null, avatarId: this.#avatarId(row.name) };
+        return { id, name: name.value, service: row.service === 'iMessage' || row.service === 'SMS' ? row.service : 'Other', isGroup: row.isGroup, unreadCount: row.unreadCount, lastMessageAt: row.lastMessageAt, trimmed: name.trimmed, preview: shown.get(row.guid) ?? null, faces: this.#faces(row) };
       }) };
     });
   }
@@ -256,6 +258,25 @@ export class LiveSource implements ReadSource, AttachmentSource {
     const id = this.#id('avatar', name);
     this.#avatars.set(id, photo);
     return id;
+  }
+  /** The same, for a group's member, who reaches this app as a bare handle and no name at all. */
+  #handleAvatarId(handle: string): string | null {
+    const photo = this.options.photos?.forHandle(handle);
+    if (!photo) return null;
+    const id = this.#id('avatar', `handle:${handle}`);
+    this.#avatars.set(id, photo);
+    return id;
+  }
+  /**
+   * The faces a conversation's row wears. A group has no picture of its own, so it wears its
+   * members': one slot each, those there is a picture for first — a face earns its place ahead of
+   * the order it happened to be listed in. No picture anywhere leaves the row as it always was.
+   */
+  #faces(row: { isGroup: boolean | null; name: string; participants: string[] }): (string | null)[] {
+    if (row.isGroup !== true) { const id = this.#avatarId(row.name); return id === null ? [] : [id]; }
+    const slots = row.participants.slice(0, FACES_MAX).map(handle => this.#handleAvatarId(handle));
+    slots.sort((a, b) => (a === null ? 1 : 0) - (b === null ? 1 : 0));
+    return slots.some(id => id !== null) ? slots : [];
   }
   async avatar(id: string): Promise<{ type: string; size: number; bytes: Buffer }> {
     const photo = this.#avatars.get(id);

@@ -1,7 +1,11 @@
 import type { Capability } from '../server/capabilities.js';
 /** `preview` is the newest message in the conversation, clipped; null when there is none to show. */
-/** `avatarId` is set only when the address book holds a picture for this conversation's contact. */
-export type ChatView = { id: string; name: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; trimmed: boolean; preview: PreviewView | null; avatarId: string | null };
+/**
+ * `faces` is this conversation's picture: one entry for a person, one per member for a group, and
+ * null in the place of anyone the address book holds no picture for. Empty when there is none to
+ * show at all. Only the picture crosses; who it belongs to is never sent alongside it.
+ */
+export type ChatView = { id: string; name: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; trimmed: boolean; preview: PreviewView | null; faces: (string | null)[] };
 export type PreviewView = { text: string; trimmed: boolean; fromMe: boolean };
 /**
  * `id` is set only for an image the server will serve at `/api/attachments/:id`:

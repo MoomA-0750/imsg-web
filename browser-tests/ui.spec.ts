@@ -228,6 +228,37 @@ test('shows a contact picture where the address book has one, initials where it 
   await expect(page.locator('.chat-list li .chat-avatar')).toHaveCount(await page.locator('.chat-list li').count());
 });
 
+test('a group wears its members’ faces, one place each, inside the same circle', async ({ page }) => {
+  await login(page);
+  const row = (name: string) => page.locator('.chat-list li', { hasText: name });
+  const cluster = row('合成グループ Gamma').locator('.chat-avatar');
+  await expect(cluster).toHaveCount(1); // one face for the conversation, however many people it holds
+  // Three members: two the address book knows, and one it does not, who is drawn as a stranger.
+  await expect(cluster.locator('img')).toHaveCount(2);
+  await expect(cluster.locator('svg')).toHaveCount(1);
+  await expect(cluster.locator('img').first()).toHaveAttribute('src', /\/api\/avatars\//);
+  await expect(cluster).toHaveAttribute('aria-hidden', 'true'); // decoration: the name is the row
+
+  // It takes no more room than the single face beside it, and every member stays within it.
+  const whole = (await cluster.boundingBox())!;
+  const alone = (await row('合成テスト会話 Beta').locator('.chat-avatar').boundingBox())!;
+  expect(whole.width).toBeCloseTo(alone.width, 0);
+  expect(whole.height).toBeCloseTo(alone.height, 0);
+  const places = await cluster.locator('> *').all();
+  expect(places).toHaveLength(3);
+  for (const place of places) {
+    const box = (await place.boundingBox())!;
+    expect(box.width).toBeLessThan(whole.width);
+    expect(box.x).toBeGreaterThanOrEqual(whole.x - 1);
+    expect(box.x + box.width).toBeLessThanOrEqual(whole.x + whole.width + 1);
+    expect(box.y).toBeGreaterThanOrEqual(whole.y - 1);
+    expect(box.y + box.height).toBeLessThanOrEqual(whole.y + whole.height + 1);
+  }
+  // They overlap rather than sitting in a row: the first two share ground.
+  const [first, second] = [(await places[0]!.boundingBox())!, (await places[1]!.boundingBox())!];
+  expect(second.x).toBeLessThan(first.x + first.width);
+});
+
 test('colours a sent message by the service it went out over', async ({ page }) => {
   await login(page);
   const sent = page.locator('.bubble', { hasText: '送信済みの合成メッセージです。' });
@@ -686,7 +717,7 @@ test('B05 empty/error states, a pane too tall for one page, and the 1000-row cei
   await page.route('**/api/chats?*', route => {
     const limit = Number(new URL(route.request().url()).searchParams.get('limit'));
     limits.push(limit);
-    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null, avatarId: null })) : [];
+    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null, faces: [] })) : [];
     return route.fulfill({ json: { epoch: 'epoch-a', limit, chats } });
   });
   await page.goto('/'); await page.getByLabel('パスワード').fill('A'.repeat(43)); await page.getByRole('button', { name: 'ログイン', exact: true }).click();

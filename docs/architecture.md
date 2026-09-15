@@ -56,6 +56,19 @@ refreshes rather than making one of them slow, and a conversation not read yet l
 blank rather than claiming it has no messages. This is the one place the read profile is N+1;
 `docs/real-data-findings.md` records what it costs on real data.
 
+## The face on a conversation
+
+A conversation's row carries `faces`: one entry per person, holding the id of a picture the
+address book has for them, or null where it has none, and empty where there is nothing to
+show at all. One entry is a person; several are a group, which has no picture of its own and
+so wears its members'. The place a face sits in is the UI's business; the server only says
+who there is and whether there is a picture.
+
+A person is matched on the name imsg resolved, a group's members on their handles, since imsg
+resolves no names for those (`docs/real-data-findings.md` has the matching rule). Either way
+an id is an HMAC over the key, bound to the current database generation, and only the bytes
+are served, from `/api/avatars/:id`. No name, handle or contact identifier crosses.
+
 ## Styling
 
 Tailwind v4, through `@tailwindcss/vite`; no CDN, no config file. `web/src/style.css`

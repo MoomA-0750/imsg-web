@@ -1,5 +1,5 @@
-import { FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Send24Filled } from '@fluentui/react-icons';
+import { CSSProperties, FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Person24Filled, Send24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 
 const PAGE = 50;
@@ -751,7 +751,7 @@ export function App() {
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
               <button className={`flex w-full items-center gap-3 rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
-                <Avatar name={chat.name} avatarId={chat.avatarId} />
+                <Avatar name={chat.name} faces={chat.faces} />
                 <span className="min-w-0 grow">
                   <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
                   <span className="flex justify-between items-center gap-2 mt-[.35rem]">
@@ -799,7 +799,7 @@ export function App() {
             ...(here.opens ? [<DayBreak key={`day-${message.id}`} at={at!} day={here.newDay} />] : []),
             <li key={message.id} className={`msg relative flex items-end gap-2 ${index === 0 || here.opens ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
               {facing && (endsRun
-                ? <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />
+                ? <Avatar name={message.sender ?? ''} faces={[message.avatarId]} size="w-7 h-7 text-[.7rem]" />
                 : <span className="shrink-0 w-7" aria-hidden="true" />)}
               <div className="flex flex-col min-w-0 max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)]">
               {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.15rem] ml-[.85rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
@@ -886,23 +886,57 @@ function Recovery({ onBack }: { onBack: () => void }) {
 }
 
 /**
+ * Where each member sits in a group's face, as a share of the whole: the first slot largest, the
+ * rest gathered round it. Deliberately not a neat ring — a little unevenness reads as a handful of
+ * people rather than a diagram of them.
+ */
+const CLUSTER: Record<number, readonly { size: number; x: number; y: number }[]> = {
+  2: [{ size: 70, x: 0, y: 2 }, { size: 60, x: 40, y: 38 }],
+  3: [{ size: 62, x: 0, y: 4 }, { size: 52, x: 48, y: 0 }, { size: 56, x: 26, y: 44 }],
+  4: [{ size: 56, x: 0, y: 0 }, { size: 52, x: 48, y: 2 }, { size: 50, x: 2, y: 50 }, { size: 54, x: 46, y: 46 }],
+};
+
+/**
  * A conversation's face: the contact's picture when the address book has one, and otherwise the
  * initials over a colour derived from the name, so every row has something to recognise. The
  * colour is decoration — it carries nothing the row does not already say.
+ *
+ * A group is its members' faces gathered together, since a group has no picture of its own. Every
+ * member gets a place whether or not there is a picture for them, so the face says how many people
+ * are in there; the ones it knows come first, and the rest are drawn as the strangers they are.
  */
-function Avatar({ name: rawName, avatarId, size = 'w-11 h-11 text-[.9rem]' }: { name: string; avatarId: string | null; size?: string }) {
-  const [failed, setFailed] = useState(false);
+function Avatar({ name, faces, size = 'w-11 h-11 text-[.9rem]' }: { name: string; faces: (string | null)[]; size?: string }) {
   const shape = `chat-avatar shrink-0 ${size} rounded-full object-cover`;
-  if (avatarId && !failed) {
-    return <img className={shape} src={`/api/avatars/${encodeURIComponent(avatarId)}`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+  if (faces.length < 2) return <Face id={faces[0] ?? null} name={name} className={shape} />;
+  const places = CLUSTER[Math.min(faces.length, 4)]!;
+  return <span className={`chat-avatar relative shrink-0 ${size} block`} aria-hidden="true">
+    {faces.slice(0, places.length).map((id, at) => {
+      const place = places[at]!;
+      return <Face key={at} id={id} name="" small
+        className="absolute rounded-full object-cover ring-2 ring-surface"
+        style={{ width: `${place.size}%`, height: `${place.size}%`, left: `${place.x}%`, top: `${place.y}%` }} />;
+    })}
+  </span>;
+}
+
+/** One face in its place: the picture, the initials, or — for a member with no name — a stranger. */
+function Face({ id, name: rawName, className, style, small }: { id: string | null; name: string; className: string; style?: CSSProperties; small?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  if (id && !failed) {
+    return <img className={className} style={style} src={`/api/avatars/${encodeURIComponent(id)}`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
   }
   const name = rawName.trim();
+  if (name === '') {
+    return <span className={`${className} grid place-items-center bg-accent-soft text-muted`} style={style} aria-hidden="true">
+      <Person24Filled className="w-[62%] h-[62%]" />
+    </span>;
+  }
   const initials = [...name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean)]
     .slice(0, 2).map(word => [...word][0] ?? '').join('') || '…';
   let hash = 0;
   for (const code of name) hash = (hash * 31 + code.codePointAt(0)!) % 360;
-  return <span className={`${shape} grid place-items-center font-bold text-white`}
-    style={{ backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
+  return <span className={`${className} grid place-items-center font-bold text-white ${small ? 'text-[.6rem]' : ''}`}
+    style={{ ...style, backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
 }
 
 /**

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { LiveSource, STATUS_TTL_MS, REPLY_QUOTE_MAX, clip } from '../src/server/live-source.js';
 import { testContext } from './helpers/child-context.js';
 import type { ImageConverter } from '../src/server/image-convert.js';
+import type { ContactPhotos } from '../src/server/contact-photos.js';
 const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn(), forbiddenSpawn: vi.fn() }));
 vi.mock('../src/server/cli-status.js', () => ({ cliStatus: forbiddenCli }));
 vi.mock('node:child_process', () => ({ spawn: forbiddenSpawn }));
@@ -13,7 +14,7 @@ const PNG_SIGNATURE = Buffer.from('89504e470d0a1a0a', 'hex');
 const cleanups: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-async function setup(attachments: (dir: string) => unknown[] = () => [], extra: (dir: string) => Record<string, unknown> = () => ({}), converter?: ImageConverter) {
+async function setup(attachments: (dir: string) => unknown[] = () => [], extra: (dir: string) => Record<string, unknown> = () => ({}), converter?: ImageConverter, rows?: { chats?: unknown[]; photos?: ContactPhotos }) {
   const dir = await mkdtemp(join(tmpdir(), 'iw-source-')), path = join(dir, 'chat.db');
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   await writeFile(path, 'old');
@@ -34,7 +35,7 @@ async function setup(attachments: (dir: string) => unknown[] = () => [], extra: 
       if (method === 'status') { await handle; if (beforeStatus) { const task = beforeStatus; beforeStatus = undefined; await task(); } return status(); }
       await hold?.promise;
       if (closed) throw new Error('reader closed');
-      if (method === 'chats.list') return { chats: Array.from({ length: Number(params.limit) }, (_, i) => ({ id: offset + i + 1, guid: `chat-${offset + i}`, name: '', identifier: 'Synthetic conversation', service: 'iMessage' })) };
+      if (method === 'chats.list') return { chats: rows?.chats ?? Array.from({ length: Number(params.limit) }, (_, i) => ({ id: offset + i + 1, guid: `chat-${offset + i}`, name: '', identifier: 'Synthetic conversation', service: 'iMessage' })) };
       if (method === 'messages.history') {
         const buffer = Buffer.alloc(16); const { bytesRead } = await (await handle).read(buffer, 0, 16, 0);
         return { messages: [{ id: 2, chat_id: params.chat_id, guid: 'm-2', text: buffer.subarray(0, bytesRead).toString(), is_from_me: false, attachments: attachments(dir), ...extra(dir) }, { id: 1, chat_id: params.chat_id, guid: 'm-1', text: 'earlier', is_from_me: true }] };
@@ -42,7 +43,7 @@ async function setup(attachments: (dir: string) => unknown[] = () => [], extra: 
       throw new Error('unexpected method');
     } };
   };
-  const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory, ...(converter ? { converter } : {}) });
+  const source = new LiveSource({ context: testContext(), executable: '/synthetic/imsg', expectedDatabasePath: path, factory, ...(converter ? { converter } : {}), ...(rows?.photos ? { photos: rows.photos } : {}) });
   cleanups.push(async () => { failClose = false; hold?.resolve(); await source.close().catch(() => {}); for (const h of handles) await h.close().catch(() => {}); });
   const replace = async () => { await writeFile(join(dir, 'replacement'), 'new'); await rename(join(dir, 'replacement'), path); };
   return { source, calls, dir, path, replace, removeDB: () => unlink(path), get created() { return created; }, get maximum() { return maximum; }, setOffset: (n: number) => { offset = n; }, setFailClose: () => { failClose = true; }, hold: () => { hold = deferred<void>(); return hold; }, onStatus: (task: () => Promise<void>) => { beforeStatus = task; } };
@@ -254,5 +255,40 @@ describe('B04 DB generation and reader lifetime', () => {
     await expect(f.source.capabilities()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
     await expect(f.source.close()).rejects.toMatchObject({ code: 'READER_RECOVERY_REQUIRED' });
     expect(f.created).toBe(created);
+  });
+});
+
+describe('the faces a conversation wears', () => {
+  const PHOTO = { bytes: Buffer.concat([PNG_SIGNATURE, Buffer.alloc(8, 4)]), type: 'image/png' };
+  const photos = { size: 1, refresh: async () => {},
+    get: (name: string) => (name === 'Synthetic conversation' ? PHOTO : undefined),
+    forHandle: (handle: string) => (handle === '+81901234567' ? PHOTO : undefined) } as unknown as ContactPhotos;
+  const chats = [
+    { id: 1, guid: 'chat-group', name: 'Synthetic group', identifier: 'chat0000', service: 'iMessage', is_group: true,
+      participants: ['nobody@synthetic.invalid', '+81901234567', 'also-nobody@synthetic.invalid'] },
+    { id: 2, guid: 'chat-person', name: '', identifier: 'Synthetic conversation', service: 'iMessage', is_group: false, participants: ['+81901234567'] },
+    { id: 3, guid: 'chat-strangers', name: 'Synthetic strangers', identifier: 'chat0001', service: 'iMessage', is_group: true, participants: ['a@synthetic.invalid', 'b@synthetic.invalid'] },
+  ];
+
+  it('gives a group one slot per member, the known faces first, and serves each picture by id', async () => {
+    const f = await setup(() => [], () => ({}), undefined, { chats, photos });
+    const [group, person, strangers] = (await f.source.chats(50)).chats;
+    // One slot per member, whether or not there is a picture: the face says how many are in there.
+    expect(group!.faces).toHaveLength(3);
+    expect(group!.faces[0]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(group!.faces.slice(1)).toEqual([null, null]);
+    expect(person!.faces).toHaveLength(1); // a person wears their own, matched on the resolved name
+    expect(strangers!.faces).toEqual([]);  // nobody to show: the row falls back to its initials
+    await expect(f.source.avatar(group!.faces[0]!)).resolves.toMatchObject({ type: 'image/png', size: PHOTO.bytes.length });
+    // The handle a face was found by never crosses, and neither does anything else about the card.
+    expect(JSON.stringify((await f.source.chats(50)).chats)).not.toContain('81901234567');
+  });
+
+  it('forgets the pictures it minted ids for when the database generation turns over', async () => {
+    const f = await setup(() => [], () => ({}), undefined, { chats, photos });
+    const before = (await f.source.chats(50)).chats[0]!.faces[0]!;
+    await f.replace();
+    await expect(f.source.chats(50)).rejects.toMatchObject({ code: 'DB_CHANGED', status: 409 });
+    await expect(f.source.avatar(before)).rejects.toMatchObject({ code: 'ATTACHMENT_UNAVAILABLE', status: 404 });
   });
 });

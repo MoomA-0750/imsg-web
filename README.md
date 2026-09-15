@@ -9,7 +9,8 @@ Implemented: owner login, sessions and key rotation; conversation list and
 history with 15-second refresh, opening on the newest message and paging as the
 owner scrolls; images from attachments that are on the Mac,
 or Messages' cached thumbnail when the image was never downloaded;
-contact pictures from the address book, with initials where there is none;
+contact pictures from the address book, with initials where there is none, and a
+group wearing its members' faces gathered in one circle;
 link cards from the preview Messages stored; the message a reply answers and
 the tapbacks on a message; sending text and attachments (off by default; see
 `docs/operations.md`); a responsive UI. Not implemented: sending replies or

@@ -178,6 +178,20 @@ marker instead, so the bytes are accepted only from a JPEG or PNG signature onwa
 Conversations without one show initials over a colour derived from the name, which
 is what Messages does.
 
+**A group's members (2026-09-15).** A group has no picture of its own, and no name
+to match one on: `chats.list` already carries `participants`, but they are bare
+handles, and imsg resolves contact names only for one-to-one conversations. So for
+those the app matches on the handle itself, from the phone and address tables of the
+same address book — an address lowercased, a number cut to its last 9 digits so a
+card written `090-…` answers for the `+8190…` Messages holds. That rule is blunt:
+two numbers ending alike collide, so a key two contacts claim is dropped rather than
+shown as either. Measured over the owner's data: 8 group conversations, 14 distinct
+members, **8 matched**; 5 of the 8 groups have every member matched and every group
+has at least one. A group wears those faces gathered in one circle, one place per
+member whether or not there is a picture, so the face still says how many people are
+in there. Nothing but the pictures crosses to the browser: an id is an HMAC over the
+handle, which the browser never sees.
+
 ## Known and not yet resolved
 
 - **Intel with a stale bridge lock.** The iMac also runs the owner's separate

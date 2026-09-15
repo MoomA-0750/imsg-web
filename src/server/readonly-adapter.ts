@@ -2,7 +2,8 @@ import { ReadonlyRpcClient } from './rpc/readonly-client.js';
 import { RpcError, isObject } from './rpc/errors.js';
 import { parseStatus, type Status } from './capabilities.js';
 
-type Chat = { id: number; name: string; guid: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null };
+/** `participants` are the raw handles of a group's members; imsg resolves no names for them. */
+type Chat = { id: number; name: string; guid: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; participants: string[] };
 export type Attachment = { path: string; type: string; missing: boolean; sticker: boolean };
 /** From imsg-patches/link-preview: what Messages stored with a link. Never fetched from the network. */
 export type LinkPreview = { url: string; originalUrl: string | null; title: string; summary: string; siteName: string; image: Attachment | null };
@@ -13,6 +14,8 @@ export type Reaction = { kind: string; emoji: string; sender: string | null; fro
 type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; link: LinkPreview | null; replyTo: ReplyContext | null; reactions: Reaction[]; createdAt: string | null };
 const MAX_REACTIONS = 24;
 const MAX_ATTACHMENTS = 32;
+/** Far more of a group than its face will ever show; a bound, not a feature. */
+const MAX_PARTICIPANTS = 32;
 const text = (v: unknown) => typeof v === 'string' ? v : '';
 /** Only an absolute http(s) URL of sane length can become something the owner clicks. */
 function webUrl(v: unknown): string | null {
@@ -72,7 +75,8 @@ export class ReadonlyAdapter {
       return { id: item.id, name: (titled ? item.name : text(item.contact_name) || item.name || identifier) || '名前のない会話', guid: item.guid, service: item.service,
         isGroup: typeof item.is_group === 'boolean' ? item.is_group : null,
         unreadCount: Number.isSafeInteger(item.unread_count) && (item.unread_count as number) >= 0 ? item.unread_count as number : null,
-        lastMessageAt: date(item.last_message_at) };
+        lastMessageAt: date(item.last_message_at),
+        participants: Array.isArray(item.participants) ? item.participants.filter(p => typeof p === 'string').slice(0, MAX_PARTICIPANTS) : [] };
     });
   }
   async history(chatId: number, limit = 50): Promise<Message[]> {

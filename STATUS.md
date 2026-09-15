@@ -101,6 +101,11 @@ contacts have a usable picture; `docs/real-data-findings.md` says why, and why
 exporting or syncing would not add any. The app reads them itself with
 `node:sqlite`, matching on the name imsg already resolved.
 
+A group has no picture of its own, so its row wears its members' faces gathered in
+one circle — one place each, a stranger's silhouette where there is no picture. Its
+members arrive as bare handles with no name resolved, so those are matched on the
+handle instead: see `docs/real-data-findings.md` for the rule and what it hits.
+
 ## The unread count (2026-09-15)
 
 `unread_count` counted every message with `is_read = 0` over a conversation's
