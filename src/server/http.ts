@@ -15,7 +15,9 @@ import { sendCapability } from './capabilities.js';
 export interface UploadSink { accept(body: Readable, name: string | undefined): Promise<Upload>; readonly maxBytes: number }
 
 const COOKIE = '__Host-imsg_session';
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
+// `blob:` in img-src is only for previewing an attachment the owner just chose: a blob URL can only
+// be minted by this page for its own data, so it admits no third-party content. Everything else stays 'self'.
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
 export function checkedOrigin(value: string): URL {
   const u = new URL(value);
   if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
@@ -136,15 +138,15 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
       chatId: { type: 'string', minLength: 43, maxLength: 43 },
       to: { type: 'string', minLength: 1, maxLength: 256 },
       text: { type: 'string', minLength: 1, maxLength: 16384 },
-      uploadId: { type: 'string', minLength: 43, maxLength: 43 },
+      uploadIds: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string', minLength: 43, maxLength: 43 } },
     } } } }, async request => {
       spend(request);
-      const body = request.body as { chatId?: string; to?: string; text?: string; uploadId?: string };
+      const body = request.body as { chatId?: string; to?: string; text?: string; uploadIds?: string[] };
       return sender.send({
         ...(body.chatId !== undefined ? { chatId: body.chatId } : {}),
         ...(body.to !== undefined ? { to: body.to } : {}),
         ...(body.text !== undefined ? { text: body.text } : {}),
-        ...(body.uploadId !== undefined ? { uploadId: body.uploadId } : {}),
+        ...(body.uploadIds !== undefined ? { uploadIds: body.uploadIds } : {}),
       });
     });
     if (uploadsEnabled) {

@@ -8,7 +8,7 @@ import { WebError } from './web-error.js';
 
 /** Streamed straight to disk, so a large attachment never sits in memory or inflates through base64. */
 export const UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
-const MAX_PENDING = 8;
+const MAX_PENDING = 16; // a batch of attachments is uploaded before the send claims them
 const TTL_MS = 10 * 60_000;
 const NAME_MAX = 120;
 

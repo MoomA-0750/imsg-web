@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 async function login(page: Page) {
   await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43));
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
@@ -104,7 +105,8 @@ test('attaches a file: uploads the raw bytes first, names it in the confirm, the
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   await page.getByLabel('添付ファイルを選ぶ').setInputFiles({ name: '写真 1.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-image-bytes') });
-  await expect(page.getByText('添付: 写真 1.png', { exact: false })).toBeVisible();
+  await expect(page.locator('.composer-files li')).toHaveCount(1);
+  await expect(page.getByText('写真 1.png', { exact: false })).toBeVisible();
   // Choosing a file must not upload or send anything yet.
   expect(uploads).toEqual([]);
   expect(sends).toEqual([]);
@@ -116,8 +118,42 @@ test('attaches a file: uploads the raw bytes first, names it in the confirm, the
   expect(uploads[0]!.type).toBe('application/octet-stream'); // raw bytes, not multipart or base64
   expect(uploads[0]!.bytes).toBe('synthetic-image-bytes'.length);
   expect(decodeURIComponent(new URL(uploads[0]!.url).searchParams.get('name') ?? '')).toBe('写真 1.png');
-  expect(sends).toEqual([{ chatId: 'C'.repeat(43), uploadId: 'U'.repeat(43) }]); // file only: no text, no path
-  await expect(page.getByText('添付:', { exact: false })).toHaveCount(0);
+  expect(sends).toEqual([{ chatId: 'C'.repeat(43), uploadIds: ['U'.repeat(43)] }]); // file only: no text, no path
+  await expect(page.locator('.composer-files li')).toHaveCount(0);
+});
+test('previews each chosen file locally and sends several as several messages', async ({ page }) => {
+  const uploads: string[] = [];
+  const sends: Record<string, unknown>[] = [];
+  await page.route('**/api/uploads*', async route => { uploads.push(route.request().url()); await route.continue(); });
+  await page.route('**/api/send', async route => { sends.push(route.request().postDataJSON()); await route.continue(); });
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  await page.getByLabel('添付ファイルを選ぶ').setInputFiles([
+    { name: 'one.png', mimeType: 'image/png', buffer: PNG },
+    { name: 'two.png', mimeType: 'image/png', buffer: PNG },
+    { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('synthetic') },
+  ]);
+  const rows = page.locator('.composer-files li');
+  await expect(rows).toHaveCount(3);
+  // Images preview from a local blob URL; a non-image gets a placeholder. Nothing is uploaded to draw them.
+  const thumbs = page.locator('.composer-files img.composer-thumb');
+  await expect(thumbs).toHaveCount(2);
+  await expect(thumbs.first()).toHaveAttribute('src', /^blob:/);
+  await expect.poll(() => thumbs.first().evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(1);
+  await expect(page.locator('.composer-files .placeholder')).toHaveCount(1);
+  expect(uploads).toEqual([]);
+  // One can be removed before sending.
+  await rows.nth(2).getByRole('button', { name: '外す' }).click();
+  await expect(rows).toHaveCount(2);
+  await expect(page.getByText('添付は1件ずつ別のメッセージとして送られます。')).toBeVisible();
+  await page.getByRole('button', { name: '送信', exact: true }).click();
+  await expect(page.getByText('2件のファイルを添付して送信しますか？', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: '送信する', exact: true }).click();
+  await expect(page.getByText('2件すべて送信しました。')).toBeVisible();
+  expect(uploads).toHaveLength(2); // one upload per file, before a single send call
+  expect(sends).toEqual([{ chatId: 'C'.repeat(43), uploadIds: ['U'.repeat(43), 'U'.repeat(43)] }]);
+  await expect(rows).toHaveCount(0);
 });
 test('B05 mobile360/dark/keyboard and long synthetic content does not overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 }); await page.emulateMedia({ colorScheme: 'dark' });

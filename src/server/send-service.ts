@@ -12,10 +12,12 @@ export type SendMode = 'off' | 'dry-run' | 'live';
  * dry_run: validated and resolved a target, but nothing was dispatched.
  */
 export type SendState = 'sent' | 'failed' | 'unknown' | 'dry_run';
-export type SendInput = { chatId?: string; to?: string; text?: string; uploadId?: string };
-export type SendResult = { state: SendState };
+export type SendInput = { chatId?: string; to?: string; text?: string; uploadIds?: string[] };
+/** `sent`/`total` count attachments: imsg takes one file per send, so several become several messages. */
+export type SendResult = { state: SendState; sent?: number; total?: number };
 
 export const TEXT_MAX = 8000;
+export const FILES_MAX = 10;
 // A phone-like or email-like handle. imsg normalises further; this only rejects obvious nonsense.
 const PHONE = /^\+?[0-9][0-9\s()\-.]{3,30}$/;
 const EMAIL = /^[^@\s]{1,64}@[^@\s]{1,255}\.[^@\s]{1,64}$/;
@@ -70,15 +72,18 @@ export class SendService implements Sender {
     if (input.text !== undefined && typeof input.text !== 'string') throw new WebError('SEND_PARAMS_INVALID', 400);
     if ([...text].length > TEXT_MAX) throw new WebError('SEND_TOO_LONG', 400);
 
-    // An attachment may travel with or without text; without one, text is required.
-    let upload: Upload | undefined;
-    if (input.uploadId !== undefined) {
-      if (!this.options.uploads) throw new WebError('SEND_ATTACHMENT_UNSUPPORTED', 400);
-      upload = this.options.uploads.take(input.uploadId);
-      if (!upload) throw new WebError('UPLOAD_UNKNOWN', 409);
-    }
+    const ids = input.uploadIds ?? [];
+    if (ids.length > FILES_MAX) throw new WebError('SEND_TOO_MANY_FILES', 400);
+    if (ids.length > 0 && !this.options.uploads) throw new WebError('SEND_ATTACHMENT_UNSUPPORTED', 400);
+    // Claim every attachment up front: a half-claimed batch would leave files behind.
+    const uploads: Upload[] = [];
     try {
-      if (!upload && text.trim() === '') throw new WebError('SEND_EMPTY', 400);
+      for (const id of ids) {
+        const upload = this.options.uploads!.take(id);
+        if (!upload) throw new WebError('UPLOAD_UNKNOWN', 409);
+        uploads.push(upload);
+      }
+      if (uploads.length === 0 && text.trim() === '') throw new WebError('SEND_EMPTY', 400);
 
       const hasChat = typeof input.chatId === 'string' && input.chatId !== '';
       const hasTo = typeof input.to === 'string' && input.to !== '';
@@ -95,19 +100,29 @@ export class SendService implements Sender {
       }
 
       // The target is resolved and the text validated even in dry-run, so only the dispatch itself is skipped.
-      if (this.options.mode === 'dry-run') return { state: 'dry_run' };
+      if (this.options.mode === 'dry-run') return uploads.length > 0 ? { state: 'dry_run', sent: 0, total: uploads.length } : { state: 'dry_run' };
 
-      const params = { ...target, text, ...(upload ? { file: upload.path } : {}), transport: 'applescript', service: 'auto' };
-      // One live send at a time: two osascript-driven sends must not overlap.
-      const run = this.#tail.then(() => this.options.clientFactory().send(params));
+      // The whole batch holds the lane: another send must not interleave between our files.
+      const run = this.#tail.then(async (): Promise<SendResult> => {
+        const client = this.options.clientFactory();
+        const outcome = (reply: SendReply): SendState => reply.ok ? 'sent' : reply.ambiguous ? 'unknown' : classifyError(reply);
+        if (uploads.length === 0) {
+          return { state: outcome(await client.send({ ...target, text, transport: 'applescript', service: 'auto' })) };
+        }
+        let sent = 0;
+        for (const [index, upload] of uploads.entries()) {
+          // imsg sends one file per call, so each attachment is its own message; the text rides with the first.
+          const state = outcome(await client.send({ ...target, text: index === 0 ? text : '', file: upload.path, transport: 'applescript', service: 'auto' }));
+          if (state !== 'sent') return { state, sent, total: uploads.length };
+          sent++;
+        }
+        return { state: 'sent', sent, total: uploads.length };
+      });
       this.#tail = run.catch(() => {});
-      const reply = await run;
-      if (reply.ok) return { state: 'sent' };
-      if (reply.ambiguous) return { state: 'unknown' };
-      return { state: classifyError(reply) };
+      return await run;
     } finally {
-      // imsg copies the file into Messages' own attachments area, so our temporary one never outlives the send.
-      if (upload) await this.options.uploads!.discard(upload);
+      // imsg copies each file into Messages' own attachments area, so ours never outlive the send.
+      for (const upload of uploads) await this.options.uploads!.discard(upload);
     }
   }
 }

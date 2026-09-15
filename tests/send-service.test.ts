@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { SendService, TEXT_MAX, type SendMode } from '../src/server/send-service.js';
+import { SendService, TEXT_MAX, FILES_MAX, type SendMode } from '../src/server/send-service.js';
 import type { SendClient, SendReply } from '../src/server/rpc/send-client.js';
 
 function setup(mode: SendMode, reply: SendReply = { ok: true, raw: { ok: true } }) {
@@ -52,45 +52,56 @@ describe('SendService (synthetic)', () => {
     expect(await setup('live', { ok: false, ambiguous: false, code: -32603, message: 'x', data: { disposition: 'dispatched', retry_safe: false } }).service.send(base)).toEqual({ state: 'unknown' });
     expect(await setup('live', { ok: false, ambiguous: false, code: -32000, message: 'x', data: undefined }).service.send(base)).toEqual({ state: 'unknown' });
   });
-  it('sends an attachment by path, with or without text, and always cleans the temporary file up', async () => {
-    const upload = { id: 'up', dir: '/tmp/up', path: '/tmp/up/photo.jpg', name: 'photo.jpg', bytes: 3, created: 0 };
-    const make = (mode: SendMode, reply?: SendReply) => {
-      const send = vi.fn<(params: Record<string, unknown>) => Promise<SendReply>>(async () => reply ?? { ok: true, raw: {} });
+  it('sends attachments one message at a time, stopping honestly, and always cleans them up', async () => {
+    const upload = (name: string) => ({ id: name, dir: `/tmp/${name}`, path: `/tmp/${name}/${name}.jpg`, name: `${name}.jpg`, bytes: 3, created: 0 });
+    const make = (mode: SendMode, replies: SendReply[] = []) => {
+      let call = 0;
+      const send = vi.fn<(params: Record<string, unknown>) => Promise<SendReply>>(async () => replies[call++] ?? { ok: true, raw: {} });
       const discard = vi.fn(async () => {});
-      const take = vi.fn((id: string) => (id === 'up' ? { ...upload } : undefined));
+      const take = vi.fn((id: string) => (id.startsWith('f') ? upload(id) : undefined));
       const service = new SendService({ mode, resolveChatGuid: () => 'chat-guid-1', clientFactory: () => ({ send } as unknown as SendClient), uploads: { take, discard } });
-      return { service, send, discard, take };
+      return { service, send, discard };
     };
-    const withText = make('live');
-    expect(await withText.service.send({ chatId: 'known', text: '見て', uploadId: 'up' })).toEqual({ state: 'sent' });
-    expect(withText.send).toHaveBeenCalledWith({ chat_guid: 'chat-guid-1', text: '見て', file: '/tmp/up/photo.jpg', transport: 'applescript', service: 'auto' });
-    expect(withText.discard).toHaveBeenCalledOnce();
 
-    const fileOnly = make('live');
-    expect(await fileOnly.service.send({ chatId: 'known', uploadId: 'up' })).toEqual({ state: 'sent' });
-    expect(fileOnly.send).toHaveBeenCalledWith(expect.objectContaining({ text: '', file: '/tmp/up/photo.jpg' }));
+    // The text rides with the first file; the rest are file-only messages.
+    const batch = make('live');
+    expect(await batch.service.send({ chatId: 'known', text: '見て', uploadIds: ['f1', 'f2', 'f3'] })).toEqual({ state: 'sent', sent: 3, total: 3 });
+    expect(batch.send).toHaveBeenCalledTimes(3);
+    expect(batch.send.mock.calls[0]![0]).toEqual({ chat_guid: 'chat-guid-1', text: '見て', file: '/tmp/f1/f1.jpg', transport: 'applescript', service: 'auto' });
+    expect(batch.send.mock.calls[1]![0]).toMatchObject({ text: '', file: '/tmp/f2/f2.jpg' });
+    expect(batch.discard).toHaveBeenCalledTimes(3);
 
-    // A failed send still releases the file.
-    const failing = make('live', { ok: false, ambiguous: true });
-    expect(await failing.service.send({ chatId: 'known', uploadId: 'up' })).toEqual({ state: 'unknown' });
-    expect(failing.discard).toHaveBeenCalledOnce();
+    const single = make('live');
+    expect(await single.service.send({ chatId: 'known', uploadIds: ['f1'] })).toEqual({ state: 'sent', sent: 1, total: 1 });
+    expect(single.send).toHaveBeenCalledWith(expect.objectContaining({ text: '', file: '/tmp/f1/f1.jpg' }));
 
-    // Dry-run consumes and releases it without dispatching.
+    // A batch stops at the first attachment that did not go, and says how far it got.
+    const stopped = make('live', [{ ok: true, raw: {} }, { ok: false, ambiguous: false, code: -32603, message: 'x', data: { retry_safe: true } }]);
+    expect(await stopped.service.send({ chatId: 'known', uploadIds: ['f1', 'f2', 'f3'] })).toEqual({ state: 'failed', sent: 1, total: 3 });
+    expect(stopped.send).toHaveBeenCalledTimes(2); // the third was never attempted
+    expect(stopped.discard).toHaveBeenCalledTimes(3); // but every claimed file is released
+
+    const ambiguous = make('live', [{ ok: false, ambiguous: true }]);
+    expect(await ambiguous.service.send({ chatId: 'known', uploadIds: ['f1', 'f2'] })).toEqual({ state: 'unknown', sent: 0, total: 2 });
+
+    // Dry-run claims and releases them without dispatching.
     const dry = make('dry-run');
-    expect(await dry.service.send({ chatId: 'known', uploadId: 'up' })).toEqual({ state: 'dry_run' });
+    expect(await dry.service.send({ chatId: 'known', uploadIds: ['f1', 'f2'] })).toEqual({ state: 'dry_run', sent: 0, total: 2 });
     expect(dry.send).not.toHaveBeenCalled();
-    expect(dry.discard).toHaveBeenCalledOnce();
+    expect(dry.discard).toHaveBeenCalledTimes(2);
 
-    // An unknown or already-used upload is refused, and a rejected target still releases it.
+    // An unknown id refuses the whole batch, releasing whatever was already claimed.
     const unknown = make('live');
-    await expect(unknown.service.send({ chatId: 'known', uploadId: 'missing' })).rejects.toMatchObject({ code: 'UPLOAD_UNKNOWN', status: 409 });
-    const stale = make('live');
-    await expect(stale.service.send({ chatId: 'gone-but-resolved', to: '+15550001111', uploadId: 'up' })).rejects.toMatchObject({ code: 'SEND_TARGET_INVALID' });
-    expect(stale.discard).toHaveBeenCalledOnce();
+    await expect(unknown.service.send({ chatId: 'known', uploadIds: ['f1', 'missing'] })).rejects.toMatchObject({ code: 'UPLOAD_UNKNOWN', status: 409 });
+    expect(unknown.send).not.toHaveBeenCalled();
+    expect(unknown.discard).toHaveBeenCalledTimes(1);
+
+    const tooMany = make('live');
+    await expect(tooMany.service.send({ chatId: 'known', uploadIds: Array.from({ length: FILES_MAX + 1 }, (_, i) => `f${i}`) })).rejects.toMatchObject({ code: 'SEND_TOO_MANY_FILES' });
   });
   it('refuses an attachment when no upload store is configured', async () => {
     const { service } = setup('live');
-    await expect(service.send({ chatId: 'known', text: 'hi', uploadId: 'up' })).rejects.toMatchObject({ code: 'SEND_ATTACHMENT_UNSUPPORTED', status: 400 });
+    await expect(service.send({ chatId: 'known', text: 'hi', uploadIds: ['up'] })).rejects.toMatchObject({ code: 'SEND_ATTACHMENT_UNSUPPORTED', status: 400 });
   });
   it('never runs two live sends at once', async () => {
     let active = 0, maxActive = 0;

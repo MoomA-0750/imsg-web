@@ -48,10 +48,11 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
 }, sender: {
   // Synthetic in-process sender: never touches imsg or Messages. Outcome chosen by markers in the text.
   mode: 'live',
-  async send({ text }) {
-    if (String(text ?? '').includes('UNKNOWN')) return { state: 'unknown' };
-    if (String(text ?? '').includes('FAIL')) return { state: 'failed', code: 'synthetic' };
-    return { state: 'sent' };
+  async send({ text, uploadIds }) {
+    const total = uploadIds?.length ?? 0;
+    if (String(text ?? '').includes('UNKNOWN')) return total > 0 ? { state: 'unknown', sent: 0, total } : { state: 'unknown' };
+    if (String(text ?? '').includes('FAIL')) return total > 0 ? { state: 'failed', sent: 0, total } : { state: 'failed' };
+    return total > 0 ? { state: 'sent', sent: total, total } : { state: 'sent' };
   },
 } });
 await app.ready();

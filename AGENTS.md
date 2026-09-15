@@ -18,7 +18,10 @@ approved.
   only binary route, `application/octet-stream` only (never a form encoding,
   which a page could submit cross-site), streamed straight to a private 0700
   directory, bounded, and deleted after the send. Everything else stays
-  JSON-only. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
+  JSON-only. imsg takes one file per send, so several attachments are sent as
+  several messages, stopping at the first that does not go. `img-src` allows
+  `blob:` so a chosen file can be previewed locally before sending; a blob URL
+  is minted by the page for its own data and admits no third-party content. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
   and validates without dispatching. Do not enable live sending, and do not
   perform a real send, without the owner's approval each time.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived

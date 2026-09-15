@@ -51,35 +51,56 @@ function LinkCard({ link }: { link: LinkView }) {
   </a>;
 }
 
-type SendResult = { state: 'sent' | 'failed' | 'unknown' | 'dry_run' };
+type SendResult = { state: 'sent' | 'failed' | 'unknown' | 'dry_run'; sent?: number; total?: number };
 type SendMode = 'live' | 'dry-run';
 
 const MiB = 1024 * 1024;
 const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadId?: string) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
+const FILES_MAX = 10;
+
+/** A local preview of a chosen file; the object URL is revoked when the choice changes. */
+function Thumbnail({ file }: { file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    if (!file.type.startsWith('image/')) return;
+    const created = URL.createObjectURL(file);
+    setUrl(created); setFailed(false);
+    return () => { URL.revokeObjectURL(created); setUrl(null); };
+  }, [file]);
+  // Nothing is uploaded to draw this, and a format the browser cannot decode (HEIC) falls back to the name.
+  if (url && !failed) return <img className="composer-thumb" src={url} alt="" onError={() => setFailed(true)} />;
+  return <span className="composer-thumb placeholder" aria-hidden="true">{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>;
+}
+
+function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadIds: string[]) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
   const [text, setText] = useState('');
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
-  const clearFile = () => { setFile(null); if (picker.current) picker.current.value = ''; };
-  useEffect(() => { setText(''); setFile(null); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
+  const clearFiles = () => { setFiles([]); if (picker.current) picker.current.value = ''; };
+  useEffect(() => { setText(''); setFiles([]); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
 
   const dispatch = async () => {
     if (busy) return;
     setBusy(true); setNotice(null);
     try {
-      // The attachment is uploaded first; the send then refers to it by an opaque id.
-      const uploaded = file ? await upload(file) : undefined;
-      const result = await send(chat.id, text, uploaded?.uploadId);
-      if (result.state === 'sent') { setText(''); clearFile(); setConfirming(false); setNotice({ kind: 'ok', text: '送信しました。' }); onSent(); }
-      else if (result.state === 'dry_run') { setText(''); clearFile(); setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
-      // Not sent (imsg reported it never started): the text is kept for a safe edit-and-resend.
-      else if (result.state === 'failed') { setConfirming(false); setNotice({ kind: 'error', text: '送信できませんでした（送信されていません）。宛先や内容を確認して、もう一度お試しください。' }); }
+      // Every attachment is uploaded first; the send then refers to them by opaque ids.
+      const ids: string[] = [];
+      for (const file of files) ids.push((await upload(file)).uploadId);
+      const result = await send(chat.id, text, ids);
+      // Several attachments are several messages, so a batch can stop part way; say exactly how far it got.
+      const done = result.sent ?? 0, total = result.total ?? 0;
+      const progress = total > 1 ? `${total}件中${done}件を送信しました。` : '';
+      if (result.state === 'sent') { setText(''); clearFiles(); setConfirming(false); setNotice({ kind: 'ok', text: total > 1 ? `${total}件すべて送信しました。` : '送信しました。' }); onSent(); }
+      else if (result.state === 'dry_run') { setText(''); clearFiles(); setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
+      // Not sent (imsg reported it never started): what is left is kept for a safe edit-and-resend.
+      else if (result.state === 'failed') { setConfirming(false); if (done > 0) onSent(); setNotice({ kind: 'error', text: `${progress}続きは送信できませんでした（送信されていません）。宛先や内容を確認してください。` }); }
       // May or may not have gone out: do not silently resend.
-      else { setConfirming(false); setNotice({ kind: 'warn', text: '送信できたか不明です。メッセージアプリで届いたか確認してください。もう一度送ると二重になることがあります。' }); }
+      else { setConfirming(false); if (done > 0) onSent(); setNotice({ kind: 'warn', text: `${progress}続きは送信できたか不明です。メッセージアプリで届いたか確認してください。もう一度送ると二重になることがあります。` }); }
     } catch (error) {
       const status = (error as ApiError).status;
       if (status === 401) { onAuthError(); return; }
@@ -88,16 +109,17 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
     } finally { setBusy(false); }
   };
 
-  const ready = text.trim() !== '' || file !== null;
+  const ready = text.trim() !== '' || files.length > 0;
   return <form className="composer" onSubmit={event => { event.preventDefault(); if (ready && !confirming) { setNotice(null); setConfirming(true); } }}>
     {mode === 'dry-run' && <p className="composer-banner" role="status">テスト送信モードです。実際には送信されません。</p>}
     <textarea value={text} onChange={event => { setText(event.target.value); setConfirming(false); }} placeholder="メッセージを入力（送信前に確認します）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
-    <input ref={picker} type="file" hidden aria-label="添付ファイルを選ぶ" onChange={event => { setFile(event.target.files?.[0] ?? null); setConfirming(false); setNotice(null); }} />
-    {file && <p className="composer-file">添付: {file.name}（{sizeLabel(file.size)}）<button type="button" className="secondary compact" onClick={() => { clearFile(); setConfirming(false); }} disabled={busy}>外す</button></p>}
+    <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { setFiles([...(event.target.files ?? [])].slice(0, FILES_MAX)); setConfirming(false); setNotice(null); }} />
+    {files.length > 0 && <ul className="composer-files">{files.map((file, index) => <li key={`${file.name}:${index}`}><Thumbnail file={file} /><span className="composer-file-name">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="secondary compact" onClick={() => { setFiles(rest => rest.filter((_, at) => at !== index)); setConfirming(false); }} disabled={busy}>外す</button></li>)}</ul>}
+    {files.length > 1 && <p className="composer-banner">添付は1件ずつ別のメッセージとして送られます。</p>}
     {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     {!confirming
       ? <div className="composer-actions"><button type="button" className="secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
-      : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に{file ? `「${file.name}」を添付して` : ''}送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
+      : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に{files.length === 1 ? `「${files[0]!.name}」を添付して` : files.length > 1 ? `${files.length}件のファイルを添付して` : ''}送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
   </form>;
 }
 
@@ -222,12 +244,12 @@ export function App() {
     }
   }, [loseSession, run, switchEpoch]);
 
-  const sendMessage = useCallback(async (chatId: string, text: string, uploadId?: string): Promise<SendResult> => {
+  const sendMessage = useCallback(async (chatId: string, text: string, uploadIds: string[]): Promise<SendResult> => {
     const token = session?.csrfToken;
     if (!token) { const error = new Error('no session') as ApiError; error.status = 401; throw error; }
-    const body: Record<string, string> = { chatId };
+    const body: Record<string, unknown> = { chatId };
     if (text.trim() !== '') body.text = text;
-    if (uploadId) body.uploadId = uploadId;
+    if (uploadIds.length > 0) body.uploadIds = uploadIds;
     return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify(body) });
   }, [session]);
 

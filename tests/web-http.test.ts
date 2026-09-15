@@ -66,7 +66,8 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
       expect(response.headers['cache-control']).toBe('no-store');
       expect(response.headers['x-content-type-options']).toBe('nosniff');
       expect(response.headers['referrer-policy']).toBe('no-referrer');
-      for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"]) expect(response.headers['content-security-policy']).toContain(directive);
+      // img-src additionally allows blob:, for previewing a chosen attachment; nothing else is widened.
+      for (const directive of ["default-src 'self'", "script-src 'self'", "style-src 'self'", "connect-src 'self'", "img-src 'self' blob:", "frame-ancestors 'none'", "object-src 'none'", "base-uri 'none'"]) expect(response.headers['content-security-policy']).toContain(directive);
       expect(response.headers['access-control-allow-origin']).toBeUndefined();
     }
   });

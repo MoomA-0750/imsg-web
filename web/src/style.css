@@ -108,5 +108,9 @@ time { flex:0 0 auto; color:var(--muted); font-size:.72rem; }
 .composer-actions { display:flex; justify-content:flex-end; }
 .composer-confirm { display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; }
 .composer-confirm span { flex:1 1 auto; min-width:0; color:var(--muted); font-size:.9rem; overflow-wrap:anywhere; }
-.composer-file { display:flex; align-items:center; gap:.6rem; margin:0; color:var(--muted); font-size:.85rem; overflow-wrap:anywhere; }
+.composer-files { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.4rem; }
+.composer-files li { display:flex; align-items:center; gap:.6rem; color:var(--muted); font-size:.85rem; }
+.composer-file-name { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+.composer-thumb { flex:0 0 auto; width:2.6rem; height:2.6rem; border-radius:8px; border:1px solid var(--line); object-fit:cover; background:var(--soft); }
+.composer-thumb.placeholder { display:flex; align-items:center; justify-content:center; font-size:.65rem; color:var(--muted); }
 .composer-actions { gap:.6rem; }

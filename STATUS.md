@@ -53,9 +53,12 @@ sending is currently enabled on the M1.
 Attachments can now be sent too: the browser uploads raw bytes to
 `POST /api/uploads` (the one binary route, `application/octet-stream`, streamed
 to a private 0700 directory, 100 MiB ceiling, 10-minute TTL, deleted after the
-send), and the send refers to it by an opaque id. Text, file, or both. No
-silent compression — iMessage has its own size limit, which a large file will
-find. Not yet tried live.
+send), and the send refers to them by opaque ids. Text, files, or both. Up to
+10 files: imsg takes one file per send, so each becomes its own message and a
+batch stops at the first that does not go, reporting how far it got. The
+composer previews each chosen file locally (blob URL; `img-src` allows `blob:`).
+No silent compression — iMessage has its own size limit, which a large file will
+find. Single-image sending was confirmed live on the M1; batches not yet.
 
 Note: `send-messages` is off `main` and does not include the notifications
 commit (`6427ffc`, branch `attachment-images`); the branches still need
