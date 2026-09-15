@@ -125,6 +125,16 @@ file of at most 32 MiB whose first bytes are an allowed image, with that
 detected type, `no-store`, `nosniff` and a `sandbox` CSP. Paths and file names never
 reach the browser. Anything else is shown as a line of text saying why.
 
+**Replies and tapbacks.** Both are already in what `messages.history` returns, so
+showing them needs nothing new: `reply_to_text`/`reply_to_sender` for the message
+a reply answers, and a `reactions` array. In a 28-chat, 881-message sample there
+were 272 replies (every one with its parent text resolved) and 69 messages
+carrying 72 tapbacks (25 love, 25 like, 18 custom, 3 laugh, 1 emphasis) — common
+enough to be worth drawing. *Sending* either is not possible on this path: imsg
+answers `reply_to requires bridge transport; AppleScript fallback cannot send
+threaded replies`, and `tapback` is declared bridge-only. The bridge means SIP
+off and code injected into Messages, so replies and tapbacks are display-only.
+
 ## Known and not yet resolved
 
 - **Intel with a stale bridge lock.** The iMac also runs the owner's separate

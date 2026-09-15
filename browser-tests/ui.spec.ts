@@ -69,6 +69,25 @@ test('names senders only in group chats; shows images it can, and says why for t
   await expect(page.getByText('動画（この画面では表示できません）')).toBeVisible();
   await expect(page.getByText('本文のないメッセージ')).toHaveCount(0);
 });
+test('shows what a message replies to, and the tapbacks on it', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.getByText('返信の合成本文')).toBeVisible();
+  const replied = page.locator('.bubble', { hasText: '返信の合成本文' });
+  const quote = replied.locator('.reply-quote');
+  await expect(quote).toContainText('合成送信者 Epsilon');
+  await expect(quote).toContainText('元になった合成メッセージ');
+  await expect(quote).toContainText('（省略）');
+  const reactions = replied.locator('.reactions li');
+  await expect(reactions).toHaveCount(2);
+  await expect(reactions.first()).toContainText('❤️');
+  await expect(reactions.first()).toContainText('3'); // identical tapbacks collapse into a count
+  await expect(reactions.first()).toHaveAttribute('title', '合成送信者 Alpha、合成送信者 Beta、自分');
+  await expect(reactions.nth(1)).toContainText('👍');
+  // A message with neither shows neither.
+  const plain = page.locator('.bubble', { hasText: '危険なリンクの合成本文' });
+  await expect(plain.locator('.reply-quote, .reactions')).toHaveCount(0);
+});
 test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
   const sends: { chatId: string; text: string }[] = [];
   await page.route('**/api/send', async route => { sends.push(route.request().postDataJSON()); await route.continue(); });
@@ -167,7 +186,7 @@ test('previews each chosen file locally and sends several as several messages', 
 test('B05 mobile360/dark/keyboard and long synthetic content does not overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 800 }); await page.emulateMedia({ colorScheme: 'dark' });
   await login(page);
-  await page.route('**/messages?*', route => route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: '長文😀'.repeat(2000), isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: true }] } }));
+  await page.route('**/messages?*', route => route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: '長文😀'.repeat(2000), isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: true }] } }));
   const chat = page.getByRole('button', { name: /合成テスト会話 Alpha/ }); await chat.focus(); await page.keyboard.press('Enter');
   await expect(page.getByText('（省略）', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
@@ -179,7 +198,7 @@ test('B05 mobile360/dark/keyboard and long synthetic content does not overflow',
 test('B02 delayed old read cannot restore private data after logout', async ({ page }) => {
   await login(page);
   let complete!: () => Promise<void>; const gate = new Promise<void>(resolve => {
-    void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
+    void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
   });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await gate;
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click(); await complete();
@@ -188,7 +207,7 @@ test('B02 delayed old read cannot restore private data after logout', async ({ p
 });
 test('B05 old selected chat response cannot replace the newly selected chat', async ({ page }) => {
   await login(page); let complete!: () => Promise<void>;
-  const entered = new Promise<void>(resolve => { void page.route(`**/${'C'.repeat(43)}/messages?*`, route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_CHAT_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
+  const entered = new Promise<void>(resolve => { void page.route(`**/${'C'.repeat(43)}/messages?*`, route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_CHAT_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await entered;
   await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click();
   await expect(page.getByText('Beta の合成本文')).toBeVisible(); await complete();
@@ -208,7 +227,7 @@ test('B05 empty/error states and 1000-row request ceiling', async ({ page }) => 
 });
 test('B05 epoch change clears all resources; delayed old epoch cannot restore them', async ({ page }) => {
   await login(page); await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
-  let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
+  let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
   await page.getByRole('button', { name: 'メッセージを更新' }).click(); await entered;
   await page.route('**/api/chats?*', route => route.fulfill({ json: { epoch: 'epoch-b', limit: 50, chats: [] } }));
   await page.getByRole('button', { name: '会話一覧を更新' }).click(); await expect(page.getByText('メッセージデータが更新されました。会話を選び直してください。')).toBeVisible(); await complete();

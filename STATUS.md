@@ -64,9 +64,18 @@ find. Confirmed live on the M1 by the owner: a single image, several images at o
 to the picker, local thumbnails, and sending with Ctrl+Enter. A part-way batch
 failure has not been exercised live (covered by synthetic tests only).
 
-Note: `send-messages` is off `main` and does not include the notifications
-commit (`6427ffc`, branch `attachment-images`); the branches still need
-reconciling — decide what merges to `main` (send, notifications, or both).
+Branches: `send-messages` is being merged to `main`; `reply-reactions` sits on
+top of it. `attachment-images` (notifications) is still unmerged and needs a
+decision. The LaunchAgent is still named `local.imsg-web.readonly`, which no
+longer fits — rename it at the next big swap (owner asked for this).
+
+## Replies and tapbacks (branch `reply-reactions`)
+
+Display only: a reply shows the message it answers (sender + a 200-character
+quote) and tapbacks appear on the bubble, identical ones folded into a count
+with the names in the tooltip. All of it was already in `messages.history`.
+Sending a reply or a tapback is not possible without imsg's bridge transport
+(SIP off + injection into Messages), so it is not offered.
 
 ## Next
 

@@ -67,7 +67,7 @@ export async function createDemoServer() {
       const match = /^\/api\/chats\/([A-Za-z0-9_-]{43})\/messages$/.exec(url.pathname);
       if (match && chats.some(c => c.id === match[1])) return send(200, { epoch, limit,
         messages: match[1] === chatId(3) ? [] : Array.from({ length: Math.min(60, limit) }, (_, i) => ({
-          id: String(i).padStart(43, 'M'), text: texts[i % texts.length], isFromMe: i % 2 === 1, sender: null, attachments: [], link: null, createdAt: date(i), trimmed: false,
+          id: String(i).padStart(43, 'M'), text: texts[i % texts.length], isFromMe: i % 2 === 1, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: date(i), trimmed: false,
         })) });
       return send(404, { error: 'DEMO_NOT_FOUND' });
     } catch { if (!res.headersSent) send(400, { error: 'DEMO_INPUT' }); else res.destroy(); }

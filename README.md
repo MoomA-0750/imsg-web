@@ -8,9 +8,11 @@ sending is a separate path that is off unless configured.
 Implemented: owner login, sessions and key rotation; conversation list and
 history with 15-second refresh; images from attachments that are on the Mac,
 or Messages' cached thumbnail when the image was never downloaded;
-link cards from the preview Messages stored; sending text and attachments
-(off by default; see `docs/operations.md`); a responsive UI. Not implemented:
-read-state changes, typing, search, profile pictures.
+link cards from the preview Messages stored; the message a reply answers and
+the tapbacks on a message; sending text and attachments (off by default; see
+`docs/operations.md`); a responsive UI. Not implemented: sending replies or
+tapbacks (imsg needs its bridge transport, which wants SIP off and code
+injected into Messages), read-state changes, typing, search, profile pictures.
 
 ## Development
 

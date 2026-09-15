@@ -1,10 +1,10 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative } from 'node:path';
-import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView } from '../shared/web-types.js';
+import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView, ReplyView, ReactionView } from '../shared/web-types.js';
 import { CONVERTIBLE, IMAGE_TYPES, PREVIEW_TYPE, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
 import type { ImageConverter } from './image-convert.js';
-import { ReadonlyAdapter, type Attachment } from './readonly-adapter.js';
+import { ReadonlyAdapter, type Attachment, type Reaction } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
 import type { ChildContext } from './child-env.js';
 import { isObject } from './rpc/errors.js';
@@ -33,6 +33,8 @@ const OBJECT_REPLACEMENT = '\uFFFC';
 export const MAX_REMEMBERED_ATTACHMENTS = 4000;
 /** How many of the newest convertible images a history response prepares ahead of viewing. */
 export const PREPARE_AHEAD = 20;
+/** A reply quote is context, not the message: show enough to recognise it. */
+export const REPLY_QUOTE_MAX = 200;
 /** How many missing images per history response may be looked up in Messages' preview cache. */
 const MAX_PREVIEW_LOOKUPS = 2000;
 type FileEntry = { path: string; type: string; root: 'attachments' | 'previews' };
@@ -173,6 +175,23 @@ export class LiveSource implements ReadSource, AttachmentSource {
   }
   /** Opaque chat id → the chat's guid, only if it belongs to the current epoch. For the send path. */
   resolveChatGuid(id: string): string | undefined { return this.#map.get(id)?.guid; }
+  /** Identical tapbacks collapse into one entry with a count and the names behind it. */
+  #reactionViews(list: Reaction[]): ReactionView[] {
+    const byKind = new Map<string, ReactionView>();
+    for (const reaction of list) {
+      const key = `${reaction.kind}:${reaction.emoji}`;
+      const seen = byKind.get(key);
+      const sender = reaction.sender === null ? null : clip(reaction.sender, 128).value;
+      if (seen) {
+        seen.count++;
+        seen.fromMe ||= reaction.fromMe;
+        if (sender !== null && !seen.senders.includes(sender)) seen.senders.push(sender);
+      } else {
+        byKind.set(key, { emoji: clip(reaction.emoji, 16).value, kind: clip(reaction.kind, 32).value, senders: sender === null ? [] : [sender], fromMe: reaction.fromMe, count: 1 });
+      }
+    }
+    return [...byKind.values()];
+  }
   #newClient(): Client {
     return this.options.factory?.() ?? new ReadonlyRpcClient({ executable: this.options.executable, context: this.options.context, args: [...RPC_ARGS] });
   }
@@ -225,7 +244,11 @@ export class LiveSource implements ReadSource, AttachmentSource {
         // A message that is only the link says nothing the card does not.
         if (row.link && (text.value === row.link.url || text.value === row.link.originalUrl)) text = { value: '', trimmed: false };
         const sender = row.sender === null ? null : clip(row.sender, 256).value;
-        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, link, createdAt: row.createdAt, trimmed: text.trimmed };
+        const quote = row.replyTo && clip(row.replyTo.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), REPLY_QUOTE_MAX);
+        const replyTo: ReplyView | null = row.replyTo && quote
+          ? { sender: row.replyTo.sender === null ? null : clip(row.replyTo.sender, 256).value, text: quote.value, trimmed: quote.trimmed }
+          : null;
+        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, link, replyTo, reactions: this.#reactionViews(row.reactions), createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
       if (this.options.converter && convertible.length > 0) {
         // Newest first, the order the owner meets them in. Checks and conversion happen later, off this queue.

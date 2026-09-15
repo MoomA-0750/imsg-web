@@ -6,7 +6,12 @@ type Chat = { id: number; name: string; guid: string; service: string; isGroup: 
 export type Attachment = { path: string; type: string; missing: boolean; sticker: boolean };
 /** From imsg-patches/link-preview: what Messages stored with a link. Never fetched from the network. */
 export type LinkPreview = { url: string; originalUrl: string | null; title: string; summary: string; siteName: string; image: Attachment | null };
-type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; link: LinkPreview | null; createdAt: string | null };
+/** The message this one replies to, as imsg resolved it from chat.db. */
+export type ReplyContext = { sender: string | null; text: string };
+/** A tapback someone put on this message. `kind` is imsg's name (like/love/laugh/…); `emoji` is its character. */
+export type Reaction = { kind: string; emoji: string; sender: string | null; fromMe: boolean };
+type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; link: LinkPreview | null; replyTo: ReplyContext | null; reactions: Reaction[]; createdAt: string | null };
+const MAX_REACTIONS = 24;
 const MAX_ATTACHMENTS = 32;
 const text = (v: unknown) => typeof v === 'string' ? v : '';
 /** Only an absolute http(s) URL of sane length can become something the owner clicks. */
@@ -15,6 +20,20 @@ function webUrl(v: unknown): string | null {
   try { const url = new URL(v); return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
 const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: text(a.mime_type).toLowerCase(), missing: a.missing !== false, sticker: a.is_sticker === true });
+/** Only a reply whose parent imsg could actually resolve is worth showing. */
+function replyContext(item: Record<string, unknown>): ReplyContext | null {
+  const parent = text(item.reply_to_text);
+  if (parent === '') return null;
+  return { sender: text(item.reply_to_sender) || null, text: parent };
+}
+function reactions(value: unknown): Reaction[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_REACTIONS).filter(isObject).map(item => ({
+    kind: text(item.type), emoji: text(item.emoji),
+    sender: item.is_from_me === true ? null : text(item.sender_name) || text(item.sender) || null,
+    fromMe: item.is_from_me === true,
+  })).filter(reaction => reaction.kind !== '' || reaction.emoji !== '');
+}
 function linkPreview(v: unknown): LinkPreview | null {
   if (!isObject(v)) return null;
   const originalUrl = webUrl(v.original_url), url = webUrl(v.url) ?? originalUrl;
@@ -61,7 +80,8 @@ export class ReadonlyAdapter {
       // A link preview is stored as an untyped plugin payload; the link itself is already in the text.
       const attachments = Array.isArray(item.attachments) ? item.attachments.filter(isObject).filter(a => !text(a.filename).endsWith('.pluginPayloadAttachment')).slice(0, MAX_ATTACHMENTS).map(attachment) : [];
       return { id: item.id, chatId, text: item.text, guid: item.guid, isFromMe: item.is_from_me,
-        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, attachments, link: linkPreview(item.link_preview), createdAt: date(item.created_at) };
+        sender: item.is_from_me ? null : text(item.sender_name) || text(item.sender) || null, attachments, link: linkPreview(item.link_preview),
+        replyTo: replyContext(item), reactions: reactions(item.reactions), createdAt: date(item.created_at) };
     });
   }
   async subscribe(): Promise<number> {

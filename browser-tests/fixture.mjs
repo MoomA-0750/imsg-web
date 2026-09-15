@@ -22,12 +22,18 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
       { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false, preview: false },
       { id: null, kind: 'image', sticker: false, preview: false }, { id: null, kind: 'video', sticker: false, preview: false },
       { id: 'T'.repeat(43), kind: 'image', sticker: false, preview: true },
-    ], link: null, createdAt: null, trimmed: false },
-    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, createdAt: null, trimmed: false },
-    { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, createdAt: null, trimmed: false },
+    ], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'R'.repeat(43), text: '返信の合成本文', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: null,
+      replyTo: { sender: '合成送信者 Epsilon', text: '元になった合成メッセージ', trimmed: true },
+      reactions: [
+        { emoji: '❤️', kind: 'love', senders: ['合成送信者 Alpha', '合成送信者 Beta'], fromMe: true, count: 3 },
+        { emoji: '👍', kind: 'like', senders: ['合成送信者 Gamma'], fromMe: false, count: 1 },
+      ], createdAt: null, trimmed: false },
   ] : [
-    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: [], link: null, createdAt: null, trimmed: false },
-    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, attachments: [], link: null, createdAt: '2026-09-08T00:01:00Z', trimmed: false },
+    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: '2026-09-08T00:01:00Z', trimmed: false },
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async attachment(id) {

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, open, rename, symlink, writeFile, rm, unlink, type FileHandle } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { LiveSource, STATUS_TTL_MS, clip } from '../src/server/live-source.js';
+import { LiveSource, STATUS_TTL_MS, REPLY_QUOTE_MAX, clip } from '../src/server/live-source.js';
 import { testContext } from './helpers/child-context.js';
 import type { ImageConverter } from '../src/server/image-convert.js';
 const { forbiddenCli, forbiddenSpawn } = vi.hoisted(() => ({ forbiddenCli: vi.fn(), forbiddenSpawn: vi.fn() }));
@@ -183,6 +183,27 @@ describe('B04 DB generation and reader lifetime', () => {
     expect(convert).toHaveBeenCalledWith(expect.stringContaining('IMG_1-preview.ktx'), expect.any(Function), 'image/x-apple-preview', true);
     expect(convert).toHaveBeenCalledWith(expect.stringContaining('photo.heic'), expect.any(Function), 'image/heic', true);
     expect((await f.source.attachment(message.attachments[3]!.id!, 'image/avif,*/*')).type).toBe('image/jpeg');
+  });
+  it('quotes the replied-to message and folds identical tapbacks into one, without leaking identifiers', async () => {
+    const f = await setup(() => [], () => ({
+      reply_to_guid: 'parent-guid-SECRET', reply_to_text: `${'長'.repeat(REPLY_QUOTE_MAX + 20)}\uFFFC`, reply_to_sender: '合成送信者 Alpha',
+      reactions: [
+        { id: 1, type: 'love', emoji: '❤️', sender: '+15550000001', sender_name: '合成送信者 Alpha', is_from_me: false },
+        { id: 2, type: 'love', emoji: '❤️', sender: '+15550000002', sender_name: '合成送信者 Beta', is_from_me: false },
+        { id: 3, type: 'love', emoji: '❤️', sender: '+15550000009', is_from_me: true },
+        { id: 4, type: 'like', emoji: '👍', sender: '+15550000003', sender_name: '合成送信者 Gamma', is_from_me: false },
+      ],
+    }));
+    const chats = await f.source.chats(1);
+    const message = (await f.source.history(chats.chats[0]!.id, 50)).messages.at(-1)!;
+    expect(message.replyTo).toMatchObject({ sender: '合成送信者 Alpha', trimmed: true });
+    expect(message.replyTo!.text).toHaveLength(REPLY_QUOTE_MAX);
+    expect(message.replyTo!.text).not.toContain('\uFFFC'); // the attachment marker is not part of the quote
+    expect(message.reactions).toEqual([
+      { emoji: '❤️', kind: 'love', senders: ['合成送信者 Alpha', '合成送信者 Beta'], fromMe: true, count: 3 },
+      { emoji: '👍', kind: 'like', senders: ['合成送信者 Gamma'], fromMe: false, count: 1 },
+    ]);
+    expect(JSON.stringify(message)).not.toContain('parent-guid-SECRET');
   });
   it('does not split surrogate pairs when clipping', () => { expect(clip('a😀b', 2)).toEqual({ value: 'a', trimmed: true }); expect(clip('😀', 2).trimmed).toBe(false); });
   it('keeps capabilities and concurrent reads free of CLI probes after the former cache interval', async () => {
