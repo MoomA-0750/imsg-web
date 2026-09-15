@@ -35,6 +35,10 @@ owner every time:
   having no messages.
 - **Reading refreshes itself** every 15 seconds and whenever the tab is returned
   to. There is no refresh button. A read that fails offers 再試行.
+- **There is no sign-out.** One owner, one account: a session lapses on its own
+  after a day idle or a week outright, and `auth revoke-all` ends every session
+  at once from the Mac. The sign-in screen's "パスワードを忘れた場合" carries the
+  other two administration commands.
 - **Scrolling pages both lists** — up through a conversation, down through the
   list — and stops when a read returns fewer rows than it asked for.
 

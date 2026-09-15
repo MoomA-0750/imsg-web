@@ -200,7 +200,6 @@ export function App() {
   const [loginError, setLoginError] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
   const [recovering, setRecovering] = useState(false);
-  const [logoutBusy, setLogoutBusy] = useState(false);
   const [chats, setChats] = useState<ChatView[]>([]);
   const [chatLimit, setChatLimit] = useState(PAGE);
   const [selected, setSelected] = useState<ChatView | null>(null);
@@ -426,7 +425,6 @@ export function App() {
 
   async function login(event: FormEvent) {
     event.preventDefault();
-    if (logoutBusy) return;
     setLoginBusy(true); setLoginError('');
     try {
       const value = await api<Session>('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
@@ -434,19 +432,6 @@ export function App() {
     } catch (error) {
       setLoginError((error as ApiError).status === 401 ? 'パスワードが正しくありません。' : (error as ApiError).status === 429 ? '試行回数が多すぎます。しばらく待ってください。' : 'ログインできませんでした。');
     } finally { setLoginBusy(false); }
-  }
-
-  async function logout() {
-    const token = session?.csrfToken;
-    setLogoutBusy(true);
-    clearPrivate(); setSession(null); setKey('');
-    if (!token) { setLogoutBusy(false); return; }
-    try {
-      await api<unknown>('/api/session', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: '{}' });
-      setLoginError('');
-    } catch {
-      setLoginError('端末上の表示は消去しましたが、サーバーのセッション失効は未確認です。Macの管理CLIで auth revoke-all を実行してください。再ログインだけでは元のセッションは失効しません。');
-    } finally { setLogoutBusy(false); }
   }
 
   function choose(chat: ChatView) {
@@ -502,7 +487,7 @@ export function App() {
     <form className="grid gap-3 mt-6" onSubmit={login}>
       <label className="font-bold" htmlFor="owner-key">パスワード</label>
       <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus />
-      <button className="btn" disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>
+      <button className="btn" disabled={loginBusy}>{loginBusy ? '確認中…' : 'ログイン'}</button>
       {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}
     </form>
     <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-[.85rem] underline underline-offset-2 hover:text-accent" onClick={() => setRecovering(true)}>パスワードを忘れた場合</button>
@@ -515,10 +500,6 @@ export function App() {
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
-    <header className="shrink-0 min-h-[56px] pane:min-h-[62px] px-4 py-[.7rem] border-b border-line flex justify-between items-center gap-4">
-      <div><strong className="text-[1.15rem] text-accent-strong">imsg Web</strong></div>
-      <button className="btn-secondary btn-compact" onClick={() => void logout()}>ログアウト</button>
-    </header>
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
     <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
       <aside className={`chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">

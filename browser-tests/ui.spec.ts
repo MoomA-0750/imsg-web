@@ -89,7 +89,7 @@ test('says nothing about features it does not offer, and admits when it could no
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
   await expect(page.getByText('送信できるか確認できていません。')).toBeVisible();
 });
-test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and no durable private state', async ({ page, context }) => {
+test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering and no durable private state', async ({ page, context }) => {
   await login(page);
   const cookies = await context.cookies(); const cookie = cookies.find(c => c.name === '__Host-imsg_session')!;
   expect(cookie).toMatchObject({ secure: true, httpOnly: true, sameSite: 'Strict', path: '/' });
@@ -100,11 +100,9 @@ test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and n
   await expect(page.locator('.chat-preview').first()).toBeVisible();
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
   await page.screenshot({ path: 'test-results/synthetic-desktop.png', fullPage: true, animations: 'disabled' });
-  await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeEnabled();
-  await expect(page.getByLabel('パスワード')).toHaveValue('');
-  await expect(page.getByText('Alpha の合成本文', { exact: false })).toHaveCount(0);
-  expect((await page.request.get('/api/chats')).status()).toBe(401);
+  // One owner, one account: there is no bar across the top and nothing to sign out of.
+  await expect(page.getByRole('button', { name: 'ログアウト' })).toHaveCount(0);
+  await expect(page.locator('header')).toHaveCount(0);
 });
 test('names senders only in group chats; shows images it can, and says why for the rest', async ({ page }) => {
   await login(page);
@@ -386,14 +384,17 @@ test('B05 mobile360/dark/keyboard and long synthetic content does not overflow',
   await page.screenshot({ path: 'test-results/synthetic-mobile.png', animations: 'disabled' });
   await page.getByRole('button', { name: '会話一覧へ戻る' }).click(); await expect(chat).toBeVisible();
 });
-test('B02 delayed old read cannot restore private data after logout', async ({ page }) => {
+test('B02 a read that lands after the session ends cannot restore private data', async ({ page }) => {
   await login(page);
   let complete!: () => Promise<void>; const gate = new Promise<void>(resolve => {
     void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
   });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await gate;
-  await page.getByRole('button', { name: 'ログアウト', exact: true }).click(); await complete();
+  // The session expires while that read is still out.
+  await page.route('**/api/chats?*', route => route.fulfill({ status: 401, json: { code: 'UNAUTHORIZED' } }));
+  await refresh(page);
   await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeEnabled();
+  await complete();
   await expect(page.getByText('LATE_PRIVATE_SENTINEL')).toHaveCount(0);
 });
 test('B05 old selected chat response cannot replace the newly selected chat', async ({ page }) => {
@@ -472,12 +473,4 @@ test('B02 401 clears rendered private metadata as well as message bodies', async
   await expect(page.getByLabel('パスワード')).toBeVisible();
   await expect(page.getByText('合成テスト会話 Alpha', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toHaveCount(0);
-});
-test('B02 failed logout gives revoke-all guidance without claiming the old session was revoked', async ({ page }) => {
-  await login(page);
-  await page.route('**/api/session', route => route.request().method() === 'DELETE' ? route.abort('failed') : route.continue());
-  await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('auth revoke-all');
-  await expect(page.getByRole('alert')).toContainText('再ログインだけでは元のセッションは失効しません');
-  expect((await page.request.get('/api/chats')).status()).toBe(200); // original cookie really survives the network failure
 });
