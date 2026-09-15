@@ -77,6 +77,11 @@ with the names in the tooltip. All of it was already in `messages.history`.
 Sending a reply or a tapback is not possible without imsg's bridge transport
 (SIP off + injection into Messages), so it is not offered.
 
+Only `thread_originator_guid` counts as a reply. The first release quoted on
+`reply_to_text` alone, and the owner saw consecutive messages drawn as a chain of
+replies: Messages sets `reply_to_guid` on ordinary messages too, and imsg falls
+back to it. See `docs/real-data-findings.md`.
+
 ## Next
 
 1. Owner keeps using the M1 trial for a few days. Watch memory, log size and

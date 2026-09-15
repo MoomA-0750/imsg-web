@@ -127,13 +127,23 @@ reach the browser. Anything else is shown as a line of text saying why.
 
 **Replies and tapbacks.** Both are already in what `messages.history` returns, so
 showing them needs nothing new: `reply_to_text`/`reply_to_sender` for the message
-a reply answers, and a `reactions` array. In a 28-chat, 881-message sample there
-were 272 replies (every one with its parent text resolved) and 69 messages
-carrying 72 tapbacks (25 love, 25 like, 18 custom, 3 laugh, 1 emphasis) — common
-enough to be worth drawing. *Sending* either is not possible on this path: imsg
+a reply answers, and a `reactions` array. In a 28-chat, 881-message sample, 69
+messages carried 72 tapbacks (25 love, 25 like, 18 custom, 3 laugh, 1 emphasis) —
+common enough to be worth drawing. *Sending* either is not possible on this path: imsg
 answers `reply_to requires bridge transport; AppleScript fallback cannot send
 threaded replies`, and `tapback` is declared bridge-only. The bridge means SIP
 off and code injected into Messages, so replies and tapbacks are display-only.
+
+**`reply_to_guid` is not a reply.** Only `thread_originator_guid` marks a threaded
+reply. Messages sets `reply_to_guid` on ordinary messages as well, almost always to
+the message just before: in the newest 4000 non-reaction rows, 889 carried
+`reply_to_guid` but only 66 were threaded replies, and 732 of the other 847 pointed
+at the immediately preceding message in the same chat. imsg resolves the quote from
+`thread_originator_guid` first and *falls back* to `reply_to_guid`, so
+`reply_to_text` alone turns every run of consecutive messages into a chain of
+replies — each one quoting the one above it. The flag has to gate the quote. On the
+real replies the fallback is harmless anyway: all 66 originators resolved, though on
+34 of them `reply_to_guid` pointed somewhere else entirely.
 
 ## Known and not yet resolved
 

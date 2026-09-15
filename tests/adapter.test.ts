@@ -88,11 +88,12 @@ describe('readonly adapter contracts (synthetic)', () => {
     expect(links[1]).toMatchObject({ url: 'https://example.invalid/fallback', title: '', image: null });
     expect(links.slice(2)).toEqual([null, null, null, null]);
   });
-  it('carries the reply it answers and the tapbacks on it, and nothing it cannot resolve', async () => {
+  it('carries a threaded reply and the tapbacks on it, and neither a chained reply_to_guid nor an unresolved parent', async () => {
     const { adapter, request } = setup();
     request.mockResolvedValue({ messages: [
       { id: 3, chat_id: 7, guid: 'm3', text: 'a', is_from_me: false,
-        reply_to_guid: 'parent-guid', reply_to_text: '元のメッセージ', reply_to_sender: '合成送信者 Alpha',
+        thread_originator_guid: 'parent-guid', reply_to_guid: 'parent-guid',
+        reply_to_text: '元のメッセージ', reply_to_sender: '合成送信者 Alpha',
         reactions: [
           { id: 1, type: 'love', emoji: '❤️', sender: '+15550000001', sender_name: '合成送信者 Alpha', is_from_me: false },
           { id: 2, type: 'like', emoji: '👍', sender: '+15550000002', is_from_me: false },
@@ -101,8 +102,10 @@ describe('readonly adapter contracts (synthetic)', () => {
           { id: 4, type: '', emoji: '' },
         ] },
       // A reply whose parent imsg could not resolve carries no quote to show.
-      { id: 2, chat_id: 7, guid: 'm2', text: 'b', is_from_me: false, reply_to_guid: 'gone', reply_to_text: '' },
-      { id: 1, chat_id: 7, guid: 'm1', text: 'c', is_from_me: true },
+      { id: 2, chat_id: 7, guid: 'm2', text: 'b', is_from_me: false, thread_originator_guid: 'gone', reply_to_guid: 'gone', reply_to_text: '' },
+      // Not a reply: Messages chains reply_to_guid across consecutive messages, and imsg
+      // resolves the text of that neighbour. Without a thread originator it stays unquoted.
+      { id: 1, chat_id: 7, guid: 'm1', text: 'c', is_from_me: true, reply_to_guid: 'm0', reply_to_text: '直前のメッセージ', reply_to_sender: '合成送信者 Beta' },
     ] });
     const [first, second, third] = await adapter.history(7, 3);
     expect(first!.replyTo).toEqual({ sender: '合成送信者 Alpha', text: '元のメッセージ' });
@@ -112,6 +115,7 @@ describe('readonly adapter contracts (synthetic)', () => {
       { kind: 'like', emoji: '👍', sender: null, fromMe: true },
     ]);
     expect(second!.replyTo).toBeNull();
+    expect(third!.replyTo).toBeNull();
     expect(third!.reactions).toEqual([]);
   });
   it('allows only one pending or active subscription', async () => {

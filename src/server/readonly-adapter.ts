@@ -20,10 +20,16 @@ function webUrl(v: unknown): string | null {
   try { const url = new URL(v); return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
 const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: text(a.mime_type).toLowerCase(), missing: a.missing !== false, sticker: a.is_sticker === true });
-/** Only a reply whose parent imsg could actually resolve is worth showing. */
+/**
+ * A threaded reply, and only that. `reply_to_guid` is not one: Messages sets it on
+ * ordinary messages too, usually to the one just before, so trusting it turns every
+ * run of consecutive messages into a chain of replies. imsg fills `reply_to_text`
+ * from `thread_originator_guid` first and falls back to `reply_to_guid`, so the flag
+ * has to gate the quote. Only a parent imsg could actually resolve is worth showing.
+ */
 function replyContext(item: Record<string, unknown>): ReplyContext | null {
   const parent = text(item.reply_to_text);
-  if (parent === '') return null;
+  if (parent === '' || text(item.thread_originator_guid) === '') return null;
   return { sender: text(item.reply_to_sender) || null, text: parent };
 }
 function reactions(value: unknown): Reaction[] {

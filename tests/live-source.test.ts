@@ -186,7 +186,7 @@ describe('B04 DB generation and reader lifetime', () => {
   });
   it('quotes the replied-to message and folds identical tapbacks into one, without leaking identifiers', async () => {
     const f = await setup(() => [], () => ({
-      reply_to_guid: 'parent-guid-SECRET', reply_to_text: `${'長'.repeat(REPLY_QUOTE_MAX + 20)}\uFFFC`, reply_to_sender: '合成送信者 Alpha',
+      thread_originator_guid: 'parent-guid-SECRET', reply_to_text: `${'長'.repeat(REPLY_QUOTE_MAX + 20)}\uFFFC`, reply_to_sender: '合成送信者 Alpha',
       reactions: [
         { id: 1, type: 'love', emoji: '❤️', sender: '+15550000001', sender_name: '合成送信者 Alpha', is_from_me: false },
         { id: 2, type: 'love', emoji: '❤️', sender: '+15550000002', sender_name: '合成送信者 Beta', is_from_me: false },
