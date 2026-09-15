@@ -6,8 +6,8 @@ reached over Tailscale and protected by an owner key. Reading is the core;
 sending is a separate path that is off unless configured.
 
 Implemented: owner login, sessions and key rotation; conversation list and
-history with 15-second refresh, opening on the newest message and paging back
-as the owner scrolls up; images from attachments that are on the Mac,
+history with 15-second refresh, opening on the newest message and paging as the
+owner scrolls; images from attachments that are on the Mac,
 or Messages' cached thumbnail when the image was never downloaded;
 link cards from the preview Messages stored; the message a reply answers and
 the tapbacks on a message; sending text and attachments (off by default; see

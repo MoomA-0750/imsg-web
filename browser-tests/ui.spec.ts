@@ -297,13 +297,34 @@ test('B05 old selected chat response cannot replace the newly selected chat', as
   await expect(page.getByText('Beta の合成本文')).toBeVisible(); await complete();
   await expect(page.getByText('OLD_CHAT_SENTINEL')).toHaveCount(0); await expect(page.getByText('Beta の合成本文')).toBeVisible();
 });
-test('B05 empty/error states and 1000-row request ceiling', async ({ page }) => {
+test('B05 empty/error states, a pane too tall for one page, and the 1000-row ceiling', async ({ page }) => {
   const limits: number[] = [];
-  await page.route('**/api/chats?*', route => { const limit = Number(new URL(route.request().url()).searchParams.get('limit')); limits.push(limit); return route.fulfill({ json: { epoch: 'epoch-a', limit, chats: [] } }); });
+  let full = false; // start empty, then answer with as many conversations as were asked for
+  await page.route('**/api/chats?*', route => {
+    const limit = Number(new URL(route.request().url()).searchParams.get('limit'));
+    limits.push(limit);
+    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false })) : [];
+    return route.fulfill({ json: { epoch: 'epoch-a', limit, chats } });
+  });
   await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43)); await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   await expect(page.getByText('表示できる会話はありません')).toBeVisible();
-  for (let i = 0; i < 19; i++) await page.getByRole('button', { name: 'さらに50件読み込む' }).click();
+  expect(limits.every(limit => limit === 50)).toBe(true); // an empty list never asks for a second page
+  // A pane taller than one page of conversations cannot be scrolled, and scrolling is what asks
+  // for the next page. It fills itself instead rather than sitting there half empty.
+  await page.setViewportSize({ width: 1280, height: 6000 });
+  full = true; await refresh(page);
+  const rows = page.locator('.chat-list li');
+  const area = page.locator('.chat-area');
+  await expect.poll(() => area.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  expect(await rows.count()).toBeGreaterThan(50);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  // No button: reaching the end of the list is the request, and it stops at the ceiling.
+  for (let count = await rows.count(); count < 1000; count += 50) {
+    await area.evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await expect(rows).toHaveCount(count + 50);
+  }
   await expect(page.getByText('表示上限の1000件です')).toBeVisible();
+  await area.evaluate(el => { el.scrollTop = el.scrollHeight; });
   await expect.poll(() => limits.at(-1)).toBe(1000);
   expect(limits).toContain(50); expect(limits.every(limit => limit >= 50 && limit <= 1000 && limit % 50 === 0)).toBe(true);
   await page.unroute('**/api/chats?*'); await page.route('**/api/chats?*', route => route.fulfill({ status: 503, json: { code: 'READ_UNAVAILABLE' } }));

@@ -77,14 +77,15 @@ with the names in the tooltip. All of it was already in `messages.history`.
 Sending a reply or a tapback is not possible without imsg's bridge transport
 (SIP off + injection into Messages), so it is not offered.
 
-## Reading through a long conversation
+## Reading through long lists
 
 A conversation opens on its newest message and stays there while new ones
 arrive. Scrolling near the top fetches the previous 50 and holds the view on the
-message it was on; it stops on its own when a read returns fewer messages than
-were asked for, which is the only evidence that the conversation has no more.
-The button above the oldest message remains as the fallback for a list too short
-to scroll or a read that failed.
+message it was on. The conversation list pages the same way downwards, with no
+button at all; a pane too tall for one page tops itself up, since scrolling
+cannot ask when there is nothing to scroll. Both stop on their own when a read
+returns fewer rows than were asked for, which is the only evidence that there
+are no more. The button above the oldest message remains as the fallback there.
 
 Only `thread_originator_guid` counts as a reply. The first release quoted on
 `reply_to_text` alone, and the owner saw consecutive messages drawn as a chain of
@@ -111,12 +112,11 @@ at and not built.
 
 ## Leftovers on the Macs
 
-Temporary build and measurement directories remain on both Macs, and one test
-LaunchAgent plist (already unloaded) remains on the M1. On the M1, older
-releases and the previous trial plist (kept as a rollback copy) sit beside the
-running release. Nothing was deleted;
-removing them is the owner's call. Specifics are in the owner's private notes,
-not here.
+The M1 was pruned on 2026-09-15 to the running release plus one rollback step;
+the Node runtime, state and the live agent's logs were left alone, and pruning is
+now part of handing over a release rather than something to catch up on later.
+Temporary build and measurement directories remain on the Intel Mac. Specifics
+are in the owner's private notes, not here.
 
 ## Standing rules
 
