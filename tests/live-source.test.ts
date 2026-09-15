@@ -258,6 +258,19 @@ describe('B04 DB generation and reader lifetime', () => {
   });
 });
 
+describe('the way back to a message a reply answers', () => {
+  it('names the parent with the same id the parent itself carries, and nothing else about it', async () => {
+    // m-2 answers m-1, which is the other message in the same page.
+    const f = await setup(() => [], () => ({ thread_originator_guid: 'm-1', reply_to_guid: 'm-1', reply_to_text: '元のメッセージ', reply_to_sender: '合成送信者' }));
+    const { messages } = await f.source.history((await f.source.chats(1)).chats[0]!.id, 50);
+    const [older, newer] = messages;
+    expect(newer!.replyTo?.messageId).toBe(older!.id);
+    expect(newer!.replyTo?.messageId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // The guid it was built from never crosses.
+    expect(JSON.stringify(messages)).not.toContain('m-1');
+  });
+});
+
 describe('the faces a conversation wears', () => {
   const PHOTO = { bytes: Buffer.concat([PNG_SIGNATURE, Buffer.alloc(8, 4)]), type: 'image/png' };
   const photos = { size: 1, refresh: async () => {},

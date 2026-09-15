@@ -75,7 +75,11 @@ const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_,
   return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: mine, sender: mine ? null : '合成送信者 Sigma',
     // An image carries no height until it loads, so a list of them settles well after it is drawn.
     attachments: withImage ? [{ id: 'W'.repeat(43), kind: 'image', sticker: false, preview: false }] : [],
-    link: null, replyTo: null, reactions: [], createdAt: dayOf(n), trimmed: false, avatarId: null };
+    link: null,
+    // The newest answers one far enough back that it has not been read yet: going to it has to
+    // reach for the rest of the conversation first.
+    replyTo: n === 1 ? { sender: '合成送信者 Sigma', text: '合成メッセージ #300', trimmed: false, messageId: `S${String(300).padStart(42, '0')}` } : null,
+    reactions: [], createdAt: dayOf(n), trimmed: false, avatarId: null };
 });
 const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
@@ -96,7 +100,7 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, replyTo: null, reactions: [], createdAt: yesterday(9, 20), trimmed: false },
     { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, replyTo: null, reactions: [], createdAt: today(9, 0), trimmed: false },
     { id: 'R'.repeat(43), text: '返信の合成本文', isFromMe: false, sender: '合成送信者 Epsilon', avatarId: null, attachments: [], link: null,
-      replyTo: { sender: '合成送信者 Epsilon', text: '元になった合成メッセージ', trimmed: true },
+      replyTo: { sender: '合成送信者 Epsilon', text: '元になった合成メッセージ', trimmed: true, messageId: 'H'.repeat(43) },
       reactions: [
         { emoji: '❤️', kind: 'love', senders: ['合成送信者 Alpha', '合成送信者 Beta'], fromMe: true, count: 3 },
         { emoji: '👍', kind: 'like', senders: ['合成送信者 Gamma'], fromMe: false, count: 1 },

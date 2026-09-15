@@ -164,6 +164,44 @@ test('shows what a message replies to, and the tapbacks on it', async ({ page })
 const area = (page: Page) => page.locator('.message-area');
 const metrics = (page: Page) => area(page).evaluate(el => ({ top: el.scrollTop, height: el.scrollHeight, view: el.clientHeight }));
 
+test('goes to the message a reply answers and marks it for a moment', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.getByText('返信の合成本文')).toBeVisible();
+  const parent = page.locator('.messages > li.msg').first();  // the oldest, up at the top
+  await expect(page.locator('.msg.marked')).toHaveCount(0);
+  const area = page.locator('.message-area');
+  const scrolled = () => area.evaluate(el => el.scrollTop);
+  const wasAt = await scrolled();
+
+  await page.getByRole('button', { name: /返信元へ移動/ }).click();
+  await expect(parent).toHaveClass(/marked/);
+  // It is brought into view rather than merely marked where it was: the view moves back up it,
+  // and the message ends up on screen.
+  await expect.poll(scrolled).toBeLessThan(wasAt);
+  await expect.poll(async () => {
+    const box = await parent.boundingBox(), frame = await area.boundingBox();
+    return box !== null && frame !== null && box.y < frame.y + frame.height && box.y + box.height > frame.y;
+  }).toBe(true);
+  // The mark is a moment, not a state: it goes on its own and takes nothing with it.
+  await expect(page.locator('.msg.marked')).toHaveCount(0, { timeout: 4000 });
+  await expect(page.getByText('返信の合成本文')).toBeVisible();
+});
+
+test('reaches back for a message that has not been read yet', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  await expect(page.locator('.messages > li.msg')).toHaveCount(50);
+  // The newest answers #300, which is far older than the page the conversation opened at.
+  await expect(page.getByText('合成メッセージ #300')).toHaveCount(1); // only the quote, so far
+  await page.getByRole('button', { name: /返信元へ移動/ }).click();
+  await expect(page.locator('.messages > li.msg')).toHaveCount(1000);
+  const target = page.locator('.messages > li.msg', { hasText: '合成メッセージ #300' }).first();
+  await expect(target).toHaveClass(/marked/);
+  await expect(page.locator('.jump-note')).toHaveCount(0); // it was found: nothing to say
+  await expect(page.locator('.msg.marked')).toHaveCount(0, { timeout: 4000 });
+});
+
 test('a conversation row carries the newest message, and its unread count as a badge', async ({ page }) => {
   await login(page);
   const beta = page.locator('.chat-list li', { hasText: '合成テスト会話 Beta' });
@@ -405,7 +443,9 @@ test('gives a picture a bubble of its own, filled to the edges, apart from the w
 test('rounds a one-line bubble into a pill, and centres what is written in it', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
-  const bubble = page.locator('.bubble').last();
+  // A plain one-liner: the newest carries a reply quote, which is a second line by any other name.
+  const bubble = page.locator('.messages > li.msg')
+    .filter({ has: page.getByText('合成メッセージ #2', { exact: true }) }).locator('.bubble');
   const shape = await bubble.evaluate(el => {
     const p = el.querySelector('p')!;
     const box = el.getBoundingClientRect(), text = p.getBoundingClientRect();

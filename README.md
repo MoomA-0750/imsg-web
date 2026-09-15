@@ -64,6 +64,12 @@ owner every time:
   separate act. A browser can only write uncompressed PCM, so the Mac re-encodes
   a recording to AAC on the way through: about a tenth of the size, and what a
   phone expects to be handed. It stops itself after five minutes.
+- **A reply's quote is the way back to it.** Pressing it goes to the message
+  being answered and rings it for a couple of seconds, which is the only way to
+  pick it out once the screen has moved. If that message is further back than has
+  been read, the rest of the conversation is fetched once — up to the 1000-row
+  ceiling — and the screen goes there when it lands; beyond that it says so
+  rather than pretending.
 - **Times are not printed on every message.** A line marks where each day begins
   and where a conversation resumes after an hour's quiet;
   dragging the conversation to the left uncovers the time of every message beside

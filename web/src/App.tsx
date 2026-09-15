@@ -16,6 +16,10 @@ const REVEAL_MAX = 72;
 const PULL_CLOSE = 90;
 /** How far in an opened picture may be taken. */
 const ZOOM_MAX = 6;
+/** How long a message stays marked after the screen goes to it. */
+const MARK_MS = 2000;
+/** How long a word about a jump stays on screen. */
+const NOTE_MS = 4000;
 /** A pause this long earns a line of its own, the way Messages breaks up a quiet afternoon. */
 const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
@@ -334,8 +338,17 @@ function LinkBubble({ link, host, shape, tone, quote, tail }: { link: LinkView; 
   </div>;
 }
 
-function ReplyQuote({ reply }: { reply: ReplyView }) {
-  return <p className="reply-quote block m-0 mb-[.35rem] last:mb-0 px-2 py-[.3rem] border-l-[3px] border-line bg-soft rounded-r-lg text-muted text-[.85em] whitespace-pre-wrap [overflow-wrap:anywhere]"><span className="block font-semibold text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}</p>;
+/**
+ * What a message is answering, and the way back to it: pressing the quote goes to the message it
+ * came from and marks it for a moment, which is the only way to tell one of several similar-looking
+ * messages from the others once the screen has moved.
+ */
+function ReplyQuote({ reply, onGo }: { reply: ReplyView; onGo: (messageId: string) => void }) {
+  return <button type="button" onClick={() => onGo(reply.messageId)}
+    className="reply-quote block w-full m-0 mb-[.35rem] last:mb-0 px-2 py-[.3rem] border-0 border-l-[3px] border-line rounded-none rounded-r-lg bg-soft text-muted text-[.85em] text-left whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-accent-soft"
+    aria-label={`返信元へ移動: ${reply.sender ?? '自分'}`}>
+    <span className="block font-semibold text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}
+  </button>;
 }
 
 function Reactions({ list }: { list: ReactionView[] }) {
@@ -588,6 +601,14 @@ export function App() {
   const inFlight = useRef<Record<string, AbortController | undefined>>({});
 
   const viewport = useRef<HTMLDivElement | null>(null);
+  /** Where each drawn message is, so the screen can go back to one a reply names. */
+  const rows = useRef(new Map<string, HTMLLIElement>());
+  /** The message being pointed out, until the mark fades. */
+  const [marked, setMarked] = useState<string | null>(null);
+  const markTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** A message asked for that had not been read yet; looked for again once more of them arrive. */
+  const wanted = useRef<string | null>(null);
+  const [jumpNote, setJumpNote] = useState('');
   /** How far the conversation is dragged aside, and where the drag that is doing it began. */
   const [reveal, setReveal] = useState(0);
   /** The picture being looked at on its own, if any. */
@@ -684,6 +705,49 @@ export function App() {
       else if ((error as Error).name !== 'AbortError' && started === generation.current && selectedId.current === id) setHistoryError('更新できていません。表示中の本文は前回取得時のものです。');
     } finally { if (started === generation.current && selectedId.current === id) setHistoryBusy(false); }
   }, [loseSession, messageLimit, run, switchEpoch]);
+
+  /**
+   * Goes to a message and marks it for a moment. A conversation is opened at its newest page, so
+   * the message a reply answers is often further back than has been read: in that case the rest is
+   * asked for once, up to the ceiling, and the search resumes when it lands. Following the newest
+   * message stops either way — the owner has just asked to be somewhere else.
+   */
+  const show = useCallback((messageId: string) => {
+    const row = rows.current.get(messageId);
+    if (!row) return false;
+    following.current = false;
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setMarked(messageId);
+    clearTimeout(markTimer.current);
+    markTimer.current = setTimeout(() => setMarked(null), MARK_MS);
+    return true;
+  }, []);
+
+  const goToMessage = useCallback((messageId: string) => {
+    setJumpNote('');
+    if (show(messageId)) return;
+    if (messageLimit >= MAX) { setJumpNote(`このメッセージより前は表示できません（上限${MAX}件）。`); return; }
+    following.current = false;
+    wanted.current = messageId;
+    setJumpNote('返信元を探しています…');
+    setMessageLimit(MAX);
+  }, [messageLimit, show]);
+
+  // The larger page has landed: go to what was asked for, or say it is not in the conversation.
+  useLayoutEffect(() => {
+    const target = wanted.current;
+    if (target === null || messages.length === 0) return;
+    wanted.current = null;
+    setJumpNote(show(target) ? '' : '返信元のメッセージは見つかりませんでした。');
+  }, [messages, show]);
+
+  useEffect(() => () => clearTimeout(markTimer.current), []);
+  // A note about a jump belongs to the jump, not to the conversation: it goes when it is stale.
+  useEffect(() => {
+    if (jumpNote === '' || jumpNote.endsWith('…')) return;
+    const timer = setTimeout(() => setJumpNote(''), NOTE_MS);
+    return () => clearTimeout(timer);
+  }, [jumpNote]);
 
   const loadCapabilities = useCallback(async () => {
     const started = generation.current;
@@ -814,6 +878,7 @@ export function App() {
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
+    wanted.current = null; setMarked(null); setJumpNote('');
     setReveal(0); from.current = undefined; dragging.current = false; setViewing(null);
   }
 
@@ -939,6 +1004,7 @@ export function App() {
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
+        {jumpNote && <p className="jump-note shrink-0 m-0 px-4 py-[.55rem] bg-notice text-notice-ink text-[.85rem] text-center border-b border-notice-line" role="status">{jumpNote}</p>}
         <div className="message-area flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-linear-145 from-thread-from to-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
           {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
@@ -966,7 +1032,8 @@ export function App() {
             const at = here.at;
             return [
             ...(here.opens ? [<DayBreak key={`day-${message.id}`} at={at!} day={here.newDay} />] : []),
-            <li key={message.id} className={`msg relative flex items-end gap-2 ${index === 0 || here.opens ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+            <li key={message.id} ref={element => { if (element) rows.current.set(message.id, element); else rows.current.delete(message.id); }}
+              className={`msg relative flex items-end gap-2 ${index === 0 || here.opens ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'} ${marked === message.id ? 'marked' : ''}`}>
               {facing && (endsRun
                 ? <Avatar name={message.sender ?? ''} faces={[message.avatarId]} size="w-7 h-7 text-[.7rem]" />
                 : <span className="shrink-0 w-7" aria-hidden="true" />)}
@@ -977,7 +1044,7 @@ export function App() {
                   const shape = corners(message.isFromMe, runs || at > 0);
                   // The quote belongs to the head of the message and the tapbacks to its foot,
                   // wherever those happen to fall among its pieces.
-                  const quote = at === 0 && message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null;
+                  const quote = at === 0 && message.replyTo ? <ReplyQuote reply={message.replyTo} onGo={goToMessage} /> : null;
                   const tail = at === parts.length - 1 && message.reactions.length > 0 ? <Reactions list={message.reactions} /> : null;
                   if ('media' in part) return <MediaBubble key={part.key} item={part.media} shape={shape} tone={tone} quote={quote} tail={tail} onOpen={setViewing} />;
                   if ('link' in part) return <LinkBubble key={part.key} link={part.link} host={part.host} shape={shape} tone={tone} quote={quote} tail={tail} />;

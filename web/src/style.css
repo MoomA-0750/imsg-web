@@ -143,3 +143,16 @@
     100% { opacity: 0; filter: none; }
   }
 }
+
+/*
+ * The message a reply was answering, once the screen has gone to it. A ring rather than a change of
+ * colour: the bubble keeps meaning what its colour means, and holds the mark long enough to be seen
+ * after the scroll settles before letting go of it.
+ */
+@keyframes marked {
+  0%, 65% { box-shadow: 0 0 0 3px var(--accent); }
+  100%    { box-shadow: 0 0 0 3px transparent; }
+}
+@layer components {
+  .msg.marked .bubble { animation: marked 2s ease-out; }
+}

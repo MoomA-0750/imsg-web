@@ -7,8 +7,8 @@ type Chat = { id: number; name: string; guid: string; service: string; isGroup: 
 export type Attachment = { path: string; type: string; missing: boolean; sticker: boolean };
 /** From imsg-patches/link-preview: what Messages stored with a link. Never fetched from the network. */
 export type LinkPreview = { url: string; originalUrl: string | null; title: string; summary: string; siteName: string; image: Attachment | null };
-/** The message this one replies to, as imsg resolved it from chat.db. */
-export type ReplyContext = { sender: string | null; text: string };
+/** The message this one replies to, as imsg resolved it from chat.db. `guid` names it in chat.db. */
+export type ReplyContext = { sender: string | null; text: string; guid: string };
 /** A tapback someone put on this message. `kind` is imsg's name (like/love/laugh/…); `emoji` is its character. */
 export type Reaction = { kind: string; emoji: string; sender: string | null; fromMe: boolean };
 type Message = { id: number; chatId: number; text: string; guid: string; isFromMe: boolean; sender: string | null; attachments: Attachment[]; link: LinkPreview | null; replyTo: ReplyContext | null; reactions: Reaction[]; createdAt: string | null };
@@ -70,9 +70,9 @@ const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.o
  * has to gate the quote. Only a parent imsg could actually resolve is worth showing.
  */
 function replyContext(item: Record<string, unknown>): ReplyContext | null {
-  const parent = text(item.reply_to_text);
-  if (parent === '' || text(item.thread_originator_guid) === '') return null;
-  return { sender: text(item.reply_to_sender) || null, text: parent };
+  const parent = text(item.reply_to_text), guid = text(item.thread_originator_guid);
+  if (parent === '' || guid === '') return null;
+  return { sender: text(item.reply_to_sender) || null, text: parent, guid };
 }
 function reactions(value: unknown): Reaction[] {
   if (!Array.isArray(value)) return [];

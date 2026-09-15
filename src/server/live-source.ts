@@ -331,7 +331,9 @@ export class LiveSource implements ReadSource, AttachmentSource {
         const sender = row.sender === null ? null : clip(row.sender, 256).value;
         const quote = row.replyTo && clip(row.replyTo.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), REPLY_QUOTE_MAX);
         const replyTo: ReplyView | null = row.replyTo && quote
-          ? { sender: row.replyTo.sender === null ? null : clip(row.replyTo.sender, 256).value, text: quote.value, trimmed: quote.trimmed }
+          // The same id the parent carries when it is in the list: an HMAC over its guid, so the
+          // screen can find it without ever being told what it is.
+          ? { sender: row.replyTo.sender === null ? null : clip(row.replyTo.sender, 256).value, text: quote.value, trimmed: quote.trimmed, messageId: this.#id('message', row.replyTo.guid) }
           : null;
         return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, avatarId: sender === null ? null : this.#avatarId(sender), attachments, link, replyTo, reactions: this.#reactionViews(row.reactions), createdAt: row.createdAt, trimmed: text.trimmed };
       }) };

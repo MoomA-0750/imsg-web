@@ -128,7 +128,8 @@ describe('readonly adapter contracts (synthetic)', () => {
       { id: 1, chat_id: 7, guid: 'm1', text: 'c', is_from_me: true, reply_to_guid: 'm0', reply_to_text: '直前のメッセージ', reply_to_sender: '合成送信者 Beta' },
     ] });
     const [first, second, third] = await adapter.history(7, 3);
-    expect(first!.replyTo).toEqual({ sender: '合成送信者 Alpha', text: '元のメッセージ' });
+    // The parent's guid rides along, so the screen can go back to the message it names.
+    expect(first!.replyTo).toEqual({ sender: '合成送信者 Alpha', text: '元のメッセージ', guid: 'parent-guid' });
     expect(first!.reactions).toEqual([
       { kind: 'love', emoji: '❤️', sender: '合成送信者 Alpha', fromMe: false },
       { kind: 'like', emoji: '👍', sender: '+15550000002', fromMe: false },

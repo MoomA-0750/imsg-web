@@ -118,6 +118,14 @@ it produces waits with the other attachments rather than being sent by itself.
 The attachment route now answers a byte range for audio, because a player will not
 offer to move about a recording unless the server says parts can be asked for.
 
+## Going back to what a reply answers (2026-09-15)
+
+The quote above a reply is now a button: it goes to the message being answered
+and rings it for two seconds. `ReplyView` carries that message's own opaque id —
+the same HMAC the message itself carries, minted from `thread_originator_guid` —
+so the screen can find it without being told anything about it. A parent older
+than the page that is loaded is fetched once, up to the 1000-row ceiling.
+
 ## Sends that do not go (2026-09-15)
 
 The owner reported voice messages failing or coming back "unknown" fairly often.
