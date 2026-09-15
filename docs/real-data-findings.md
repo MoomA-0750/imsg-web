@@ -145,6 +145,17 @@ replies — each one quoting the one above it. The flag has to gate the quote. O
 real replies the fallback is harmless anyway: all 66 originators resolved, though on
 34 of them `reply_to_guid` pointed somewhere else entirely.
 
+**The unread count was counting messages already read.** `unread_count` came from
+`is_read = 0` over a conversation's whole history, and that flag only records that
+*this Mac* saw a read receipt — a message read on the phone keeps it at 0 for ever.
+139 messages across 18 conversations were being badged; 70 of them sat at or below
+the conversation's own `chat.last_read_message_timestamp`, the high-water mark
+Messages itself keeps. Comparing the two side by side, Messages showed no badge on
+conversations the app badged 9, 6 and 7. `imsg-patches/unread-mark` adds the mark to
+the condition, leaving a conversation with no mark alone so one never opened still
+counts, as Messages does. Afterwards: 69 messages across 8 conversations, agreeing
+with Messages on every conversation checked.
+
 ## Known and not yet resolved
 
 - **Intel with a stale bridge lock.** The iMac also runs the owner's separate

@@ -1,6 +1,6 @@
 # Patched imsg for imsg-web
 
-The app runs a self-built `imsg` 0.15.4 with three local patches. A stock `imsg`
+The app runs a self-built `imsg` 0.15.4 with four local patches. A stock `imsg`
 will not start under the app, because the app passes a flag only the patched
 build knows. Without the link-preview patch the app still works; links simply
 show no card.
@@ -10,6 +10,7 @@ show no card.
 | `contact-batch/imsg-0.15.1.patch` | upstream `e2f5046` (v0.15.4); applies cleanly although it was written against 0.15.1 | resolves contact names per request in batches instead of one lookup per row; about 3× faster on the warm UI cycle, identical output on real data |
 | `contact-source/imsg-0.15.4.patch` | the tree above | adds `imsg rpc --contacts-from-address-book` |
 | `link-preview/imsg-0.15.4.patch` | the tree above | adds `link_preview` (`url`, `original_url`, `title`, `summary`, `site_name`, and with `attachments: true` an `image` attachment) to message payloads |
+| `unread-mark/imsg-0.15.4.patch` | the tree above | stops `unread_count` counting messages the owner has already read on another device |
 
 ## Why the link-preview patch exists
 
@@ -23,6 +24,25 @@ It does not use imsg's generic `KeyedArchiveResolver`: that treats any
 dictionary whose description mentions a UID as a UID, so link metadata never
 resolves through it. (Polls are unaffected upstream because they try
 `NSKeyedUnarchiver` first.)
+
+## Why the unread-mark patch exists
+
+`unread_count` counted every incoming message with `is_read = 0`, over the whole
+history. That flag records only that *this Mac* saw a read receipt: a message
+read on the owner's phone, or one that arrived before this Mac held the
+conversation, keeps `is_read = 0` for ever. On real data 139 messages across 18
+conversations were being counted, and 70 of them sat at or below the
+conversation's own read mark — Messages showed no badge where the app showed
+nine.
+
+Messages keeps that mark itself, as `chat.last_read_message_timestamp`: a
+high-water mark per conversation, whichever device did the reading. The patch
+adds it to the condition. A conversation with no mark is left alone, so one that
+has never been opened still counts — which is what Messages does too, however
+old it is.
+
+Counted on the same data afterwards: 69 messages across 8 conversations, and the
+badges then agreed with Messages on every conversation checked against it.
 
 ## Why the contact-source patch exists
 
@@ -42,6 +62,7 @@ git apply --check <repo>/imsg-patches/contact-batch/imsg-0.15.1.patch
 git apply <repo>/imsg-patches/contact-batch/imsg-0.15.1.patch
 git apply <repo>/imsg-patches/contact-source/imsg-0.15.4.patch
 git apply <repo>/imsg-patches/link-preview/imsg-0.15.4.patch
+git apply <repo>/imsg-patches/unread-mark/imsg-0.15.4.patch
 swift build -c release --product imsg --force-resolved-versions
 swift test --filter LinkPreview   # optional
 ```

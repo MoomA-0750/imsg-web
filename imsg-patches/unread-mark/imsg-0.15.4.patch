@@ -1,0 +1,60 @@
+--- a/Sources/IMsgCore/MessageStoreSchema.swift
++++ b/Sources/IMsgCore/MessageStoreSchema.swift
+@@ -18,6 +18,7 @@
+   let hasChatAccountIDColumn: Bool
+   let hasChatAccountLoginColumn: Bool
+   let hasChatLastAddressedHandleColumn: Bool
++  let hasChatLastReadTimestampColumn: Bool
+   let hasIsReadColumn: Bool
+   let hasDateReadColumn: Bool
+ 
+@@ -48,6 +49,7 @@
+     self.hasChatAccountIDColumn = chatColumns.contains("account_id")
+     self.hasChatAccountLoginColumn = chatColumns.contains("account_login")
+     self.hasChatLastAddressedHandleColumn = chatColumns.contains("last_addressed_handle")
++    self.hasChatLastReadTimestampColumn = chatColumns.contains("last_read_message_timestamp")
+     self.hasIsReadColumn = messageColumns.contains("is_read")
+     self.hasDateReadColumn = messageColumns.contains("date_read")
+   }
+@@ -94,6 +96,7 @@
+     self.hasChatAccountLoginColumn = hasChatAccountLoginColumn ?? base.hasChatAccountLoginColumn
+     self.hasChatLastAddressedHandleColumn =
+       hasChatLastAddressedHandleColumn ?? base.hasChatLastAddressedHandleColumn
++    self.hasChatLastReadTimestampColumn = base.hasChatLastReadTimestampColumn
+     self.hasIsReadColumn = hasIsReadColumn ?? base.hasIsReadColumn
+     self.hasDateReadColumn = hasDateReadColumn ?? base.hasDateReadColumn
+   }
+--- a/Sources/IMsgCore/MessageStore+Chats.swift
++++ b/Sources/IMsgCore/MessageStore+Chats.swift
+@@ -86,14 +86,31 @@
+     let selection = MessageRowSelection(store: store, chatIDColumn: "cmj.chat_id")
+     self.selection = selection
+     let placeholders = Array(repeating: "?", count: chatIDs.count).joined(separator: ", ")
++    // `is_read` records that THIS Mac saw a read receipt. A message read on another device, or
++    // before this Mac held the conversation, keeps is_read = 0 for ever, so counting on that alone
++    // reports messages the owner has plainly read. Messages itself keeps a per-chat high-water
++    // mark, `chat.last_read_message_timestamp`; anything at or below it has been read, whichever
++    // device did the reading. A chat with no mark keeps the old behaviour, so a conversation that
++    // has never been opened still counts — which is what Messages shows too.
++    let readMark = store.schema.hasChatLastReadTimestampColumn
++    let markJoin = readMark ? "JOIN chat c ON c.ROWID = cmj.chat_id" : ""
++    let markFilter = readMark
++      ? """
++        AND (c.last_read_message_timestamp IS NULL
++             OR c.last_read_message_timestamp = 0
++             OR m.date > c.last_read_message_timestamp)
++        """
++      : ""
+     self.sql = """
+       SELECT \(selection.selectList)
+       FROM message m
+       JOIN chat_message_join cmj ON m.ROWID = cmj.message_id
+       LEFT JOIN handle h ON m.handle_id = h.ROWID
++      \(markJoin)
+       WHERE cmj.chat_id IN (\(placeholders))
+         AND m.is_from_me = 0
+         AND m.is_read = 0
++        \(markFilter)
+       ORDER BY cmj.chat_id, m.ROWID
+       """
+     self.bindings = chatIDs.map { $0 as Binding? }
