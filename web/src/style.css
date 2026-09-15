@@ -121,3 +121,25 @@
   .btn-secondary { @apply rounded-[10px] border border-line px-4 py-3 font-bold text-accent-strong bg-soft enabled:hover:bg-accent-soft; }
   .btn-compact { @apply px-[.7rem] py-2 text-[.82rem]; }
 }
+
+/*
+ * The note that says a picture is only a thumbnail. It is not written under every one of them —
+ * they are indistinguishable until you try to open one — so it answers the attempt instead:
+ * it arrives blurred and invisible, resolves quickly, holds, then fades out with the darkening
+ * behind it. One animation rather than a sequence of state, so re-opening simply restarts it.
+ */
+@keyframes missing-note {
+  0%   { opacity: 0; filter: blur(10px); }
+  15%  { opacity: 1; filter: blur(0); }
+  40%  { opacity: 1; filter: blur(0); }
+  100% { opacity: 0; filter: blur(0); }
+}
+@layer components {
+  .missing-note { animation: missing-note 2.35s ease-out forwards; }
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes missing-note {
+    0%, 85% { opacity: 1; filter: none; }
+    100% { opacity: 0; filter: none; }
+  }
+}

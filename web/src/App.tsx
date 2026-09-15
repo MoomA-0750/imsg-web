@@ -84,18 +84,29 @@ function webHost(url: string): string | null {
 /**
  * A picture gets a bubble of its own with no padding, so it reaches the edges. What cannot be shown
  * falls back to a line of text, and that line wants its padding back.
+ *
+ * Opening one asks for the original: if it is on the Mac it fills the screen, and if only Messages'
+ * thumbnail survives, the picture says so over itself and then stops saying it. Nothing is written
+ * under a thumbnail otherwise — the two look alike, and a caption on every one of them is a label
+ * the owner has to read past every time to learn nothing.
  */
-function MediaBubble({ item, shape, tone, quote, tail }: { item: AttachmentView; shape: string; tone: string; quote: ReactNode; tail: ReactNode }) {
+function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: AttachmentView; shape: string; tone: string; quote: ReactNode; tail: ReactNode; onOpen: (item: AttachmentView) => void }) {
   const [failed, setFailed] = useState(false);
+  const [asked, setAsked] = useState(0);
   if (item.id && !failed) {
     const image = <img className={`attachment-image block max-w-full h-auto ${item.sticker ? 'sticker max-h-32' : 'max-h-96'}`}
-      src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'}
+      src={`/api/attachments/${encodeURIComponent(item.id)}`}
+      alt={item.preview ? '添付画像（元の画像はこのMacにありません）' : '添付画像'}
       loading="lazy" decoding="async" onError={() => setFailed(true)} />;
     return <div className={`${SHELL} ${shape} ${tone} p-0 w-fit`}>
       {quote && <div className={`${PAD} pb-0`}>{quote}</div>}
-      {item.preview
-        ? <figure className="attachment-preview m-0">{image}<figcaption className="px-[.85rem] py-[.4rem] text-muted text-[.78em]">サムネイル（元の画像はこのMacにありません）</figcaption></figure>
-        : image}
+      <button type="button" className="attachment-open relative block p-0 border-0 bg-transparent"
+        aria-label={item.preview ? '元の画像があるか確かめる' : '画像を大きく表示'}
+        onClick={() => (item.preview ? setAsked(n => n + 1) : onOpen(item))}>
+        {image}
+        {asked > 0 && <span key={asked} className="missing-note absolute inset-0 grid place-items-center p-4 bg-black/60 text-white font-bold text-center text-[.9rem] [overflow-wrap:anywhere]"
+          onAnimationEnd={() => setAsked(0)}>元の画像はこのMacにありません</span>}
+      </button>
       {tail && <div className={`${PAD} pt-[.4rem]`}>{tail}</div>}
     </div>;
   }
@@ -104,6 +115,19 @@ function MediaBubble({ item, shape, tone, quote, tail }: { item: AttachmentView;
     {quote}
     <p className="attachment m-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>
     {tail}
+  </div>;
+}
+
+/** The picture on its own, as large as the screen allows. Escape, the button, or the backdrop closes it. */
+function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void }) {
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [onClose]);
+  return <div className="lightbox fixed inset-0 z-50 grid place-items-center bg-black/85 p-4" role="dialog" aria-modal="true" aria-label="画像" onClick={onClose}>
+    <img className="max-w-full max-h-full object-contain" src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" onClick={event => event.stopPropagation()} />
+    <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-white/15 text-white" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
   </div>;
 }
 
@@ -279,6 +303,8 @@ export function App() {
   const viewport = useRef<HTMLDivElement | null>(null);
   /** How far the conversation is dragged aside, and where the drag that is doing it began. */
   const [reveal, setReveal] = useState(0);
+  /** The picture being looked at on its own, if any. */
+  const [viewing, setViewing] = useState<AttachmentView | null>(null);
   const from = useRef<{ x: number; y: number } | undefined>(undefined);
   const dragging = useRef(false);
   const chatViewport = useRef<HTMLDivElement | null>(null);
@@ -301,7 +327,7 @@ export function App() {
     setChats([]); setSelected(null); setMessages([]); setCapability(null);
     setChatError(''); setHistoryError(''); setCapabilityError(''); setEpochNotice('');
     setChatsBusy(false); setHistoryBusy(false);
-    setChatLimit(PAGE); setMessageLimit(PAGE); setLoadedLimit(0); setLoadedChatLimit(0);
+    setChatLimit(PAGE); setMessageLimit(PAGE); setLoadedLimit(0); setLoadedChatLimit(0); setViewing(null);
     following.current = true;
   }, [abortAll]);
 
@@ -500,7 +526,7 @@ export function App() {
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
-    setReveal(0); from.current = undefined; dragging.current = false;
+    setReveal(0); from.current = undefined; dragging.current = false; setViewing(null);
   }
 
   // Asking for one more page. The in-flight read is for the old limit, so drop it:
@@ -597,6 +623,7 @@ export function App() {
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
+    {viewing && <Lightbox item={viewing} onClose={() => setViewing(null)} />}
     <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
       <aside className={`chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
         <div className={HEADING}><h1 className={PANE_TITLE}>メッセージ</h1></div>
@@ -664,7 +691,7 @@ export function App() {
                   // wherever those happen to fall among its pieces.
                   const quote = at === 0 && message.replyTo ? <ReplyQuote reply={message.replyTo} /> : null;
                   const tail = at === parts.length - 1 && message.reactions.length > 0 ? <Reactions list={message.reactions} /> : null;
-                  if ('media' in part) return <MediaBubble key={part.key} item={part.media} shape={shape} tone={tone} quote={quote} tail={tail} />;
+                  if ('media' in part) return <MediaBubble key={part.key} item={part.media} shape={shape} tone={tone} quote={quote} tail={tail} onOpen={setViewing} />;
                   if ('link' in part) return <LinkBubble key={part.key} link={part.link} host={part.host} shape={shape} tone={tone} quote={quote} tail={tail} />;
                   return <div key={part.key} className={`${SHELL} ${shape} ${tone} ${PAD}`}>
                     {quote}

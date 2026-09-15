@@ -128,12 +128,14 @@ test('names senders only in group chats; shows images it can, and says why for t
   await expect(card).toContainText('合成サイト · example.invalid');
   await expect(page.getByText('危険なリンクの合成本文')).toBeVisible();
   await expect(page.getByText('開いてはいけない合成リンク')).toHaveCount(0);
-  const image = page.locator('.bubble > img.attachment-image');
-  await expect(image).toHaveCount(1);
-  const thumbnail = page.locator('figure.attachment-preview');
-  await expect(thumbnail.locator('img')).toHaveAttribute('src', `/api/attachments/${'T'.repeat(43)}`);
-  await expect(thumbnail).toContainText('サムネイル（元の画像はこのMacにありません）');
+  const shown = page.locator('img.attachment-image');
+  await expect(shown).toHaveCount(2); // the one on the Mac, and Messages' thumbnail of one that is not
+  const image = shown.first(), thumbnail = shown.last();
   await expect(image).toHaveAttribute('src', `/api/attachments/${'P'.repeat(43)}`);
+  await expect(thumbnail).toHaveAttribute('src', `/api/attachments/${'T'.repeat(43)}`);
+  // Nothing is written under a thumbnail: the two look alike, and the caption said so every time.
+  await expect(page.getByText('サムネイル', { exact: false })).toHaveCount(0);
+  await expect(thumbnail).toHaveAttribute('alt', '添付画像（元の画像はこのMacにありません）');
   await expect.poll(() => image.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBe(1);
   await expect(page.getByText('画像（このブラウザでは表示できない形式です）')).toBeVisible();
   await expect(page.getByText('画像（このMacに保存されていないか、表示できない形式です）')).toBeVisible();
@@ -238,6 +240,31 @@ test('colours a sent message by the service it went out over', async ({ page }) 
   expect(await colour()).not.toBe(blue);
   // Only what was sent is coloured; what came in is not.
   await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
+});
+
+test('opens a picture that is here, and answers for one that is not', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.locator('img.attachment-image')).toHaveCount(2);
+
+  // A thumbnail cannot be opened any larger, so asking says why, over the picture, and then stops.
+  await page.getByRole('button', { name: '元の画像があるか確かめる' }).click();
+  const note = page.locator('.missing-note');
+  await expect(note).toHaveText('元の画像はこのMacにありません');
+  await expect(page.locator('.lightbox')).toHaveCount(0);
+  await expect(note).toHaveCount(0, { timeout: 5000 }); // it takes itself away again
+
+  // The one that is here opens on its own, and closes on Escape.
+  await page.getByRole('button', { name: '画像を大きく表示' }).click();
+  const box = page.locator('.lightbox');
+  await expect(box).toBeVisible();
+  await expect(box.locator('img')).toHaveAttribute('src', `/api/attachments/${'P'.repeat(43)}`);
+  // Larger than it was in the conversation, and no bigger than the window.
+  const shown = (await box.locator('img').boundingBox())!, view = page.viewportSize()!;
+  expect(shown.width).toBeLessThanOrEqual(view.width);
+  expect(shown.height).toBeLessThanOrEqual(view.height);
+  await page.keyboard.press('Escape');
+  await expect(box).toHaveCount(0);
 });
 
 test('clicking the conversation already open leaves it where it is', async ({ page }) => {

@@ -88,8 +88,9 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async attachment(id) {
-    // P (an image) and T (a thumbnail) are a real 1×1 PNG; W is 240×180; Q claims to be HEIC but is not decodable.
-    const body = id === 'P'.repeat(43) || id === 'T'.repeat(43) ? PNG : id === 'W'.repeat(43) ? TALL_PNG
+    // P is a real 1×1 PNG; T (a thumbnail) and W are 240×180, so a picture has something to cover;
+    // Q claims to be HEIC but is not decodable.
+    const body = id === 'P'.repeat(43) ? PNG : id === 'T'.repeat(43) || id === 'W'.repeat(43) ? TALL_PNG
       : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
     if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
