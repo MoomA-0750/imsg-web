@@ -33,9 +33,10 @@ selects `dry-run` (validate + resolve target, dispatch nothing) or `live`.
 Reply-into-a-chat and send-to-a-handle are both supported. All tested
 with synthetic fixtures — nothing real is sent.
 
-Phase 2 (UI) is in: a composer under the open conversation that requires an
-explicit confirm before sending, shows the outcome, and keeps the text when a
-send failed or was ambiguous. It appears
+Phase 2 (UI) is in: a composer under the open conversation that sends on click
+or Ctrl/Cmd+Enter (the confirmation step was removed at the owner's request once
+sending was proven), shows the outcome, and keeps the text when a send failed or
+was ambiguous. It appears
 only when the send capability is available, with a banner in dry-run. Failure,
 rate-limit and stale-chat messages are handled (Phase 3 essentials).
 

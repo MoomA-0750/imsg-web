@@ -23,7 +23,9 @@ approved.
   `blob:` so a chosen file can be previewed locally before sending; a blob URL
   is minted by the page for its own data and admits no third-party content. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
   and validates without dispatching. Do not enable live sending, and do not
-  perform a real send, without the owner's approval each time.
+  perform a real send, without the owner's approval each time. The composer
+  sends immediately (no confirmation step) at the owner's request; one send at a
+  time and honest reporting are what remain.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived
   from screen structure or component state.
 - Do not weaken authentication, exact Origin/Host checks, Secure cookies,

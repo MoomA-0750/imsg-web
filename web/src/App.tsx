@@ -77,7 +77,6 @@ function Thumbnail({ file }: { file: File }) {
 function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadIds: string[]) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
-  const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
@@ -92,10 +91,9 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
       merged.push(file);
     }
     setFiles(merged);
-    setConfirming(false);
     setNotice(overflow ? { kind: 'warn', text: `添付は${FILES_MAX}件までです。超えた分は追加していません。` } : null);
   };
-  useEffect(() => { setText(''); setFiles([]); setConfirming(false); setBusy(false); setNotice(null); }, [chat.id]);
+  useEffect(() => { setText(''); setFiles([]); setBusy(false); setNotice(null); }, [chat.id]);
 
   const dispatch = async () => {
     if (busy) return;
@@ -108,31 +106,31 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
       // Several attachments are several messages, so a batch can stop part way; say exactly how far it got.
       const done = result.sent ?? 0, total = result.total ?? 0;
       const progress = total > 1 ? `${total}件中${done}件を送信しました。` : '';
-      if (result.state === 'sent') { setText(''); clearFiles(); setConfirming(false); setNotice({ kind: 'ok', text: total > 1 ? `${total}件すべて送信しました。` : '送信しました。' }); onSent(); }
-      else if (result.state === 'dry_run') { setText(''); clearFiles(); setConfirming(false); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
+      if (result.state === 'sent') { setText(''); clearFiles(); setNotice({ kind: 'ok', text: total > 1 ? `${total}件すべて送信しました。` : '送信しました。' }); onSent(); }
+      else if (result.state === 'dry_run') { setText(''); clearFiles(); setNotice({ kind: 'ok', text: 'テスト送信しました（実際には送られていません）。' }); }
       // Not sent (imsg reported it never started): what is left is kept for a safe edit-and-resend.
-      else if (result.state === 'failed') { setConfirming(false); if (done > 0) onSent(); setNotice({ kind: 'error', text: `${progress}続きは送信できませんでした（送信されていません）。宛先や内容を確認してください。` }); }
+      else if (result.state === 'failed') { if (done > 0) onSent(); setNotice({ kind: 'error', text: `${progress}続きは送信できませんでした（送信されていません）。宛先や内容を確認してください。` }); }
       // May or may not have gone out: do not silently resend.
-      else { setConfirming(false); if (done > 0) onSent(); setNotice({ kind: 'warn', text: `${progress}続きは送信できたか不明です。メッセージアプリで届いたか確認してください。もう一度送ると二重になることがあります。` }); }
+      else { if (done > 0) onSent(); setNotice({ kind: 'warn', text: `${progress}続きは送信できたか不明です。メッセージアプリで届いたか確認してください。もう一度送ると二重になることがあります。` }); }
     } catch (error) {
       const status = (error as ApiError).status;
       if (status === 401) { onAuthError(); return; }
-      setConfirming(false);
       setNotice({ kind: 'error', text: status === 413 ? 'ファイルが大きすぎます。' : status === 429 ? '送信数の上限に達しました。しばらく待ってください。' : status === 409 ? '会話が更新されました。開き直してください。' : status === 400 ? '送信内容を確認してください（空、長すぎる、宛先が無効 など）。' : '送信できませんでした。' });
     } finally { setBusy(false); }
   };
 
   const ready = text.trim() !== '' || files.length > 0;
-  return <form className="composer" onSubmit={event => { event.preventDefault(); if (ready && !confirming) { setNotice(null); setConfirming(true); } }}>
+  // No confirmation step: the owner asked for sending to be immediate. Double submission is still
+  // held off while one is in flight, and every outcome is reported honestly.
+  const submit = () => { if (ready && !busy) void dispatch(); };
+  return <form className="composer" onSubmit={event => { event.preventDefault(); submit(); }}>
     {mode === 'dry-run' && <p className="composer-banner" role="status">テスト送信モードです。実際には送信されません。</p>}
-    <textarea value={text} onChange={event => { setText(event.target.value); setConfirming(false); }} placeholder="メッセージを入力（送信前に確認します）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
+    <textarea value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }} placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
-    {files.length > 0 && <ul className="composer-files">{files.map((file, index) => <li key={`${file.name}:${index}`}><Thumbnail file={file} /><span className="composer-file-name">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="secondary compact" onClick={() => { setFiles(rest => rest.filter((_, at) => at !== index)); setConfirming(false); }} disabled={busy}>外す</button></li>)}</ul>}
+    {files.length > 0 && <ul className="composer-files">{files.map((file, index) => <li key={`${file.name}:${index}`}><Thumbnail file={file} /><span className="composer-file-name">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="secondary compact" onClick={() => setFiles(rest => rest.filter((_, at) => at !== index))} disabled={busy}>外す</button></li>)}</ul>}
     {files.length > 1 && <p className="composer-banner">添付は1件ずつ別のメッセージとして送られます。</p>}
     {notice && <p className={`composer-notice ${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
-    {!confirming
-      ? <div className="composer-actions"><button type="button" className="secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
-      : <div className="composer-confirm" role="group" aria-label="送信の確認"><span>「{chat.name || '名前のない会話'}」に{files.length === 1 ? `「${files[0]!.name}」を添付して` : files.length > 1 ? `${files.length}件のファイルを添付して` : ''}送信しますか？</span><button type="button" onClick={() => void dispatch()} disabled={busy}>{busy ? '送信中…' : '送信する'}</button><button type="button" className="secondary" onClick={() => setConfirming(false)} disabled={busy}>キャンセル</button></div>}
+    <div className="composer-actions"><button type="button" className="secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
   </form>;
 }
 

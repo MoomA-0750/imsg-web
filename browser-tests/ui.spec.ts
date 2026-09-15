@@ -69,7 +69,7 @@ test('names senders only in group chats; shows images it can, and says why for t
   await expect(page.getByText('動画（この画面では表示できません）')).toBeVisible();
   await expect(page.getByText('本文のないメッセージ')).toHaveCount(0);
 });
-test('composes and sends only after an explicit confirm, and is honest about each outcome', async ({ page }) => {
+test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
   const sends: { chatId: string; text: string }[] = [];
   await page.route('**/api/send', async route => { sends.push(route.request().postDataJSON()); await route.continue(); });
   await login(page);
@@ -80,25 +80,26 @@ test('composes and sends only after an explicit confirm, and is honest about eac
   // Typing alone must not send.
   expect(sends).toEqual([]);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('「合成テスト会話 Alpha」に送信しますか？')).toBeVisible();
-  // Cancelling sends nothing.
-  await page.getByRole('button', { name: 'キャンセル' }).click();
-  expect(sends).toEqual([]);
-  await page.getByRole('button', { name: '送信', exact: true }).click();
-  await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('送信しました。')).toBeVisible();
-  expect(sends).toEqual([{ chatId: 'C'.repeat(43), text: '合成の送信メッセージ' }]); // no recipient handle or attempt id in the request
+  expect(sends).toEqual([{ chatId: 'C'.repeat(43), text: '合成の送信メッセージ' }]);
+  await expect(box).toHaveValue('');
+  // Ctrl+Enter sends too; a plain Enter only adds a newline.
+  await box.fill('キーボードからの送信');
+  await box.press('Enter');
+  expect(sends).toHaveLength(1);
+  await box.press('Control+Enter');
+  await expect(page.getByText('送信しました。')).toBeVisible();
+  expect(sends).toHaveLength(2);
+  expect(sends[1]).toMatchObject({ chatId: 'C'.repeat(43) });
   await expect(box).toHaveValue('');
   // An ambiguous result keeps the text and warns, without silently resending.
   await box.fill('UNKNOWN な送信');
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('送信できたか不明です。', { exact: false })).toBeVisible();
   await expect(box).toHaveValue('UNKNOWN な送信');
   // A failure imsg marks as not-started keeps the text and says nothing was sent.
   await box.fill('FAIL な送信');
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('送信されていません', { exact: false })).toBeVisible();
   await expect(box).toHaveValue('FAIL な送信');
 });
@@ -121,8 +122,6 @@ test('attaches a file: uploads the raw bytes first, names it in the confirm, the
   expect(uploads).toEqual([]);
   expect(sends).toEqual([]);
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('「写真 1.png」を添付して送信しますか？', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('送信しました。')).toBeVisible();
   expect(uploads).toHaveLength(1);
   expect(uploads[0]!.type).toBe('application/octet-stream'); // raw bytes, not multipart or base64
@@ -160,8 +159,6 @@ test('previews each chosen file locally and sends several as several messages', 
   await expect(rows).toHaveCount(2);
   await expect(page.getByText('添付は1件ずつ別のメッセージとして送られます。')).toBeVisible();
   await page.getByRole('button', { name: '送信', exact: true }).click();
-  await expect(page.getByText('2件のファイルを添付して送信しますか？', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: '送信する', exact: true }).click();
   await expect(page.getByText('2件すべて送信しました。')).toBeVisible();
   expect(uploads).toHaveLength(2); // one upload per file, before a single send call
   expect(sends).toEqual([{ chatId: 'C'.repeat(43), uploadIds: ['U'.repeat(43), 'U'.repeat(43)] }]);
