@@ -8,49 +8,55 @@
  * twin. Change a colour here and it changes everywhere it is used.
  */
 :root {
-  --ink: #17231d;
-  --page: #eef3ef;
+  --ink: #17202b;
+  --page: #eef1f6;
   --surface: #fff;
-  --soft: #f5f8f6;
-  --line: #d7e1da;
-  --field: #a9b8ae;
-  --muted: #617068;
-  --green: #20734a;
-  --green-strong: #155c3a;
-  --green-soft: #dff1e7;
+  --soft: #f4f7fb;
+  --line: #d5dee9;
+  --field: #a9b5c4;
+  --muted: #5f6b7a;
+  --accent: #1f5fa8;
+  --accent-strong: #17497f;
+  --accent-soft: #dde9f7;
   --danger: #a63737;
   --danger-soft: #fff0f0;
   --warn: #8a6d1f;
   --notice: #fff2c9;
   --notice-ink: #694d00;
   --notice-line: #ead58c;
+  /* A sent message is blue over iMessage and green over anything else, as Messages shows it. */
+  --sent-imessage: #dbe9fb;
+  --sent-other: #dff1e7;
   /* The two stops of the wash behind a conversation. */
-  --thread-from: #f8fbf9;
-  --thread-to: #eef5f0;
+  --thread-from: #f9fbfe;
+  --thread-to: #eef2f8;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #e5eee8;
-    --page: #101713;
-    --surface: #18221c;
-    --soft: #121b16;
-    --line: #314039;
-    --field: #4a5b51;
-    --muted: #a7b6ad;
-    --green: #4eaa78;
-    --green-strong: #83d1a5;
-    --green-soft: #203d2d;
+    --ink: #e5eaf1;
+    --page: #0f141b;
+    --surface: #18202b;
+    --soft: #121922;
+    --line: #2f3d4d;
+    --field: #4a5a6b;
+    --muted: #a3b0bf;
+    --accent: #5b9df0;
+    --accent-strong: #93c2f7;
+    --accent-soft: #1f3350;
     --danger: #ffabab;
     --danger-soft: #3c2020;
     --warn: #d8b45f;
     --notice: #463a14;
     --notice-ink: #ffe39a;
     --notice-line: #6c5922;
-    --thread-from: #152019;
-    --thread-to: #101713;
+    --sent-imessage: #1e3a5c;
+    --sent-other: #203d2d;
+    --thread-from: #151d27;
+    --thread-to: #0f141b;
   }
 }
+
 
 @theme inline {
   --color-ink: var(--ink);
@@ -60,9 +66,11 @@
   --color-line: var(--line);
   --color-field: var(--field);
   --color-muted: var(--muted);
-  --color-green: var(--green);
-  --color-green-strong: var(--green-strong);
-  --color-green-soft: var(--green-soft);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-sent-imessage: var(--sent-imessage);
+  --color-sent-other: var(--sent-other);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-warn: var(--warn);
@@ -91,7 +99,7 @@
   button, input, textarea { font: inherit; }
   button { cursor: pointer; }
   button:disabled { cursor: default; opacity: .55; }
-  :focus-visible { outline: 3px solid #68ad89; outline-offset: 2px; }
+  :focus-visible { outline: 3px solid #6aa6e8; outline-offset: 2px; }
 }
 
 /*
@@ -100,7 +108,7 @@
  * markup, where it can be changed one element at a time.
  */
 @layer components {
-  .btn { @apply rounded-[10px] border-0 px-4 py-3 font-bold text-white bg-green enabled:hover:bg-green-strong; }
-  .btn-secondary { @apply rounded-[10px] border border-line px-4 py-3 font-bold text-green-strong bg-soft enabled:hover:bg-green-soft; }
+  .btn { @apply rounded-[10px] border-0 px-4 py-3 font-bold text-white bg-accent enabled:hover:bg-accent-strong; }
+  .btn-secondary { @apply rounded-[10px] border border-line px-4 py-3 font-bold text-accent-strong bg-soft enabled:hover:bg-accent-soft; }
   .btn-compact { @apply px-[.7rem] py-2 text-[.82rem]; }
 }

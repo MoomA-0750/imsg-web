@@ -52,8 +52,12 @@ No reconnect queue, message mirror, or mutation implementation is needed to vali
 Tailwind v4, through `@tailwindcss/vite`; no CDN, no config file. `web/src/style.css`
 holds the whole styling layer:
 
-- The palette is defined once as plain custom properties on `:root`, with a
-  `prefers-color-scheme: dark` block redefining the same names. `@theme inline`
+- The palette is blue, defined once as plain custom properties on `:root`, with a
+  `prefers-color-scheme: dark` block redefining the same names. A sent message is
+  the exception that carries meaning rather than decoration: `--sent-imessage`
+  (blue) and `--sent-other` (green) follow Messages, blue only where the
+  conversation is known to be iMessage. imsg reports the service per
+  conversation, not per message, so that is the grain of the distinction. `@theme inline`
   hands those names to Tailwind, so `bg-surface` compiles to
   `background: var(--surface)` and the dark theme follows from the palette alone
   — no element carries a `dark:` twin. Change a colour in one place.

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type BrowserContext, type Page } from '@playwright/test';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -12,19 +12,27 @@ const FILE_THREE = onDisk('three.png', PNG);
 const FILE_NOTES = onDisk('notes.txt', Buffer.from('synthetic'));
 // There is no refresh button: returning to the tab is what asks for fresh data.
 const refresh = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('focus')));
+/**
+ * The server allows 20 logins a minute and 16 sessions at once, and both of those limits are
+ * worth keeping. So the suite logs in once and carries that session from test to test, making
+ * a new one only when a test has deliberately ended the old one.
+ */
+let shared: Awaited<ReturnType<BrowserContext['cookies']>> | null = null;
+const listed = (page: Page) => page.getByRole('button', { name: /合成テスト会話 Alpha/ });
 async function login(page: Page) {
+  if (shared) {
+    await page.context().addCookies(shared);
+    await page.goto('/');
+    // isVisible() answers immediately, before the list has been fetched; this waits for it.
+    const stillIn = await listed(page).waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false);
+    if (stillIn) return;
+    shared = null; // the session was logged out or revoked by an earlier test
+  }
   await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43));
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
-  await expect(page.getByRole('button', { name: /合成テスト会話 Alpha/ })).toBeVisible();
+  await expect(listed(page)).toBeVisible();
+  shared = await page.context().cookies();
 }
-test.afterEach(async ({ page }) => {
-  const logout = page.getByRole('button', { name: 'ログアウト' });
-  if (!await logout.isVisible().catch(() => false)) return;
-  await Promise.all([
-    page.waitForResponse(r => r.url().includes('/api/session') && r.request().method() === 'DELETE').catch(() => {}),
-    logout.click().catch(() => {}),
-  ]);
-});
 test('says nothing about read-state or typing while they are unknown', async ({ page }) => {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
     chats: { state: 'available', reasonCode: 'SUPPORTED' },
@@ -101,6 +109,20 @@ test('shows what a message replies to, and the tapbacks on it', async ({ page })
 });
 const area = (page: Page) => page.locator('.message-area');
 const metrics = (page: Page) => area(page).evaluate(el => ({ top: el.scrollTop, height: el.scrollHeight, view: el.clientHeight }));
+
+test('colours a sent message by the service it went out over', async ({ page }) => {
+  await login(page);
+  const sent = page.locator('.bubble', { hasText: '送信済みの合成メッセージです。' });
+  const colour = () => sent.evaluate(el => getComputedStyle(el).backgroundColor);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); // iMessage
+  await expect(sent).toHaveClass(/sent-imessage/);
+  const blue = await colour();
+  await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click(); // SMS
+  await expect(sent).toHaveClass(/sent-other/);
+  expect(await colour()).not.toBe(blue);
+  // Only what was sent is coloured; what came in is not.
+  await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
+});
 
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
   await login(page);

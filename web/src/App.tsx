@@ -59,7 +59,7 @@ function LinkCard({ link }: { link: LinkView }) {
     host = url.hostname;
   } catch { return null; }
   const imageId = link.image?.id;
-  return <a className="link-card flex flex-col mt-[.2rem] mb-[.4rem] max-w-[22rem] overflow-hidden rounded-xl border border-line bg-soft text-inherit no-underline hover:border-green focus-visible:border-green" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+  return <a className="link-card flex flex-col mt-[.2rem] mb-[.4rem] max-w-[22rem] overflow-hidden rounded-xl border border-line bg-soft text-inherit no-underline hover:border-accent focus-visible:border-accent" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
     {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
     <span className="link-body flex flex-col gap-[.15rem] px-[.7rem] py-[.55rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
   </a>;
@@ -87,7 +87,7 @@ const MiB = 1024 * 1024;
 const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const FILES_MAX = 10;
-const NOTICE_COLOUR = { ok: 'text-green-strong', warn: 'text-warn', error: 'text-danger' } as const;
+const NOTICE_COLOUR = { ok: 'text-accent-strong', warn: 'text-warn', error: 'text-danger' } as const;
 
 /** A local preview of a chosen file; the object URL is revoked when the choice changes. */
 function Thumbnail({ file }: { file: File }) {
@@ -466,8 +466,8 @@ export function App() {
   }
 
   if (checking) return <main className={CENTRED}><p role="status">セッションを確認しています…</p></main>;
-  if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#173d2820]" aria-labelledby="login-title">
-    <div className="text-green font-extrabold tracking-[.04em]">imsg Web</div>
+  if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="login-title">
+    <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
     <h1 id="login-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
     <p className="text-muted">所有者キーでログインしてください。このアプリはキーを保存しません（ブラウザーへの保存はご自身で選べます）。</p>
     <form className="grid gap-3 mt-6" onSubmit={login}>
@@ -478,13 +478,16 @@ export function App() {
     </form>
   </section></main>;
 
+  // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
+  // the way Messages colours it. imsg reports the service per conversation, not per message.
+  const sentTone = selected?.service === 'iMessage' ? 'sent-imessage bg-sent-imessage' : 'sent-other bg-sent-other';
   const featureValues = capability ? Object.values(capability.features) : [];
   const availableCount = featureValues.filter(value => value.state === 'available').length;
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
     <header className="shrink-0 min-h-[56px] pane:min-h-[62px] px-4 py-[.7rem] border-b border-line flex justify-between items-center gap-4">
-      <div><strong className="text-[1.15rem] text-green-strong">imsg Web</strong></div>
+      <div><strong className="text-[1.15rem] text-accent-strong">imsg Web</strong></div>
       <div className="flex items-center gap-[.65rem]">
         <span className="hidden pane:inline text-muted text-[.78rem]" title={capabilityError || '利用可能な機能'}>{capability ? `機能 ${availableCount}/${featureValues.length}` : capabilityError || '機能確認中'}</span>
         <button className="btn-secondary btn-compact" onClick={() => void logout()}>ログアウト</button>
@@ -498,7 +501,7 @@ export function App() {
         <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col" ref={chatViewport} onScroll={onChatScroll}>
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
-              <button className={`block w-full rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-green-soft ${selected?.id === chat.id ? 'bg-green-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
+              <button className={`block w-full rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
                 <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
                 <span className="block mt-[.35rem] text-muted text-[.8rem] [overflow-wrap:anywhere]">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span>
               </button>
@@ -508,7 +511,7 @@ export function App() {
       </aside>
       <main className={`detail-pane ${PANE} bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
-          <button className="back shrink-0 w-[42px] h-[42px] p-0 rounded-full text-green-strong bg-green-soft text-[1.25rem] pane:hidden" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button>
+          <button className="back shrink-0 w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft text-[1.25rem] pane:hidden" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
@@ -516,7 +519,7 @@ export function App() {
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
           {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4">{messages.map(message =>
             <li key={message.id} className={`flex my-[.55rem] ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
-              <div className={`bubble max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)] px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#1837250a] ${message.isFromMe ? 'bg-green-soft rounded-[15px_4px_15px_15px]' : 'bg-surface rounded-[4px_15px_15px_15px]'}`}>
+              <div className={`bubble max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)] px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${message.isFromMe ? `${sentTone} rounded-[15px_4px_15px_15px]` : 'bg-surface rounded-[4px_15px_15px_15px]'}`}>
                 {selected.isGroup === true && message.sender && <span className="sender block mb-[.2rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
                 {message.replyTo && <ReplyQuote reply={message.replyTo} />}
                 {message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}
