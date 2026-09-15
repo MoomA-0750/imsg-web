@@ -306,7 +306,7 @@ export class LiveSource implements ReadSource, AttachmentSource {
         const replyTo: ReplyView | null = row.replyTo && quote
           ? { sender: row.replyTo.sender === null ? null : clip(row.replyTo.sender, 256).value, text: quote.value, trimmed: quote.trimmed }
           : null;
-        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, attachments, link, replyTo, reactions: this.#reactionViews(row.reactions), createdAt: row.createdAt, trimmed: text.trimmed };
+        return { id: this.#id('message', row.guid), text: text.value, isFromMe: row.isFromMe, sender, avatarId: sender === null ? null : this.#avatarId(sender), attachments, link, replyTo, reactions: this.#reactionViews(row.reactions), createdAt: row.createdAt, trimmed: text.trimmed };
       }) };
       if (this.options.converter && convertible.length > 0) {
         // Newest first, the order the owner meets them in. Checks and conversion happen later, off this queue.

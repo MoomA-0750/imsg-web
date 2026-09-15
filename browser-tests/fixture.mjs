@@ -26,6 +26,7 @@ function solidPNG(width, height) {
     chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.alloc((width * 3 + 1) * height))), chunk('IEND', Buffer.alloc(0))]);
 }
 const TALL_PNG = solidPNG(240, 180);
+const FACE_PNG = solidPNG(64, 64);
 // A conversation long enough to scroll. #1 is the newest and sits last, so asking for a
 // larger limit adds older messages above and leaves the bottom of the list unchanged.
 const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_, index) => {
@@ -35,7 +36,7 @@ const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_,
   return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: mine, sender: mine ? null : '合成送信者 Sigma',
     // An image carries no height until it loads, so a list of them settles well after it is drawn.
     attachments: withImage ? [{ id: 'W'.repeat(43), kind: 'image', sticker: false, preview: false }] : [],
-    link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false };
+    link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false, avatarId: null };
 });
 const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
@@ -48,22 +49,22 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     { id: 'V'.repeat(43), name: '合成画像列 Vega', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null, avatarId: null },
   ] }; },
   async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('V') ? longChat(limit, true) : id.startsWith('S') ? longChat(limit) : id.startsWith('G') ? [
-    { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [
+    { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [
       { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false, preview: false },
       { id: null, kind: 'image', sticker: false, preview: false }, { id: null, kind: 'video', sticker: false, preview: false },
       { id: 'T'.repeat(43), kind: 'image', sticker: false, preview: true },
     ], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
-    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
-    { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
-    { id: 'R'.repeat(43), text: '返信の合成本文', isFromMe: false, sender: '合成送信者 Delta', attachments: [], link: null,
+    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'R'.repeat(43), text: '返信の合成本文', isFromMe: false, sender: '合成送信者 Epsilon', avatarId: null, attachments: [], link: null,
       replyTo: { sender: '合成送信者 Epsilon', text: '元になった合成メッセージ', trimmed: true },
       reactions: [
         { emoji: '❤️', kind: 'love', senders: ['合成送信者 Alpha', '合成送信者 Beta'], fromMe: true, count: 3 },
         { emoji: '👍', kind: 'like', senders: ['合成送信者 Gamma'], fromMe: false, count: 1 },
       ], createdAt: null, trimmed: false },
   ] : [
-    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
-    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: '2026-09-08T00:01:00Z', trimmed: false },
+    { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: '2026-09-08T00:01:00Z', trimmed: false },
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async attachment(id) {
@@ -75,7 +76,7 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   },
   async avatar(id) {
     if (id !== 'A'.repeat(43)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
-    return { type: 'image/png', size: PNG.length, bytes: PNG };
+    return { type: 'image/png', size: FACE_PNG.length, bytes: FACE_PNG };
   },
   async close() {},
 }, uploads: {

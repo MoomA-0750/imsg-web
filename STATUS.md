@@ -92,6 +92,23 @@ Only `thread_originator_guid` counts as a reply. The first release quoted on
 replies: Messages sets `reply_to_guid` on ordinary messages too, and imsg falls
 back to it. See `docs/real-data-findings.md`.
 
+## Faces (2026-09-15)
+
+A conversation shows its contact's picture where the address book has one, and
+initials over a colour derived from the name where it does not — and in a group,
+the sender's face sits at the foot of the last bubble of their run. Only 8 of 304
+contacts have a usable picture; `docs/real-data-findings.md` says why, and why
+exporting or syncing would not add any. The app reads them itself with
+`node:sqlite`, matching on the name imsg already resolved.
+
+## The unread count (2026-09-15)
+
+`unread_count` counted every message with `is_read = 0` over a conversation's
+whole history, which badged conversations the owner had read elsewhere. A fourth
+patch, `imsg-patches/unread-mark`, adds Messages' own per-chat read mark to the
+condition. Built and deployed by the owner on 2026-09-15; the badges now agree
+with Messages.
+
 ## Next
 
 1. Owner keeps using the M1 trial for a few days. Watch memory, log size and
@@ -99,16 +116,9 @@ back to it. See `docs/real-data-findings.md`.
 2. Then the iMac, the same way (`docs/operations.md`), watching for the stale
    bridge lock issue noted in the findings.
 
-Branch `attachment-images` (not merged) shows images that are on the Mac and
-link cards (needs `imsg-patches/link-preview`). It has been running on the M1
-since 2026-09-14 (release `717939f`): the owner confirmed images show and link
-cards open in a new tab, and converted HEIC displays. HEIC and JPEG XL are now
-converted to JPEG (the owner's choice after comparing with AVIF and WebP) and
-prepared ahead; images never downloaded show Messages' cached thumbnail when
-there is one. Running on the M1 as release `037b496` since 2026-09-14; the owner
-confirmed captioned thumbnails show and HEIC loads noticeably smoothly. Findings and the
-serving rules are in `docs/real-data-findings.md`. Profile pictures were looked
-at and not built.
+Branch `attachment-images` (not merged) was where images and link cards were
+built; both have long since shipped from the main line. It has nothing left in
+it that is not elsewhere, and can be deleted whenever the owner wants.
 
 ## Leftovers on the Macs
 

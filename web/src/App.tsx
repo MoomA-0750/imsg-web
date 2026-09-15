@@ -509,7 +509,7 @@ export function App() {
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
               <button className={`flex w-full items-center gap-3 rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
-                <Avatar chat={chat} />
+                <Avatar name={chat.name} avatarId={chat.avatarId} />
                 <span className="min-w-0 grow">
                   <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
                   <span className="flex justify-between items-center gap-2 mt-[.35rem]">
@@ -532,9 +532,14 @@ export function App() {
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
           {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4">{messages.map((message, index) => {
             // A run is one person still talking: pulled close together, and named once at its start.
-            const previous = messages[index - 1];
-            const runs = previous !== undefined && previous.isFromMe === message.isFromMe && previous.sender === message.sender;
-            return <li key={message.id} className={`flex ${index === 0 ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+            const previous = messages[index - 1], next = messages[index + 1];
+            const same = (a: MessageView | undefined) => a !== undefined && a.isFromMe === message.isFromMe && a.sender === message.sender;
+            const runs = same(previous);
+            const facing = selected.isGroup === true && !message.isFromMe;
+            return <li key={message.id} className={`flex items-end gap-2 ${index === 0 ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+              {facing && (same(next)
+                ? <span className="shrink-0 w-7" aria-hidden="true" />
+                : <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />)}
               <div className={`bubble max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)] px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${message.isFromMe ? `${sentTone} rounded-[15px_4px_15px_15px]` : 'bg-surface rounded-[4px_15px_15px_15px]'}`}>
                 {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.2rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
                 {message.replyTo && <ReplyQuote reply={message.replyTo} />}
@@ -612,18 +617,18 @@ function Recovery({ onBack }: { onBack: () => void }) {
  * initials over a colour derived from the name, so every row has something to recognise. The
  * colour is decoration — it carries nothing the row does not already say.
  */
-function Avatar({ chat }: { chat: ChatView }) {
+function Avatar({ name: rawName, avatarId, size = 'w-11 h-11 text-[.9rem]' }: { name: string; avatarId: string | null; size?: string }) {
   const [failed, setFailed] = useState(false);
-  const shape = 'chat-avatar shrink-0 w-11 h-11 rounded-full object-cover';
-  if (chat.avatarId && !failed) {
-    return <img className={shape} src={`/api/avatars/${encodeURIComponent(chat.avatarId)}`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+  const shape = `chat-avatar shrink-0 ${size} rounded-full object-cover`;
+  if (avatarId && !failed) {
+    return <img className={shape} src={`/api/avatars/${encodeURIComponent(avatarId)}`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
   }
-  const name = chat.name.trim();
+  const name = rawName.trim();
   const initials = [...name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean)]
     .slice(0, 2).map(word => [...word][0] ?? '').join('') || '…';
   let hash = 0;
   for (const code of name) hash = (hash * 31 + code.codePointAt(0)!) % 360;
-  return <span className={`${shape} grid place-items-center text-[.9rem] font-bold text-white`}
+  return <span className={`${shape} grid place-items-center font-bold text-white`}
     style={{ backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
 }
 

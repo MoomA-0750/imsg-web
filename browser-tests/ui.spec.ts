@@ -176,12 +176,34 @@ test('a conversation row carries the newest message, and its unread count as a b
   await expect(page.locator('.chat-list li', { hasText: '合成長尺 Sigma' }).locator('.chat-preview')).toHaveText('\u00a0');
 });
 
+test('puts the sender’s face at the foot of their run in a group, and nowhere else', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  await expect(page.getByText('返信の合成本文')).toBeVisible();
+  const rows = page.locator('.messages > li');
+  // Delta speaks three times, then Epsilon once: one face at the end of Delta's run, one for Epsilon.
+  await expect(rows.nth(0).locator('.chat-avatar')).toHaveCount(0);
+  await expect(rows.nth(1).locator('.chat-avatar')).toHaveCount(0);
+  await expect(rows.nth(2).locator('img.chat-avatar')).toHaveAttribute('src', /\/api\/avatars\//);
+  await expect(rows.nth(3).locator('span.chat-avatar')).toHaveText('合E'); // no picture: initials
+  // It sits at the foot of the bubble, not beside its top.
+  const face = await rows.nth(2).locator('.chat-avatar').boundingBox();
+  const bubble = await rows.nth(2).locator('.bubble').boundingBox();
+  expect(face!.x).toBeLessThan(bubble!.x);
+  expect(Math.abs((face!.y + face!.height) - (bubble!.y + bubble!.height))).toBeLessThan(2);
+
+  // A one-to-one conversation keeps its bubbles unadorned.
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  await expect(page.locator('.messages .chat-avatar')).toHaveCount(0);
+});
+
 test('shows a contact picture where the address book has one, initials where it does not', async ({ page }) => {
   await login(page);
   const row = (name: string) => page.locator('.chat-list li', { hasText: name });
   const picture = row('合成テスト会話 Alpha').locator('img.chat-avatar');
   await expect(picture).toHaveAttribute('src', /\/api\/avatars\//);
-  await expect.poll(() => picture.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(1);
+  await expect.poll(() => picture.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(64);
   // No picture: the initials stand in, and they are decoration rather than something to read out.
   const initials = row('合成テスト会話 Beta').locator('span.chat-avatar');
   await expect(initials).toHaveText('合B');
@@ -221,8 +243,9 @@ test('pulls a run of messages together and gives room where the speaker changes'
   // In a group, the name is written once at the top of a run rather than over every bubble.
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
   await expect(page.getByText('返信の合成本文')).toBeVisible();
-  await expect(page.locator('.messages > li')).toHaveCount(4); // all four from one sender
-  await expect(page.locator('.bubble .sender')).toHaveCount(1);
+  // Three from one sender then one from another: a name at the head of each run, not on each bubble.
+  await expect(page.locator('.messages > li')).toHaveCount(4);
+  await expect(page.locator('.bubble .sender')).toHaveCount(2);
 });
 
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
@@ -430,7 +453,7 @@ test('B05 mobile360/dark/keyboard and long synthetic content does not overflow',
 test('B02 a read that lands after the session ends cannot restore private data', async ({ page }) => {
   await login(page);
   let complete!: () => Promise<void>; const gate = new Promise<void>(resolve => {
-    void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
+    void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'LATE_PRIVATE_SENTINEL', isFromMe: false, sender: null, avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); });
   });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await gate;
   // The session expires while that read is still out.
@@ -442,7 +465,7 @@ test('B02 a read that lands after the session ends cannot restore private data',
 });
 test('B05 old selected chat response cannot replace the newly selected chat', async ({ page }) => {
   await login(page); let complete!: () => Promise<void>;
-  const entered = new Promise<void>(resolve => { void page.route(`**/${'C'.repeat(43)}/messages?*`, route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_CHAT_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
+  const entered = new Promise<void>(resolve => { void page.route(`**/${'C'.repeat(43)}/messages?*`, route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_CHAT_SENTINEL', isFromMe: false, sender: null, avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await entered;
   await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click();
   await expect(page.getByText('Beta の合成本文')).toBeVisible(); await complete();
@@ -485,7 +508,7 @@ test('B05 epoch change clears all resources; delayed old epoch cannot restore th
   await login(page); await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   // One read cycle where the conversation list has moved to a new database generation while the
   // message read is still out: it answers for the old one, long after the switch.
-  let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
+  let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
   await page.route('**/api/chats?*', route => route.fulfill({ json: { epoch: 'epoch-b', limit: 50, chats: [] } }));
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-b', mode: 'readonly', features: {} } }));
   await refresh(page); await entered;
