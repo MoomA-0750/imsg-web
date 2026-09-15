@@ -80,7 +80,14 @@
   --color-thread-from: var(--thread-from);
   --color-thread-to: var(--thread-to);
 
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Hiragino Sans", sans-serif;
+  /*
+   * Inter carries no Japanese, so Japanese falls through to whatever the platform offers. Naming
+   * the families outright means a real bold exists to be found on Android as well as on Apple,
+   * where the stack used to run out at `sans-serif` and the weight was quietly dropped.
+   */
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic Medium", "Yu Gothic",
+    Meiryo, sans-serif;
   /* Below this the two panes stack and slide over one another instead of sitting side by side. */
   --breakpoint-pane: 600px;
 }
@@ -92,7 +99,9 @@
     min-width: 320px;
     min-height: 100vh;
     font-family: var(--font-sans);
-    font-synthesis: none;
+    /* A family with no bold of its own gets one drawn: better a thickened weight than none at all.
+       Slant is still never faked; a fake italic is worse than an upright one. */
+    font-synthesis: weight;
     color: var(--ink);
     background: var(--page);
   }

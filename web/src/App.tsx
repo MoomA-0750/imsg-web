@@ -67,11 +67,11 @@ const ATTACHMENT_LABEL = { image: '画像', video: '動画', file: '添付ファ
 function Attachment({ item }: { item: AttachmentView }) {
   const [failed, setFailed] = useState(false);
   if (item.id && !failed) {
-    const image = <img className={`attachment-image block max-w-full ${item.sticker ? 'sticker max-h-32 rounded-none' : 'max-h-80 rounded-[.6rem]'} ${item.preview ? 'mb-[.15rem]' : 'mb-[.3rem]'}`} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
-    return item.preview ? <figure className="attachment-preview m-0 mb-[.3rem]">{image}<figcaption className="text-muted text-[.78em]">サムネイル（元の画像はこのMacにありません）</figcaption></figure> : image;
+    const image = <img className={`attachment-image block max-w-full ${item.sticker ? 'sticker max-h-32 rounded-none' : 'max-h-80 rounded-[.6rem]'} ${item.preview ? 'mb-[.15rem]' : 'mb-[.3rem]'} last:mb-0`} src={`/api/attachments/${encodeURIComponent(item.id)}`} alt={item.preview ? '添付画像のサムネイル' : '添付画像'} loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+    return item.preview ? <figure className="attachment-preview m-0 mb-[.3rem] last:mb-0">{image}<figcaption className="text-muted text-[.78em]">サムネイル（元の画像はこのMacにありません）</figcaption></figure> : image;
   }
   const reason = item.preview || !item.id ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません') : 'このブラウザでは表示できない形式です';
-  return <p className="attachment m-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
+  return <p className="attachment m-0 mb-[.3rem] last:mb-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>;
 }
 
 function LinkCard({ link }: { link: LinkView }) {
@@ -83,18 +83,18 @@ function LinkCard({ link }: { link: LinkView }) {
     host = url.hostname;
   } catch { return null; }
   const imageId = link.image?.id;
-  return <a className="link-card flex flex-col mt-[.2rem] mb-[.4rem] max-w-[22rem] overflow-hidden rounded-xl border border-line bg-soft text-inherit no-underline hover:border-accent focus-visible:border-accent" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
+  return <a className="link-card flex flex-col mt-[.2rem] mb-[.4rem] last:mb-0 max-w-[22rem] overflow-hidden rounded-xl border border-line bg-soft text-inherit no-underline hover:border-accent focus-visible:border-accent" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
     {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(true)} />}
     <span className="link-body flex flex-col gap-[.15rem] px-[.7rem] py-[.55rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
   </a>;
 }
 
 function ReplyQuote({ reply }: { reply: ReplyView }) {
-  return <p className="reply-quote block m-0 mb-[.35rem] px-2 py-[.3rem] border-l-[3px] border-line bg-soft rounded-r-lg text-muted text-[.85em] whitespace-pre-wrap [overflow-wrap:anywhere]"><span className="block font-semibold text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}</p>;
+  return <p className="reply-quote block m-0 mb-[.35rem] last:mb-0 px-2 py-[.3rem] border-l-[3px] border-line bg-soft rounded-r-lg text-muted text-[.85em] whitespace-pre-wrap [overflow-wrap:anywhere]"><span className="block font-semibold text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}</p>;
 }
 
 function Reactions({ list }: { list: ReactionView[] }) {
-  return <ul className="reactions flex flex-wrap gap-[.3rem] list-none mt-[.1rem] mb-[.3rem] p-0">{list.map(reaction => {
+  return <ul className="reactions flex flex-wrap gap-[.3rem] list-none mt-[.1rem] mb-[.3rem] last:mb-0 p-0">{list.map(reaction => {
     const who = [...reaction.senders, ...(reaction.fromMe ? ['自分'] : [])];
     return <li key={`${reaction.kind}:${reaction.emoji}`} className="inline-flex items-center gap-[.15rem] px-[.4rem] py-[.1rem] border border-line rounded-full bg-surface text-[.85em]" title={who.length > 0 ? who.join('、') : reaction.kind}>
       <span aria-hidden="true">{reaction.emoji || '•'}</span>
@@ -589,8 +589,8 @@ export function App() {
             // The corner nearest the face stays square, and so does the one facing the bubble above
             // when a run continues, so a run reads as one shape rather than a stack of separate ones.
             const corners = message.isFromMe
-              ? (runs ? 'rounded-[15px_4px_4px_15px]' : 'rounded-[15px_15px_4px_15px]')
-              : (runs ? 'rounded-[4px_15px_15px_4px]' : 'rounded-[15px_15px_15px_4px]');
+              ? (runs ? 'rounded-[24px_4px_4px_24px]' : 'rounded-[24px_24px_4px_24px]')
+              : (runs ? 'rounded-[4px_24px_24px_4px]' : 'rounded-[24px_24px_24px_4px]');
             // A line goes in where a day begins, and where a conversation resumes after a pause,
             // rather than every message repeating the date.
             const at = readDate(message.createdAt), was = readDate(previous?.createdAt ?? null);
@@ -608,7 +608,7 @@ export function App() {
               <div className={`bubble px-[.85rem] py-[.7rem] border border-line shadow-[0_2px_8px_#0f1f3a0f] ${corners} ${message.isFromMe ? sentTone : 'bg-surface'}`}>
                 {message.replyTo && <ReplyQuote reply={message.replyTo} />}
                 {message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}
-                {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
+                {(message.text || (message.attachments.length === 0 && !message.link)) && <p className="m-0 mb-[.4rem] last:mb-0 whitespace-pre-wrap [overflow-wrap:anywhere] leading-normal">{message.text || '本文のないメッセージ'}{message.trimmed && <span className={TRIM}>（省略）</span>}</p>}
                 {message.link && <LinkCard link={message.link} />}
                 {message.reactions.length > 0 && <Reactions list={message.reactions} />}
               </div>

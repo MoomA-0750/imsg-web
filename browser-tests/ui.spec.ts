@@ -198,9 +198,9 @@ test('puts the sender’s face at the foot of their run in a group, and nowhere 
 
   // The corner beside the face is square, and so is the one facing the bubble above within a run.
   const radius = (row: number) => rows.nth(row).locator('.bubble').evaluate(el => getComputedStyle(el).borderRadius);
-  expect(await radius(0)).toBe('15px 15px 15px 4px'); // opens a run: only the foot is square
-  expect(await radius(1)).toBe('4px 15px 15px 4px');  // carries on from the one above
-  expect(await radius(3)).toBe('15px 15px 15px 4px'); // a new speaker opens again
+  expect(await radius(0)).toBe('24px 24px 24px 4px'); // opens a run: only the foot is square
+  expect(await radius(1)).toBe('4px 24px 24px 4px');  // carries on from the one above
+  expect(await radius(3)).toBe('24px 24px 24px 4px'); // a new speaker opens again
 
   // A one-to-one conversation keeps its bubbles unadorned.
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
@@ -234,6 +234,21 @@ test('colours a sent message by the service it went out over', async ({ page }) 
   expect(await colour()).not.toBe(blue);
   // Only what was sent is coloured; what came in is not.
   await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
+});
+
+test('rounds a one-line bubble into a pill, and centres what is written in it', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  const bubble = page.locator('.bubble').last();
+  const shape = await bubble.evaluate(el => {
+    const p = el.querySelector('p')!;
+    const box = el.getBoundingClientRect(), text = p.getBoundingClientRect();
+    // The far side from the speaker is round whatever the run is doing; the near side is the tail.
+    return { height: box.height, radius: parseFloat(getComputedStyle(el).borderTopRightRadius),
+      above: text.top - box.top, below: box.bottom - text.bottom };
+  });
+  expect(shape.radius).toBeCloseTo(shape.height / 2, 0); // one line: as round as it can be
+  expect(shape.above).toBeCloseTo(shape.below, 1);       // and sitting in the middle of it
 });
 
 test('marks where a day begins instead of stamping every bubble', async ({ page }) => {
