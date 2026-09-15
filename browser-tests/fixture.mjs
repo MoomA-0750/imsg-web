@@ -8,13 +8,32 @@ import { createApp } from '../dist/server/http.js';
 import { Auth, hashKey } from '../dist/server/auth.js';
 import { WebError } from '../dist/server/web-error.js';
 import { Readable } from 'node:stream';
+import { crc32, deflateSync } from 'node:zlib';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+// A PNG with real dimensions, so a message grows by a visible amount when its image loads.
+// One flat colour, so the pixels compress to nothing however large the picture is.
+function solidPNG(width, height) {
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4); head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const tail = Buffer.alloc(4); tail.writeUInt32BE(crc32(body) >>> 0);
+    return Buffer.concat([head, body, tail]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0); header.writeUInt32BE(height, 4);
+  header[8] = 8; header[9] = 2; // 8 bits per channel, truecolour
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.alloc((width * 3 + 1) * height))), chunk('IEND', Buffer.alloc(0))]);
+}
+const TALL_PNG = solidPNG(240, 180);
 // A conversation long enough to scroll. #1 is the newest and sits last, so asking for a
 // larger limit adds older messages above and leaves the bottom of the list unchanged.
-const longChat = limit => Array.from({ length: limit }, (_, index) => {
+const longChat = (limit, withImage = false) => Array.from({ length: limit }, (_, index) => {
   const n = limit - index;
   return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: false, sender: '合成送信者 Sigma',
-    attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false };
+    // An image carries no height until it loads, so a list of them settles well after it is drawn.
+    attachments: withImage ? [{ id: 'W'.repeat(43), kind: 'image', sticker: false, preview: false }] : [],
+    link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false };
 });
 const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
@@ -24,8 +43,9 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false },
     { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false },
     { id: 'S'.repeat(43), name: '合成長尺 Sigma', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false },
+    { id: 'V'.repeat(43), name: '合成画像列 Vega', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false },
   ] }; },
-  async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('S') ? longChat(limit) : id.startsWith('G') ? [
+  async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('V') ? longChat(limit, true) : id.startsWith('S') ? longChat(limit) : id.startsWith('G') ? [
     { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [
       { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false, preview: false },
       { id: null, kind: 'image', sticker: false, preview: false }, { id: null, kind: 'video', sticker: false, preview: false },
@@ -45,8 +65,9 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
   ] }; },
   async capabilities() { return { epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } }; },
   async attachment(id) {
-    // P (an image) and T (a thumbnail) are a real 1×1 PNG; Q claims to be HEIC but is not decodable.
-    const body = id === 'P'.repeat(43) || id === 'T'.repeat(43) ? PNG : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
+    // P (an image) and T (a thumbnail) are a real 1×1 PNG; W is 240×180; Q claims to be HEIC but is not decodable.
+    const body = id === 'P'.repeat(43) || id === 'T'.repeat(43) ? PNG : id === 'W'.repeat(43) ? TALL_PNG
+      : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
     if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
   },

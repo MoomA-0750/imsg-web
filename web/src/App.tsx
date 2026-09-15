@@ -360,15 +360,17 @@ export function App() {
     before.current = { height: el.scrollHeight, top: el.scrollTop };
   }, [messages]);
 
-  // Thumbnails and link images settle after their message is laid out, growing the list under
-  // the view. While following, stay at the bottom rather than drifting up by the image's height.
+  // Two things move the newest message off the bottom after it has been put there: an image
+  // settling into the height it needs, and the area itself losing height to the composer
+  // appearing or to a message being typed over several lines. While following, undo both.
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
-    const settle = () => { if (following.current) el.scrollTop = el.scrollHeight; };
-    el.addEventListener('load', settle, true); // `load` does not bubble; capture reaches it
-    window.addEventListener('resize', settle);
-    return () => { el.removeEventListener('load', settle, true); window.removeEventListener('resize', settle); };
+    const stick = () => { if (following.current) el.scrollTop = el.scrollHeight; };
+    el.addEventListener('load', stick, true); // `load` does not bubble; capture reaches it
+    const observer = new ResizeObserver(stick);
+    observer.observe(el);
+    return () => { el.removeEventListener('load', stick, true); observer.disconnect(); };
   }, [selected]);
 
   async function login(event: FormEvent) {
@@ -410,10 +412,16 @@ export function App() {
     setMessageLimit(value => Math.min(MAX, value + PAGE));
   }
 
+  // Following ends only by scrolling up, never by the list growing. A thumbnail loading above
+  // the view makes the browser shift the scroll to hold the content still, which fires a scroll
+  // event from the bottom of the list: reading "not at the bottom" out of that would strand the
+  // view a few pixels short of the newest message and leave it there.
   function onScroll(event: UIEvent<HTMLDivElement>) {
     const el = event.currentTarget;
+    const scrolledUp = el.scrollTop < before.current.top;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM;
+    following.current = atBottom || (following.current && !scrolledUp);
     before.current = { height: el.scrollHeight, top: el.scrollTop };
-    following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM;
     if (el.scrollTop <= NEAR_TOP) loadOlder();
   }
 

@@ -15,6 +15,14 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   await expect(page.getByRole('button', { name: /合成テスト会話 Alpha/ })).toBeVisible();
 }
+test.afterEach(async ({ page }) => {
+  const logout = page.getByRole('button', { name: 'ログアウト' });
+  if (!await logout.isVisible().catch(() => false)) return;
+  await Promise.all([
+    page.waitForResponse(r => r.url().includes('/api/session') && r.request().method() === 'DELETE').catch(() => {}),
+    logout.click().catch(() => {}),
+  ]);
+});
 test('explains disabled advanced discovery without claiming SIP or permission state', async ({ page }) => {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
     chats: { state: 'available', reasonCode: 'SUPPORTED' },
@@ -101,6 +109,46 @@ test('opens a conversation at its newest message, and follows the newest as more
   const { top, height, view } = await metrics(page);
   expect(height).toBeGreaterThan(view); // the list really does scroll
   expect(height - top - view).toBeLessThanOrEqual(48);
+  // A conversation with nothing older says so rather than asking for a page that is not there:
+  // two messages came back where 50 were asked for.
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.locator('.messages li')).toHaveCount(2);
+  await expect(page.getByText('これより前のメッセージはありません')).toBeVisible();
+  await expect(page.getByRole('button', { name: '以前のメッセージを読み込む' })).toHaveCount(0);
+});
+
+// Waits until the list stops growing: images decode at their own pace, each one resizing
+// the message it belongs to after that message was already laid out.
+const settle = (page: Page) => page.waitForFunction(() => {
+  const el = document.querySelector('.message-area');
+  const state = window as unknown as { lastHeight?: number; stable?: number };
+  if (!el) return false;
+  if (state.lastHeight === el.scrollHeight) state.stable = (state.stable ?? 0) + 1;
+  else { state.lastHeight = el.scrollHeight; state.stable = 0; }
+  return (state.stable ?? 0) >= 5;
+}, null, { polling: 100 });
+
+test('stays at the newest message while images load in after the conversation is drawn', async ({ page }) => {
+  // Images arrive late and out of order, each growing its message after it was laid out.
+  await page.route('**/api/attachments/*', async route => {
+    await new Promise(resolve => setTimeout(resolve, 40 + Math.floor(Math.random() * 120)));
+    return route.continue();
+  });
+  // And the composer appears once capabilities land, taking height away from the list below it.
+  await page.route('**/api/capabilities', async route => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
+      chats: { state: 'available', reasonCode: 'SUPPORTED' }, history: { state: 'available', reasonCode: 'SUPPORTED' },
+      send: { state: 'available', reasonCode: 'SEND_READY' } } } });
+  });
+  await login(page);
+  await page.getByRole('button', { name: /合成画像列 Vega/ }).click();
+  await expect(page.locator('.messages li')).toHaveCount(50);
+  await expect(page.getByPlaceholder('メッセージを入力', { exact: false })).toBeVisible();
+  await settle(page);
+  await expect(page.getByText('合成メッセージ #1', { exact: true })).toBeInViewport();
+  const { top, height, view } = await metrics(page);
+  expect(height - top - view).toBeLessThanOrEqual(2); // the bottom, not slightly above it
 });
 
 test('scrolling to the top loads the previous page and leaves the view where it was', async ({ page }) => {
@@ -120,15 +168,6 @@ test('scrolling to the top loads the previous page and leaves the view where it 
   await area(page).evaluate(el => { el.scrollTop = 0; });
   await expect(page.locator('.messages li')).toHaveCount(150);
   await expect(page.getByText('150件表示・最大1000件')).toBeVisible();
-});
-
-test('a conversation with nothing older says so instead of asking forever', async ({ page }) => {
-  await login(page);
-  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
-  await expect(page.locator('.messages li')).toHaveCount(2);
-  // Two messages came back where 50 were asked for: there is no previous page to fetch.
-  await expect(page.getByText('これより前のメッセージはありません')).toBeVisible();
-  await expect(page.getByRole('button', { name: '以前のメッセージを読み込む' })).toHaveCount(0);
 });
 
 test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
