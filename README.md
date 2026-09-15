@@ -15,6 +15,28 @@ the tapbacks on a message; sending text and attachments (off by default; see
 tapbacks (imsg needs its bridge transport, which wants SIP off and code
 injected into Messages), read-state changes, typing, search, profile pictures.
 
+## What the screen does not say
+
+Behaviour worth knowing, kept out of the UI so it does not explain itself at the
+owner every time:
+
+- **Attachments go one per message.** imsg sends a single file per send, so ten
+  files arrive as ten messages, in the order they were chosen, with any text on
+  the first. A batch stops at the first that does not go and says how far it got.
+- **Sending is immediate** — no confirmation. Ctrl+Enter or ⌘+Enter sends, and so
+  does the round button.
+- **A blue bubble means iMessage, green means anything else** (SMS, RCS, or a
+  service imsg did not report), the way Messages colours them. imsg reports the
+  service per conversation, so a conversation that fell back for one message
+  still reads as one colour.
+- **A conversation list row shows its newest message**, read separately from the
+  list itself; a row still blank has not been read yet, which is not the same as
+  having no messages.
+- **Reading refreshes itself** every 15 seconds and whenever the tab is returned
+  to. There is no refresh button. A read that fails offers 再試行.
+- **Scrolling pages both lists** — up through a conversation, down through the
+  list — and stops when a read returns fewer rows than it asked for.
+
 ## Development
 
 Put a dedicated Node **24.20.0** first in `PATH` (do not replace the system

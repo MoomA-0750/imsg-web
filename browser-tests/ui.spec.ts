@@ -255,6 +255,12 @@ test('keeps the composer on one line, the field and both round buttons the same 
   expect([add!.y, send!.y]).toEqual([field!.y, field!.y]);
   expect(add!.x).toBeLessThan(field!.x);
   expect(field!.x + field!.width).toBeLessThanOrEqual(send!.x);
+  // Nothing to drag: the field grows with what is written, and stops growing eventually.
+  await expect(page.getByLabel('メッセージを入力')).toHaveCSS('resize', 'none');
+  await page.getByLabel('メッセージを入力').fill(['一行目', '二行目', '三行目'].join('\n'));
+  await expect.poll(async () => (await box('メッセージを入力')).height).toBeGreaterThan(field!.height);
+  await page.getByLabel('メッセージを入力').fill(Array.from({ length: 40 }, (_, i) => `行 ${i}`).join('\n'));
+  await expect.poll(async () => (await box('メッセージを入力')).height).toBe(192);
 });
 test('attaches a file: uploads the raw bytes first, names it in the confirm, then sends by id', async ({ page }) => {
   const uploads: { url: string; type: string | undefined; bytes: number }[] = [];
@@ -310,7 +316,6 @@ test('previews each chosen file locally and sends several as several messages', 
   // One can be removed before sending.
   await rows.nth(2).getByRole('button', { name: /を外す$/ }).click();
   await expect(rows).toHaveCount(2);
-  await expect(page.getByText('添付は1件ずつ別のメッセージとして送られます。')).toBeVisible();
   await page.getByRole('button', { name: '送信', exact: true }).click();
   await expect(page.getByText('2件すべて送信しました。')).toBeVisible();
   expect(uploads).toHaveLength(2); // one upload per file, before a single send call

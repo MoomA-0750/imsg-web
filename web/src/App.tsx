@@ -124,6 +124,15 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
+  const field = useRef<HTMLTextAreaElement | null>(null);
+  // Grows to fit what is being written, so there is nothing to drag. Measured from zero, because a
+  // textarea's scrollHeight never shrinks below the height it is already given.
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = '0px';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text]);
   const clearFiles = () => { setFiles([]); if (picker.current) picker.current.value = ''; };
   /** Picking again adds to the selection instead of replacing it; the same file twice is ignored. */
   const addFiles = (chosen: File[]) => {
@@ -172,11 +181,10 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
     {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-wrap gap-2">{files.map((file, index) =>
       <li key={`${file.name}:${index}`}><Thumbnail file={file} disabled={busy} onRemove={() => setFiles(rest => rest.filter((_, at) => at !== index))} /></li>)}</ul>}
-    {files.length > 1 && <p className="m-0 text-muted text-[.8rem]">添付は1件ずつ別のメッセージとして送られます。</p>}
     {notice && <p className={`m-0 text-[.85rem] ${NOTICE_COLOUR[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     <div className="flex items-end gap-2">
       <button type="button" className={`${ROUND} border border-line bg-soft text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => picker.current?.click()} disabled={busy} aria-label="添付ファイルを追加"><Add24Regular /></button>
-      <textarea className="grow min-w-0 resize-y h-11 min-h-11 max-h-48 rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
+      <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
         value={text} onChange={event => setText(event.target.value)}
         onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
         placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
