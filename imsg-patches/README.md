@@ -55,17 +55,25 @@ rebuild. Without the flag, behaviour is unchanged.
 
 ## Build (on the Mac)
 
+The Mac that builds imsg does not need a checkout of this repository — a release
+carries `dist` and `scripts`, not the source. Copy the four patch files across and
+point at them. `$PATCHES` is wherever they landed; the order matters.
+
 ```sh
 git clone https://github.com/openclaw/imsg.git && cd imsg
 git checkout e2f5046
-git apply --check <repo>/imsg-patches/contact-batch/imsg-0.15.1.patch
-git apply <repo>/imsg-patches/contact-batch/imsg-0.15.1.patch
-git apply <repo>/imsg-patches/contact-source/imsg-0.15.4.patch
-git apply <repo>/imsg-patches/link-preview/imsg-0.15.4.patch
-git apply <repo>/imsg-patches/unread-mark/imsg-0.15.4.patch
+git apply --check "$PATCHES/contact-batch.patch"
+git apply "$PATCHES/contact-batch.patch"
+git apply "$PATCHES/contact-source.patch"
+git apply "$PATCHES/link-preview.patch"
+git apply "$PATCHES/unread-mark.patch"
 swift build -c release --product imsg --force-resolved-versions
 swift test --filter LinkPreview   # optional
 ```
+
+Patches 1 and 3 add files, so a tree that was only half patched has to be cleaned
+before applying again: `git checkout -- .` leaves those new files behind and they
+have to be deleted too.
 
 Use the real directory, `.build/out/Products/Release/`; `.build/release` is a
 symlink to it. Copy **`imsg` together with the two resource bundles beside it**
