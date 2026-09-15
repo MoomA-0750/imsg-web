@@ -31,9 +31,13 @@ const FACE_PNG = solidPNG(64, 64);
 // larger limit adds older messages above and leaves the bottom of the list unchanged.
 // Four messages to a day, counting back from today, so the list carries several day breaks and
 // the newest of them is labelled 今日 whenever the suite runs.
+// Morning, morning, afternoon, afternoon: two close pairs with a long quiet in between, so each
+// day carries a day break and a resumed-after-a-pause break.
+const SLOTS = [[15, 0], [14, 40], [9, 20], [9, 5]];
 const dayOf = n => {
   const date = new Date();
-  date.setHours(9 + (n % 4), (n * 7) % 60, 0, 0);
+  const [hour, minute] = SLOTS[(n - 1) % 4];
+  date.setHours(hour, minute, 0, 0);
   date.setDate(date.getDate() - Math.floor((n - 1) / 4));
   return date.toISOString();
 };

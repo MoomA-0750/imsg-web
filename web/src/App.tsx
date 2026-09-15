@@ -11,6 +11,8 @@ const NEAR_EDGE = 240;
 const NEAR_BOTTOM = 48;
 /** How far the conversation slides aside to show the times. */
 const REVEAL_MAX = 72;
+/** A pause this long earns a line of its own, the way Messages breaks up a quiet afternoon. */
+const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
 const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-xs';
 const CENTRED = 'min-h-screen grid place-items-center p-5';
@@ -589,11 +591,14 @@ export function App() {
             const corners = message.isFromMe
               ? (runs ? 'rounded-[15px_4px_4px_15px]' : 'rounded-[15px_15px_4px_15px]')
               : (runs ? 'rounded-[4px_15px_15px_4px]' : 'rounded-[15px_15px_15px_4px]');
-            // A day opens with its own line rather than every message repeating the date.
+            // A line goes in where a day begins, and where a conversation resumes after a pause,
+            // rather than every message repeating the date.
             const at = readDate(message.createdAt), was = readDate(previous?.createdAt ?? null);
-            const opensDay = at !== null && (was === null ? index === 0 || previous === undefined : dayKey(at) !== dayKey(was));
+            const newDay = at !== null && (was === null ? index === 0 || previous === undefined : dayKey(at) !== dayKey(was));
+            const resumed = at !== null && was !== null && at.getTime() - was.getTime() >= BREAK_GAP_MS;
+            const opensDay = newDay || resumed;
             return [
-            ...(opensDay ? [<DayBreak key={`day-${message.id}`} at={at} />] : []),
+            ...(opensDay ? [<DayBreak key={`day-${message.id}`} at={at!} day={newDay} />] : []),
             <li key={message.id} className={`msg relative flex items-end gap-2 ${index === 0 || opensDay ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
               {facing && (same(next)
                 ? <span className="shrink-0 w-7" aria-hidden="true" />
@@ -693,10 +698,14 @@ function Avatar({ name: rawName, avatarId, size = 'w-11 h-11 text-[.9rem]' }: { 
     style={{ backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
 }
 
-/** Where one day ends and the next begins, with the time the next one opened at. */
-function DayBreak({ at }: { at: Date }) {
+/**
+ * Where a day begins, or where a conversation picks up again after a long enough pause. The day is
+ * named only when it has changed: repeating 今日 down one afternoon says nothing the time does not.
+ */
+function DayBreak({ at, day }: { at: Date; day: boolean }) {
   return <li className="day-break my-7 text-center text-[.78rem] text-muted">
-    <strong className="text-ink">{dayLabel(at)}</strong> <time dateTime={at.toISOString()}>{TIME.format(at)}</time>
+    {day && <><strong className="text-ink">{dayLabel(at)}</strong> </>}
+    <time dateTime={at.toISOString()}>{TIME.format(at)}</time>
   </li>;
 }
 

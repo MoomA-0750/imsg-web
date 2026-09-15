@@ -240,10 +240,17 @@ test('marks where a day begins instead of stamping every bubble', async ({ page 
   await login(page);
   await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
   await expect(page.locator('.messages > li.msg')).toHaveCount(50);
-  // Four messages to a day: 13 days, so 13 breaks, and no bubble carries a stamp of its own.
-  await expect(page.locator('.messages > li.day-break')).toHaveCount(13);
+  // Four messages to a day, two in the morning and two in the afternoon: 13 day breaks and a
+  // further 12 where the afternoon picks up again. No bubble carries a stamp of its own.
+  const breaks = page.locator('.messages > li.day-break');
+  await expect(breaks).toHaveCount(25);
   await expect(page.locator('.bubble time')).toHaveCount(0);
-  await expect(page.locator('.messages > li.day-break').last()).toContainText('今日');
+  // A new day is named; a pause within one is only a time, since the day has already been said.
+  await expect(breaks.filter({ has: page.locator('strong') })).toHaveCount(13);
+  await expect(breaks.filter({ hasText: '今日' })).toHaveCount(1);
+  const resumed = breaks.filter({ hasNot: page.locator('strong') });
+  await expect(resumed).toHaveCount(12);
+  await expect(resumed.first()).toHaveText(/^\d+:\d\d$/); // the day was already named above it
   // The oldest day opens with its break, and every break is followed by the day it opens.
   const rows = page.locator('.messages > li');
   expect(await rows.first().getAttribute('class')).toContain('day-break');
