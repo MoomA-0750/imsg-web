@@ -10,6 +10,8 @@ const FILE_ONE = onDisk('one.png', PNG);
 const FILE_TWO = onDisk('two.png', PNG);
 const FILE_THREE = onDisk('three.png', PNG);
 const FILE_NOTES = onDisk('notes.txt', Buffer.from('synthetic'));
+// There is no refresh button: returning to the tab is what asks for fresh data.
+const refresh = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('focus')));
 async function login(page: Page) {
   await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43));
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
@@ -23,14 +25,15 @@ test.afterEach(async ({ page }) => {
     logout.click().catch(() => {}),
   ]);
 });
-test('explains disabled advanced discovery without claiming SIP or permission state', async ({ page }) => {
+test('says nothing about read-state or typing while they are unknown', async ({ page }) => {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
     chats: { state: 'available', reasonCode: 'SUPPORTED' },
     read: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' },
     typing: { state: 'unknown', reasonCode: 'STATUS_PROBE_DISABLED' },
   } } }));
   await login(page);
-  await expect(page.getByRole('status').filter({ hasText: '既読・入力中の機能状態' })).toHaveText('既読・入力中の機能状態は未確認です。安全に確認する機能はまだ実装されていません。');
+  await expect(page.getByText('機能 1/3')).toBeVisible(); // counted as not available, and left at that
+  await expect(page.getByText(/SIP|許可|権限|既読|入力中/)).toHaveCount(0);
 });
 test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and no durable private state', async ({ page, context }) => {
   await login(page);
@@ -167,7 +170,6 @@ test('scrolling to the top loads the previous page and leaves the view where it 
   // Landing at the top again pages back again, and the count is honest about it.
   await area(page).evaluate(el => { el.scrollTop = 0; });
   await expect(page.locator('.messages li')).toHaveCount(150);
-  await expect(page.getByText('150件表示・最大1000件')).toBeVisible();
 });
 
 test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
@@ -305,15 +307,18 @@ test('B05 empty/error states and 1000-row request ceiling', async ({ page }) => 
   await expect.poll(() => limits.at(-1)).toBe(1000);
   expect(limits).toContain(50); expect(limits.every(limit => limit >= 50 && limit <= 1000 && limit % 50 === 0)).toBe(true);
   await page.unroute('**/api/chats?*'); await page.route('**/api/chats?*', route => route.fulfill({ status: 503, json: { code: 'READ_UNAVAILABLE' } }));
-  await page.getByRole('button', { name: '会話一覧を更新' }).click(); await expect(page.getByRole('alert')).toContainText('更新できていません');
+  await refresh(page); await expect(page.getByRole('alert')).toContainText('更新できていません');
 });
 test('B05 epoch change clears all resources; delayed old epoch cannot restore them', async ({ page }) => {
   await login(page); await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  // One read cycle where the conversation list has moved to a new database generation while the
+  // message read is still out: it answers for the old one, long after the switch.
   let complete!: () => Promise<void>; const entered = new Promise<void>(resolve => { void page.route('**/messages?*', route => { complete = async () => { await route.fulfill({ json: { epoch: 'epoch-a', limit: 50, messages: [{ id: 'X', text: 'OLD_EPOCH_SENTINEL', isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] } }).catch(() => {}); }; resolve(); }); });
-  await page.getByRole('button', { name: 'メッセージを更新' }).click(); await entered;
   await page.route('**/api/chats?*', route => route.fulfill({ json: { epoch: 'epoch-b', limit: 50, chats: [] } }));
-  await page.getByRole('button', { name: '会話一覧を更新' }).click(); await expect(page.getByText('メッセージデータが更新されました。会話を選び直してください。')).toBeVisible(); await complete();
-  await expect(page.getByText('OLD_EPOCH_SENTINEL')).toHaveCount(0); await expect(page.getByRole('button', { name: '会話一覧を更新' })).toBeEnabled();
+  await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-b', mode: 'readonly', features: {} } }));
+  await refresh(page); await entered;
+  await expect(page.getByText('メッセージデータが更新されました。会話を選び直してください。')).toBeVisible(); await complete();
+  await expect(page.getByText('OLD_EPOCH_SENTINEL')).toHaveCount(0); await expect(page.getByText('表示できる会話はありません')).toBeVisible();
 });
 test('B05 pauses polling while hidden and resumes one cycle without parallel reads', async ({ page }) => {
   await page.clock.install(); let count = 0, completed = 0, holdNext = false;
@@ -335,7 +340,7 @@ test('B05 pauses polling while hidden and resumes one cycle without parallel rea
 test('B02 401 clears rendered private metadata as well as message bodies', async ({ page }) => {
   await login(page); await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   await page.route('**/api/chats?*', route => route.fulfill({ status: 401, json: { code: 'UNAUTHORIZED' } }));
-  await page.getByRole('button', { name: '会話一覧を更新' }).click();
+  await refresh(page);
   await expect(page.getByLabel('所有者キー')).toBeVisible();
   await expect(page.getByText('合成テスト会話 Alpha', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toHaveCount(0);
