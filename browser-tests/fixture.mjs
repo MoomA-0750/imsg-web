@@ -26,6 +26,22 @@ function solidPNG(width, height) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.alloc((width * 3 + 1) * height))), chunk('IEND', Buffer.alloc(0))]);
 }
+/**
+ * A real, playable recording: uncompressed PCM with the 44-byte header that describes it. Made here
+ * rather than kept as a file so nothing in this repository is a sound anyone recorded.
+ */
+function toneWAV(seconds, rate = 8000) {
+  const frames = Math.round(seconds * rate);
+  const body = Buffer.alloc(frames * 2);
+  for (let n = 0; n < frames; n++) body.writeInt16LE(Math.round(8000 * Math.sin(2 * Math.PI * 440 * n / rate)), n * 2);
+  const head = Buffer.alloc(44);
+  head.write('RIFF', 0); head.writeUInt32LE(36 + body.length, 4); head.write('WAVE', 8);
+  head.write('fmt ', 12); head.writeUInt32LE(16, 16); head.writeUInt16LE(1, 20); head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(rate, 24); head.writeUInt32LE(rate * 2, 28); head.writeUInt16LE(2, 32); head.writeUInt16LE(16, 34);
+  head.write('data', 36); head.writeUInt32LE(body.length, 40);
+  return Buffer.concat([head, body]);
+}
+const VOICE_WAV = toneWAV(2);
 const TALL_PNG = solidPNG(240, 180);
 const FACE_PNG = solidPNG(64, 64);
 // Taller than any window it will be opened in, which is what a photograph from a phone is.
@@ -85,6 +101,9 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
         { emoji: '❤️', kind: 'love', senders: ['合成送信者 Alpha', '合成送信者 Beta'], fromMe: true, count: 3 },
         { emoji: '👍', kind: 'like', senders: ['合成送信者 Gamma'], fromMe: false, count: 1 },
       ], createdAt: today(9, 10), trimmed: false },
+    { id: 'N'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Zeta', avatarId: null,
+      attachments: [{ id: 'N'.repeat(43), kind: 'audio', sticker: false, preview: false }, { id: null, kind: 'audio', sticker: false, preview: false }],
+      link: null, replyTo: null, reactions: [], createdAt: today(9, 20), trimmed: false },
   ] : [
     { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
     { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: '2026-09-08T00:01:00Z', trimmed: false },
@@ -94,9 +113,11 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     // P is 400×2400, taller than the window; T (a thumbnail) and W are 240×180;
     // Q claims to be HEIC but is not decodable.
     const body = id === 'P'.repeat(43) ? PORTRAIT_PNG : id === 'T'.repeat(43) || id === 'W'.repeat(43) ? TALL_PNG
-      : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
+      : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : id === 'N'.repeat(43) ? VOICE_WAV : undefined;
     if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
-    return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
+    const type = id.startsWith('Q') ? 'image/heic' : id.startsWith('N') ? 'audio/wav' : 'image/png';
+    // Audio comes back seekable, as the real source does, so a player can move about inside it.
+    return { type, size: body.length, stream: Readable.from([body]), ...(type.startsWith('audio/') ? { seekable: body } : {}) };
   },
   async avatar(id) {
     if (id !== 'A'.repeat(43) && id !== 'B'.repeat(43)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
@@ -106,10 +127,12 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
 }, uploads: {
   // Synthetic upload sink: counts the streamed bytes, writes nothing, returns an opaque id.
   maxBytes: 100 * 1024 * 1024,
-  async accept(body, name) {
+  async accept(body, name, voice) {
     let bytes = 0;
     for await (const chunk of body) bytes += chunk.length;
-    return { id: 'U'.repeat(43), dir: '/synthetic', path: `/synthetic/${name ?? 'attachment'}`, name: name ?? 'attachment', bytes, created: 0 };
+    // A recording is re-encoded on a Mac; here it is only renamed, so a test can see it was told.
+    const given = voice ? `${String(name ?? 'attachment').replace(/\.[^.]{1,8}$/, '')}.m4a` : name ?? 'attachment';
+    return { id: 'U'.repeat(43), dir: '/synthetic', path: `/synthetic/${given}`, name: given, bytes, created: 0 };
   },
 }, sender: {
   // Synthetic in-process sender: never touches imsg or Messages. Outcome chosen by markers in the text.

@@ -106,6 +106,18 @@ one circle — one place each, a stranger's silhouette where there is no picture
 members arrive as bare handles with no name resolved, so those are matched on the
 handle instead: see `docs/real-data-findings.md` for the rule and what it hits.
 
+## Voice (2026-09-15)
+
+A voice message plays in place, and one can be recorded to send. Both directions
+go through `src/server/audio-convert.ts` and the system `afconvert`: what Messages
+records is CAF, which nothing outside Safari plays, and what a browser can record
+is uncompressed PCM, which is ten times the size it needs to be. Recording is an
+AudioWorklet at 16 kHz mono (`web/src/recorder.ts` and `pcm-worklet.js`), and what
+it produces waits with the other attachments rather than being sent by itself.
+
+The attachment route now answers a byte range for audio, because a player will not
+offer to move about a recording unless the server says parts can be asked for.
+
 ## The unread count (2026-09-15)
 
 `unread_count` counted every message with `is_read = 0` over a conversation's

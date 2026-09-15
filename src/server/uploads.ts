@@ -1,9 +1,10 @@
 import { createWriteStream } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
+import type { AudioConverter } from './audio-convert.js';
 import { WebError } from './web-error.js';
 
 /** Streamed straight to disk, so a large attachment never sits in memory or inflates through base64. */
@@ -32,6 +33,8 @@ export function safeFileName(raw: string | undefined): string {
 export type UploadStoreOptions = {
   /** A project-owned 0700 directory; each upload gets its own subdirectory inside it. */
   dir: string;
+  /** Converts a recording to AAC. Absent: the recording is sent as the PCM it arrived as. */
+  audio?: AudioConverter;
   maxBytes?: number;
   maxPending?: number;
   ttlMs?: number;
@@ -45,7 +48,7 @@ export class UploadStore {
   get maxBytes(): number { return this.options.maxBytes ?? UPLOAD_MAX_BYTES; }
   #now(): number { return (this.options.now ?? Date.now)(); }
 
-  async accept(body: Readable, rawName: string | undefined): Promise<Upload> {
+  async accept(body: Readable, rawName: string | undefined, voice = false): Promise<Upload> {
     await this.sweep();
     if (this.#pending.size >= (this.options.maxPending ?? MAX_PENDING)) throw new WebError('UPLOAD_LIMIT', 429);
     const id = randomBytes(32).toString('base64url');
@@ -72,9 +75,30 @@ export class UploadStore {
       await rm(dir, { recursive: true, force: true });
       throw error instanceof WebError ? error : new WebError('UPLOAD_FAILED', 400);
     }
-    const upload: Upload = { id, dir, path, name, bytes, created: this.#now() };
+    const upload = voice ? await this.#compress({ id, dir, path, name, bytes, created: this.#now() }) : { id, dir, path, name, bytes, created: this.#now() };
     this.#pending.set(id, upload);
     return upload;
+  }
+
+  /**
+   * A recording arrives as raw PCM, because that is all a browser can make without a codec it does
+   * not have. It leaves as AAC: a tenth of the size, and what a phone expects to be handed. The
+   * name goes with it, since imsg stages the file under its last path component and that is what
+   * the other end sees. A conversion that will not happen is not a failure — the PCM is sendable,
+   * just larger — so the upload stands either way.
+   */
+  async #compress(upload: Upload): Promise<Upload> {
+    const converter = this.options.audio;
+    if (!converter) return upload;
+    try {
+      const input = await readFile(upload.path);
+      const output = await converter.convert(`${upload.id}:${upload.bytes}`, async () => input, 'audio/wav');
+      const name = `${upload.name.replace(/\.[^.]{1,8}$/, '')}.m4a`;
+      const path = join(upload.dir, name);
+      await writeFile(path, output, { mode: 0o600 });
+      if (path !== upload.path) await rm(upload.path, { force: true });
+      return { ...upload, path, name, bytes: output.length };
+    } catch { return upload; }
   }
 
   /** One-shot: a given upload can only be consumed by a single send. */

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { request as httpRequest } from 'node:http';
 import type { FastifyInstance } from 'fastify';
 import { Auth, hashKey } from '../src/server/auth.js';
-import { checkedOrigin, createApp } from '../src/server/http.js';
+import { byteRange, checkedOrigin, createApp } from '../src/server/http.js';
 import { Readable } from 'node:stream';
 import type { ChatSnapshot, HistorySnapshot, ReadSource } from '../src/shared/web-types.js';
 import type { AttachmentSource } from '../src/server/attachments.js';
@@ -19,6 +19,8 @@ const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id:
 const IMAGE_ID = 'I'.repeat(43);
 const AVATAR_ID = 'V'.repeat(43);
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
+const AUDIO_ID = 'S'.repeat(43);
+const SOUND = Buffer.from('0123456789abcdef');
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 
@@ -31,6 +33,7 @@ async function fixture() {
     capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' } } })),
     close: vi.fn<ReadSource['close']>(async () => {}),
     attachment: vi.fn<AttachmentSource['attachment']>(async id => {
+      if (id === AUDIO_ID) return { type: 'audio/mp4', size: SOUND.length, stream: Readable.from([SOUND]), seekable: SOUND };
       if (id !== IMAGE_ID) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
       return { type: 'image/png', size: PNG.length, stream: Readable.from([PNG]) };
     }),
@@ -328,6 +331,55 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
   });
 });
 
+
+describe('a recording can be moved about in, and one can be uploaded', () => {
+  it('reads a single byte range and refuses one past the end', () => {
+    expect(byteRange(undefined, 16)).toBeUndefined();
+    expect(byteRange('bytes=0-', 16)).toEqual({ start: 0, end: 15 });
+    expect(byteRange('bytes=4-9', 16)).toEqual({ start: 4, end: 9 });
+    expect(byteRange('bytes=10-99', 16)).toEqual({ start: 10, end: 15 }); // clipped to what there is
+    expect(byteRange('bytes=-5', 16)).toEqual({ start: 11, end: 15 });    // the last five
+    expect(byteRange('bytes=16-', 16)).toBe('unsatisfiable');
+    expect(byteRange('bytes=9-4', 16)).toBe('unsatisfiable');
+    // Anything else is answered in full rather than argued with, as an unaware server would.
+    for (const odd of ['bytes=1-2, 5-6', 'items=0-1', 'bytes=', 'bytes=x-y', '']) expect(byteRange(odd, 16)).toBeUndefined();
+    expect(byteRange('bytes=0-', 0)).toBeUndefined(); // nothing to range over
+  });
+
+  it('serves a recording whole, or the part a player asks for, and says parts may be asked for', async () => {
+    const f = await fixture();
+    const { cookie } = await f.login();
+    const whole = await f.app.inject({ url: `/api/attachments/${AUDIO_ID}`, headers: { host: HOST, cookie } });
+    expect(whole.statusCode).toBe(200);
+    expect(whole.headers['accept-ranges']).toBe('bytes');
+    expect(whole.headers['content-type']).toBe('audio/mp4');
+    expect(whole.rawPayload).toEqual(SOUND);
+
+    const part = await f.app.inject({ url: `/api/attachments/${AUDIO_ID}`, headers: { host: HOST, cookie, range: 'bytes=4-7' } });
+    expect(part.statusCode).toBe(206);
+    expect(part.headers['content-range']).toBe(`bytes 4-7/${SOUND.length}`);
+    expect(part.headers['content-length']).toBe('4');
+    expect(part.rawPayload).toEqual(Buffer.from('4567'));
+    // Still nothing that could run: the same sandbox as any other attachment.
+    expect(part.headers['content-security-policy']).toBe("default-src 'none'; sandbox");
+
+    const past = await f.app.inject({ url: `/api/attachments/${AUDIO_ID}`, headers: { host: HOST, cookie, range: 'bytes=99-' } });
+    expect(past.statusCode).toBe(416);
+    expect(past.headers['content-range']).toBe(`bytes */${SOUND.length}`);
+
+    // An image is not offered in parts; it is read from end to end or not at all.
+    const image = await f.app.inject({ url: `/api/attachments/${IMAGE_ID}`, headers: { host: HOST, cookie, range: 'bytes=0-1' } });
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['accept-ranges']).toBeUndefined();
+  });
+
+  it('closes every device but the microphone, and that only to this page', async () => {
+    const f = await fixture();
+    const policy = (await f.app.inject({ url: '/health', headers: { host: HOST } })).headers['permissions-policy'];
+    expect(policy).toContain('microphone=(self)');
+    expect(policy).toContain('camera=()');
+  });
+});
 
 describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
   async function sendFixture(mode: 'off' | 'dry-run' | 'live') {

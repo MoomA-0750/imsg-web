@@ -8,11 +8,12 @@ import type { Capability } from '../server/capabilities.js';
 export type ChatView = { id: string; name: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; trimmed: boolean; preview: PreviewView | null; faces: (string | null)[] };
 export type PreviewView = { text: string; trimmed: boolean; fromMe: boolean };
 /**
- * `id` is set only for an image the server will serve at `/api/attachments/:id`:
- * the file on this Mac, or with `preview` Messages' cached thumbnail of an image
- * that was never downloaded. Paths and file names are never sent.
+ * `id` is set only for something the server will serve at `/api/attachments/:id`:
+ * an image or a recording on this Mac, or with `preview` Messages' cached
+ * thumbnail of an image that was never downloaded. Paths and file names are
+ * never sent.
  */
-export type AttachmentView = { id: string | null; kind: 'image' | 'video' | 'file'; sticker: boolean; preview: boolean };
+export type AttachmentView = { id: string | null; kind: 'image' | 'audio' | 'video' | 'file'; sticker: boolean; preview: boolean };
 /** A link preview Messages stored when the link was sent. `url` is always absolute http(s). */
 export type LinkView = { url: string; title: string; summary: string; siteName: string; image: AttachmentView | null };
 /** The message this one replies to: who wrote it and a clipped quote. No identifiers are sent. */

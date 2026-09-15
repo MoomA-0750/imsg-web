@@ -10,7 +10,8 @@ history with 15-second refresh, opening on the newest message and paging as the
 owner scrolls; images from attachments that are on the Mac,
 or Messages' cached thumbnail when the image was never downloaded;
 contact pictures from the address book, with initials where there is none, and a
-group wearing its members' faces gathered in one circle;
+group wearing its members' faces gathered in one circle; voice messages played in
+place, and recording one to send;
 link cards from the preview Messages stored; the message a reply answers and
 the tapbacks on a message; sending text and attachments (off by default; see
 `docs/operations.md`); a responsive UI. Not implemented: sending replies or
@@ -50,6 +51,17 @@ owner every time:
   a picture that was never downloaded cannot open any larger, so clicking it says
   so over the picture for a couple of seconds. Nothing is written under a
   thumbnail otherwise: the two look alike until you try.
+- **A voice message plays where it sits**, with a bar that fills as it goes and
+  moves to wherever it is pressed. Messages records these as CAF, which nothing
+  outside Safari plays, so the Mac re-encodes one to AAC the first time it is
+  played and keeps that; the recording itself is never altered.
+- **Recording is a button, not a hold.** With nothing written, the button on the
+  right offers the microphone; it becomes the send button as soon as there is
+  something to send. What was recorded waits with the other attachments — listen
+  back, throw it away, or write something to go with it — and sending it is a
+  separate act. A browser can only write uncompressed PCM, so the Mac re-encodes
+  a recording to AAC on the way through: about a tenth of the size, and what a
+  phone expects to be handed. It stops itself after five minutes.
 - **Times are not printed on every message.** A line marks where each day begins
   and where a conversation resumes after an hour's quiet;
   dragging the conversation to the left uncovers the time of every message beside

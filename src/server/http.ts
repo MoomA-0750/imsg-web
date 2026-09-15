@@ -12,12 +12,34 @@ import type { Upload } from './uploads.js';
 import { sendCapability } from './capabilities.js';
 
 /** What the HTTP layer needs of the upload store. */
-export interface UploadSink { accept(body: Readable, name: string | undefined): Promise<Upload>; readonly maxBytes: number }
+export interface UploadSink { accept(body: Readable, name: string | undefined, voice?: boolean): Promise<Upload>; readonly maxBytes: number }
 
 const COOKIE = '__Host-imsg_session';
-// `blob:` in img-src is only for previewing an attachment the owner just chose: a blob URL can only
-// be minted by this page for its own data, so it admits no third-party content. Everything else stays 'self'.
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
+// `blob:` in img-src and media-src is only for playing back an attachment or a recording the owner
+// just made: a blob URL can only be minted by this page for its own data, so it admits no
+// third-party content. Everything else stays 'self'.
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' blob:; media-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'self'";
+// The microphone is the one device this page asks for, and only when the owner starts a recording.
+// Naming the rest closes them to this page and anything it could ever embed.
+const PERMISSIONS = 'microphone=(self), camera=(), geolocation=(), payment=(), usb=(), midi=(), display-capture=()';
+/**
+ * A single `bytes=` range, the only form a media player sends. Undefined means the whole thing:
+ * anything unparseable is answered in full rather than argued with, which is what a server that
+ * does not recognise a range header would do anyway.
+ */
+export function byteRange(header: string | undefined, size: number): { start: number; end: number } | 'unsatisfiable' | undefined {
+  const match = /^bytes=(\d*)-(\d*)$/.exec((header ?? '').trim());
+  if (!match || size === 0) return undefined;
+  const [, from, to] = match;
+  if (from === '' && to === '') return undefined;
+  // `bytes=-500`: the last 500 bytes.
+  const start = from === '' ? Math.max(0, size - Number(to)) : Number(from);
+  const end = from === '' || to === '' ? size - 1 : Math.min(Number(to), size - 1);
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return undefined;
+  if (start >= size || start > end) return 'unsatisfiable';
+  return { start, end };
+}
+
 export function checkedOrigin(value: string): URL {
   const u = new URL(value);
   if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
@@ -34,7 +56,7 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
   app.addHook('onRequest', (request, reply, done) => {
     for (const [name, value] of Object.entries({
       'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer',
-      'content-security-policy': CSP,
+      'content-security-policy': CSP, 'permissions-policy': PERMISSIONS,
     })) reply.header(name, value);
     if (active >= 32) { reply.code(429).send({ code: 'BUSY' }); return; }
     active++;
@@ -119,9 +141,21 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     const id = (request.params as { id: string }).id;
     if (!tokenValid(id)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     const file = await options.source.attachment(id, request.headers.accept);
-    // The type comes from a fixed image allowlist. The response may not run anything even if opened directly.
-    return reply.type(file.type).header('content-length', file.size).header('content-disposition', 'inline')
-      .header('content-security-policy', "default-src 'none'; sandbox").send(file.stream);
+    // The type comes from a fixed allowlist of images and audio. The response may not run anything
+    // even if opened directly.
+    reply.type(file.type).header('content-disposition', 'inline').header('content-security-policy', "default-src 'none'; sandbox");
+    if (!file.seekable) return reply.header('content-length', file.size).send(file.stream);
+    // A player moves about a recording by asking for the part it wants, and will not offer to at
+    // all unless the answer says parts can be asked for.
+    reply.header('accept-ranges', 'bytes');
+    const span = byteRange(request.headers.range, file.seekable.length);
+    if (span === 'unsatisfiable') return reply.code(416).header('content-range', `bytes */${file.seekable.length}`).send();
+    // Streamed, not handed over as bytes: a buffer would meet the response cap that bounds JSON,
+    // and a recording is not a response to be read.
+    if (!span) return reply.header('content-length', file.seekable.length).send(Readable.from([file.seekable]));
+    const part = file.seekable.subarray(span.start, span.end + 1);
+    return reply.code(206).header('content-range', `bytes ${span.start}-${span.end}/${file.seekable.length}`)
+      .header('content-length', part.length).send(Readable.from([part]));
   });
   app.get('/api/avatars/:id', { exposeHeadRoute: false }, async (request, reply) => {
     const id = (request.params as { id: string }).id;
@@ -164,8 +198,10 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
       app.addContentTypeParser('application/octet-stream', (_request, payload, done) => { done(null, payload); });
       app.post('/api/uploads', async request => {
         spend(request);
-        const name = (request.query as Record<string, unknown>).name;
-        const upload = await uploads.accept(request.body as Readable, typeof name === 'string' ? name : undefined);
+        const query = request.query as Record<string, unknown>;
+        const name = query.name;
+        // A recording says so, because only a recording should be re-encoded on the way through.
+        const upload = await uploads.accept(request.body as Readable, typeof name === 'string' ? name : undefined, query.voice === '1');
         // Only an opaque id and what the server made of the name; never a path.
         return { uploadId: upload.id, bytes: upload.bytes, name: upload.name };
       });

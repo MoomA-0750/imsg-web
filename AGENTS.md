@@ -19,9 +19,13 @@ approved.
   which a page could submit cross-site), streamed straight to a private 0700
   directory, bounded, and deleted after the send. Everything else stays
   JSON-only. imsg takes one file per send, so several attachments are sent as
-  several messages, stopping at the first that does not go. `img-src` allows
-  `blob:` so a chosen file can be previewed locally before sending; a blob URL
-  is minted by the page for its own data and admits no third-party content. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
+  several messages, stopping at the first that does not go. A recording is the
+  one upload the server alters: `?voice=1` re-encodes it from the PCM a browser
+  can write to AAC, with `afconvert`, and a failure there sends the PCM instead.
+  `img-src` and `media-src` allow `blob:` so a chosen file or a recording can be
+  played back locally before sending; a blob URL is minted by the page for its
+  own data and admits no third-party content. `Permissions-Policy` closes every
+  device to the page except the microphone, which recording needs. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
   and validates without dispatching. Do not enable live sending, and do not
   perform a real send, without the owner's approval each time. The composer
   sends immediately (no confirmation step) at the owner's request; one send at a

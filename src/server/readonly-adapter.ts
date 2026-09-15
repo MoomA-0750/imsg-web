@@ -22,7 +22,22 @@ function webUrl(v: unknown): string | null {
   if (typeof v !== 'string' || v.length > 2048) return null;
   try { const url = new URL(v); return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password ? url.href : null; } catch { return null; }
 }
-const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: text(a.mime_type).toLowerCase(), missing: a.missing !== false, sticker: a.is_sticker === true });
+/**
+ * Messages records no mime type for a voice message — only a UTI — so these say what those UTIs
+ * mean. Nothing is decided on the strength of this: it only gets the attachment as far as being
+ * offered, and the bytes are read and judged for themselves before anything is served.
+ */
+const AUDIO_UTI: Record<string, string> = {
+  'com.apple.coreaudio-format': 'audio/x-caf',
+  'com.apple.m4a-audio': 'audio/mp4',
+  'public.mpeg-4-audio': 'audio/mp4',
+  'public.mp3': 'audio/mpeg',
+  'org.3gpp.adaptive-multi-rate-audio': 'audio/amr',
+  'com.microsoft.waveform-audio': 'audio/wav',
+  'public.aiff-audio': 'audio/aiff',
+  'public.aifc-audio': 'audio/aiff',
+};
+const attachment = (a: Record<string, unknown>): Attachment => ({ path: text(a.original_path), type: text(a.mime_type).toLowerCase() || AUDIO_UTI[text(a.uti).toLowerCase()] || '', missing: a.missing !== false, sticker: a.is_sticker === true });
 /**
  * A threaded reply, and only that. `reply_to_guid` is not one: Messages sets it on
  * ordinary messages too, usually to the one just before, so trusting it turns every

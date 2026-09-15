@@ -1,6 +1,7 @@
 import { CSSProperties, FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Person24Filled, Send24Filled } from '@fluentui/react-icons';
+import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
+import { RECORD_MAX_MS, RecorderError, VoiceRecorder } from './recorder';
 
 const PAGE = 50;
 const MAX = 1000;
@@ -66,7 +67,7 @@ function dateLabel(value: string | null): string {
   return Number.isNaN(date.valueOf()) ? '日時不明' : new Intl.DateTimeFormat('ja-JP', { dateStyle: 'short', timeStyle: 'short' }).format(date);
 }
 
-const ATTACHMENT_LABEL = { image: '画像', video: '動画', file: '添付ファイル' } as const;
+const ATTACHMENT_LABEL = { image: '画像', audio: '音声', video: '動画', file: '添付ファイル' } as const;
 /** One bubble's worth of a message: a picture, the words, or a link's card. */
 type Part = { key: string; media: AttachmentView } | { key: string; text: true } | { key: string; link: LinkView; host: string };
 const SHELL = 'bubble border border-line shadow-[0_2px_8px_#0f1f3a0f] overflow-hidden';
@@ -97,7 +98,14 @@ function webHost(url: string): string | null {
 function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: AttachmentView; shape: string; tone: string; quote: ReactNode; tail: ReactNode; onOpen: (item: AttachmentView) => void }) {
   const [failed, setFailed] = useState(false);
   const [asked, setAsked] = useState(0);
-  if (item.id && !failed) {
+  if (item.kind === 'audio' && item.id && !failed) {
+    return <div className={`${SHELL} ${shape} ${tone} ${PAD} w-fit`}>
+      {quote}
+      <AudioPlayer src={`/api/attachments/${encodeURIComponent(item.id)}`} onFail={() => setFailed(true)} label="音声メッセージ" />
+      {tail}
+    </div>;
+  }
+  if (item.kind !== 'audio' && item.id && !failed) {
     const image = <img className={`attachment-image block max-w-full h-auto ${item.sticker ? 'sticker max-h-32' : 'max-h-96'}`}
       src={`/api/attachments/${encodeURIComponent(item.id)}`}
       alt={item.preview ? '添付画像（元の画像はこのMacにありません）' : '添付画像'}
@@ -114,11 +122,73 @@ function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: Attachm
       {tail && <div className={`${PAD} pt-[.4rem]`}>{tail}</div>}
     </div>;
   }
-  const reason = item.preview || !item.id ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です' : 'この画面では表示できません') : 'このブラウザでは表示できない形式です';
+  const reason = item.preview || !item.id
+    ? (item.kind === 'image' ? 'このMacに保存されていないか、表示できない形式です'
+      : item.kind === 'audio' ? 'このMacに保存されていないか、再生できない形式です'
+      : 'この画面では表示できません')
+    : item.kind === 'audio' ? 'このブラウザでは再生できない形式です' : 'このブラウザでは表示できない形式です';
   return <div className={`${SHELL} ${shape} ${tone} ${PAD}`}>
     {quote}
     <p className="attachment m-0 text-muted text-[.9em]">{ATTACHMENT_LABEL[item.kind]}（{reason}）</p>
     {tail}
+  </div>;
+}
+
+/** mm:ss, the way a length of talking is always written. An unknown length says so rather than lying. */
+function clock(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '--:--';
+  const whole = Math.floor(seconds);
+  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+/**
+ * A voice message, played where it sits. The bar is the length of the recording and fills as it
+ * plays; pressing anywhere along it moves to that point, which is the whole reason to draw a bar
+ * rather than a spinner. Only one plays at a time — the browser is told to pause the others.
+ *
+ * The file itself is fetched only when it is played, so a conversation full of voice messages costs
+ * nothing to scroll past. Audio the Mac cannot convert never arrives, and the bubble says so.
+ */
+function AudioPlayer({ src, onFail, compact, label = '録音' }: { src: string; onFail: () => void; compact?: boolean; label?: string }) {
+  const sound = useRef<HTMLAudioElement | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [at, setAt] = useState(0);
+  const [length, setLength] = useState(Number.NaN);
+  const done = Number.isFinite(length) && length > 0 ? Math.min(1, at / length) : 0;
+
+  const toggle = () => {
+    const el = sound.current;
+    if (!el) return;
+    if (el.paused) {
+      for (const other of document.querySelectorAll('audio')) if (other !== el) other.pause();
+      void el.play().catch(() => onFail());
+    } else el.pause();
+  };
+  /** Where along the bar it was pressed, as a share of the whole. */
+  const seek = (event: PointerEvent<HTMLDivElement>) => {
+    const el = sound.current;
+    if (!el || !Number.isFinite(length) || length <= 0) return;
+    const box = event.currentTarget.getBoundingClientRect();
+    el.currentTime = Math.min(length, Math.max(0, (event.clientX - box.left) / box.width * length));
+    setAt(el.currentTime);
+  };
+
+  const time = <span className="voice-time text-muted text-[.75rem] tabular-nums">{clock(playing || at > 0 ? at : length)}</span>;
+  return <div className={`voice flex items-center gap-3 ${compact ? '' : 'min-w-[12rem] max-w-[16rem]'}`}>
+    <button type="button" className="shrink-0 grid place-items-center w-9 h-9 p-0 rounded-full border-0 bg-accent text-white"
+      onClick={toggle} aria-label={`${label}を${playing ? '一時停止' : '再生'}`}>{playing ? <Pause24Filled /> : <Play24Filled />}</button>
+    {compact ? time : <div className="grow min-w-0">
+      <div className="voice-bar h-1.5 rounded-full bg-accent-soft cursor-pointer" onPointerDown={seek}>
+        <div className="h-full rounded-full bg-accent" style={{ width: `${done * 100}%` }} />
+      </div>
+      <span className="block mt-1">{time}</span>
+    </div>}
+    {/* preload="metadata" so the bar has a length before anyone presses play, but no audio is fetched. */}
+    <audio ref={sound} src={src} preload="metadata"
+      onLoadedMetadata={event => setLength(event.currentTarget.duration)}
+      onTimeUpdate={event => setAt(event.currentTarget.currentTime)}
+      onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+      onEnded={() => { setPlaying(false); setAt(0); }} onError={onFail} />
   </div>;
 }
 
@@ -290,37 +360,76 @@ const NOTICE_COLOUR = { ok: 'text-accent-strong', warn: 'text-warn', error: 'tex
 /** The composer's two circular buttons, sized to sit level with the field beside them. */
 const ROUND = 'shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full';
 
+/** Something waiting to be sent: a file the owner picked, or a recording they just made here. */
+type Chosen = { file: File; voice?: true; seconds?: number };
+
 /**
  * A chosen file as a rounded square, with the file name only as its tooltip and alternative text —
- * the picture is the identification. The object URL is revoked when the choice changes.
+ * the picture is the identification. A recording has no picture to show, so it shows its length and
+ * plays back instead. The object URL is revoked when the choice changes.
  */
-function Thumbnail({ file, onRemove, disabled }: { file: File; onRemove: () => void; disabled: boolean }) {
+function Thumbnail({ chosen, onRemove, disabled }: { chosen: Chosen; onRemove: () => void; disabled: boolean }) {
+  const { file } = chosen;
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const playable = chosen.voice === true;
   useEffect(() => {
-    if (!file.type.startsWith('image/')) return;
+    if (!file.type.startsWith('image/') && !playable) return;
     const created = URL.createObjectURL(file);
     setUrl(created); setFailed(false);
     return () => { URL.revokeObjectURL(created); setUrl(null); };
-  }, [file]);
+  }, [file, playable]);
   const shape = 'composer-thumb block w-16 h-16 rounded-xl border border-line object-cover bg-soft';
   const label = `${file.name}（${sizeLabel(file.size)}）`;
+  const remove = <button type="button" aria-label={`${playable ? '録音' : file.name} を外す`} disabled={disabled}
+    className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full border border-line bg-surface text-muted enabled:hover:text-ink"
+    onClick={onRemove}><Dismiss12Regular /></button>;
+  if (playable) {
+    // Listened back to before it goes: a recording nobody can hear first is a message sent blind.
+    return <div className="composer-voice relative shrink-0 h-16 flex items-center px-3 rounded-xl border border-line bg-soft" title={label}>
+      {url && !failed
+        ? <AudioPlayer src={url} onFail={() => setFailed(true)} compact />
+        : <span className="text-[.7rem] text-muted">音声</span>}
+      {remove}
+    </div>;
+  }
   return <div className="relative shrink-0" title={label}>
     {/* Nothing is uploaded to draw this; a format the browser cannot decode (HEIC) falls back to a word. */}
     {url && !failed
       ? <img className={shape} src={url} alt={label} onError={() => setFailed(true)} />
       : <span className={`${shape} placeholder flex items-center justify-center text-center text-[.65rem] text-muted`}>{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>}
-    <button type="button" aria-label={`${file.name} を外す`} disabled={disabled}
-      className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full border border-line bg-surface text-muted enabled:hover:text-ink"
-      onClick={onRemove}><Dismiss12Regular /></button>
+    {remove}
   </div>;
 }
 
-function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadIds: string[]) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
+/**
+ * What is heard while it is being heard: the time so far, and a bar that answers to the room. The
+ * level is what says the microphone is actually picking something up — a timer alone counts just as
+ * happily through silence.
+ */
+function RecordingStrip({ since, level }: { since: number; level: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(timer);
+  }, []);
+  const seconds = Math.max(0, (now - since) / 1000);
+  return <div className="recording grow min-w-0 h-11 flex items-center gap-3 px-4 rounded-[1.375rem] border border-field bg-surface" role="status" aria-label="録音中">
+    <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-danger animate-pulse" aria-hidden="true" />
+    <span className="recording-time shrink-0 text-[.9rem] tabular-nums">{clock(seconds)}</span>
+    <span className="grow min-w-0 h-1.5 rounded-full bg-accent-soft overflow-hidden" aria-hidden="true">
+      <span className="block h-full rounded-full bg-accent transition-[width] duration-100" style={{ width: `${Math.min(100, Math.round(level * 140))}%` }} />
+    </span>
+  </div>;
+}
+
+function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadIds: string[]) => Promise<SendResult>; upload: (file: File, voice?: boolean) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
   const [text, setText] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<Chosen[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'warn' | 'error'; text: string } | null>(null);
+  const [recording, setRecording] = useState<{ since: number; level: number } | null>(null);
+  const recorder = useRef<VoiceRecorder | null>(null);
   const picker = useRef<HTMLInputElement | null>(null);
   const field = useRef<HTMLTextAreaElement | null>(null);
   // Grows to fit what is being written, so there is nothing to drag. Measured from zero, because a
@@ -337,14 +446,56 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
     const merged = [...files];
     let overflow = false;
     for (const file of chosen) {
-      if (merged.some(have => have.name === file.name && have.size === file.size && have.lastModified === file.lastModified)) continue;
+      if (merged.some(have => have.file.name === file.name && have.file.size === file.size && have.file.lastModified === file.lastModified)) continue;
       if (merged.length >= FILES_MAX) { overflow = true; continue; }
-      merged.push(file);
+      merged.push({ file });
     }
     setFiles(merged);
     setNotice(overflow ? { kind: 'warn', text: `添付は${FILES_MAX}件までです。超えた分は追加していません。` } : null);
   };
-  useEffect(() => { setText(''); setFiles([]); setBusy(false); setNotice(null); }, [chat.id]);
+
+  /**
+   * Recording runs until it is stopped, or until the ceiling. Whatever was heard becomes another
+   * attachment, so it is listened back to, removed, or sent with a message like anything else — and
+   * nothing is sent by the act of recording it.
+   */
+  const startRecording = async () => {
+    if (recorder.current || busy) return;
+    if (files.length >= FILES_MAX) { setNotice({ kind: 'warn', text: `添付は${FILES_MAX}件までです。` }); return; }
+    const machine = new VoiceRecorder(level => setRecording(now => (now ? { ...now, level } : now)));
+    recorder.current = machine;
+    setNotice(null);
+    try {
+      await machine.start();
+      setRecording({ since: Date.now(), level: 0 });
+    } catch (error) {
+      recorder.current = null;
+      const problem = error instanceof RecorderError ? error.problem : 'failed';
+      setNotice({ kind: 'error', text: problem === 'denied' ? 'マイクの使用が許可されていません。ブラウザーの設定で許可してください。'
+        : problem === 'unsupported' ? 'このブラウザーでは録音できません。' : '録音を開始できませんでした。' });
+    }
+  };
+  const finishRecording = async (keep: boolean) => {
+    const machine = recorder.current;
+    recorder.current = null; setRecording(null);
+    const heard = await machine?.stop().catch(() => null);
+    if (!keep || !heard) return;
+    if (heard.seconds < 0.4) { setNotice({ kind: 'warn', text: '短すぎたので録音は残していません。' }); return; }
+    setFiles(rest => [...rest, { file: heard.file, voice: true, seconds: heard.seconds }]);
+  };
+  // Leaving the conversation, or the screen, closes the microphone: it must never outlive the view
+  // that opened it.
+  useEffect(() => {
+    setText(''); setFiles([]); setBusy(false); setNotice(null); setRecording(null);
+    return () => { const machine = recorder.current; recorder.current = null; void machine?.stop(); };
+  }, [chat.id]);
+  // The ceiling stops it by itself, so a recording left running does not grow without end.
+  useEffect(() => {
+    if (!recording) return;
+    const timer = setTimeout(() => { void finishRecording(true); }, Math.max(0, RECORD_MAX_MS - (Date.now() - recording.since)));
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the start of a recording matters here
+  }, [recording?.since]);
 
   const dispatch = async () => {
     if (busy) return;
@@ -352,7 +503,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
     try {
       // Every attachment is uploaded first; the send then refers to them by opaque ids.
       const ids: string[] = [];
-      for (const file of files) ids.push((await upload(file)).uploadId);
+      for (const chosen of files) ids.push((await upload(chosen.file, chosen.voice)).uploadId);
       const result = await send(chat.id, text, ids);
       // Several attachments are several messages, so a batch can stop part way; say exactly how far it got.
       const done = result.sent ?? 0, total = result.total ?? 0;
@@ -371,22 +522,37 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   };
 
   const ready = text.trim() !== '' || files.length > 0;
+  const listening = recording !== null;
   // No confirmation step: the owner asked for sending to be immediate. Double submission is still
   // held off while one is in flight, and every outcome is reported honestly.
   const submit = () => { if (ready && !busy) void dispatch(); };
   return <form className="composer shrink-0 flex flex-col gap-2 px-4 py-[.7rem] border-t border-line bg-surface" onSubmit={event => { event.preventDefault(); submit(); }}>
     {mode === 'dry-run' && <p className="m-0 text-muted text-[.8rem]" role="status">テスト送信モードです。実際には送信されません。</p>}
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
-    {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-wrap gap-2">{files.map((file, index) =>
-      <li key={`${file.name}:${index}`}><Thumbnail file={file} disabled={busy} onRemove={() => setFiles(rest => rest.filter((_, at) => at !== index))} /></li>)}</ul>}
+    {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-wrap gap-2">{files.map((chosen, index) =>
+      <li key={`${chosen.file.name}:${index}`}><Thumbnail chosen={chosen} disabled={busy} onRemove={() => setFiles(rest => rest.filter((_, at) => at !== index))} /></li>)}</ul>}
     {notice && <p className={`m-0 text-[.85rem] ${NOTICE_COLOUR[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     <div className="flex items-end gap-2">
-      <button type="button" className={`${ROUND} border border-line bg-soft text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => picker.current?.click()} disabled={busy} aria-label="添付ファイルを追加"><Add24Regular /></button>
-      <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
-        value={text} onChange={event => setText(event.target.value)}
-        onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
-        placeholder={chat.service === 'iMessage' ? 'iMessage' : 'SMS'} rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
-      <button type="submit" className={`${ROUND} border-0 bg-accent text-white enabled:hover:bg-accent-strong`} disabled={busy || !ready} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
+      {/* While recording the left button abandons it instead of opening the file picker: the two
+          things one could mean there are keep it and drop it, and both are within reach. */}
+      <button type="button" className={`${ROUND} border border-line bg-soft ${listening ? 'text-danger' : 'text-accent-strong'} enabled:hover:bg-accent-soft`}
+        onClick={() => (listening ? void finishRecording(false) : picker.current?.click())} disabled={busy}
+        aria-label={listening ? '録音をやめる' : '添付ファイルを追加'}>{listening ? <Dismiss12Regular /> : <Add24Regular />}</button>
+      {listening
+        ? <RecordingStrip since={recording.since} level={recording.level} />
+        : <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
+            value={text} onChange={event => setText(event.target.value)}
+            onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
+            placeholder={chat.service === 'iMessage' ? 'iMessage' : 'SMS'} rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />}
+      {/* One button on the right, saying what it would do now: record while there is nothing to
+          send, stop while recording, and send once there is something. */}
+      {/* Each is its own element rather than one button that changes its mind: reusing the node
+          would carry a press made on one of them into whatever it became next. */}
+      {listening
+        ? <button key="stop" type="button" className={`${ROUND} border-0 bg-danger text-white`} onClick={() => void finishRecording(true)} aria-label="録音を終える"><Stop24Filled /></button>
+        : ready
+          ? <button key="send" type="submit" className={`${ROUND} border-0 bg-accent text-white enabled:hover:bg-accent-strong`} disabled={busy} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
+          : <button key="record" type="button" className={`${ROUND} border border-line bg-soft text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => void startRecording()} disabled={busy} aria-label="音声を録音"><Mic24Filled /></button>}
     </div>
   </form>;
 }
@@ -540,11 +706,12 @@ export function App() {
     return api<SendResult>('/api/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': token }, body: JSON.stringify(body) });
   }, [session]);
 
-  const uploadFile = useCallback(async (file: File): Promise<{ uploadId: string }> => {
+  const uploadFile = useCallback(async (file: File, voice?: boolean): Promise<{ uploadId: string }> => {
     const token = session?.csrfToken;
     if (!token) { const error = new Error('no session') as ApiError; error.status = 401; throw error; }
     // Raw bytes, streamed: no base64 inflation. octet-stream cannot come from an HTML form, so CSRF cover is unchanged.
-    return api<{ uploadId: string }>(`/api/uploads?name=${encodeURIComponent(file.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-CSRF-Token': token }, body: file });
+    // A recording says so, so the server knows it may re-encode this one and nothing else.
+    return api<{ uploadId: string }>(`/api/uploads?name=${encodeURIComponent(file.name)}${voice ? '&voice=1' : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-CSRF-Token': token }, body: file });
   }, [session]);
 
   useEffect(() => {

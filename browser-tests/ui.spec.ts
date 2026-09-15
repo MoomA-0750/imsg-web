@@ -483,9 +483,9 @@ test('pulls a run of messages together and gives room where the speaker changes'
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
   await expect(page.getByText('返信の合成本文')).toBeVisible();
   // A name at the head of each run, not on each bubble: Delta opens, the day between opens Delta
-  // again, then Epsilon.
-  await expect(page.locator('.messages > li.msg')).toHaveCount(4);
-  await expect(page.locator('.messages .sender')).toHaveCount(3); // outside the bubble, above it
+  // again, then Epsilon, then Zeta's voice message.
+  await expect(page.locator('.messages > li.msg')).toHaveCount(5);
+  await expect(page.locator('.messages .sender')).toHaveCount(4); // outside the bubble, above it
 });
 
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
@@ -603,6 +603,12 @@ test('keeps the composer on one line, the field and both round buttons the same 
   await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'SMS');
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
   await expect(page.getByLabel('メッセージを入力')).toHaveAttribute('placeholder', 'iMessage');
+  // With nothing to send, the button on the right offers to record instead; it becomes the send
+  // button the moment there is something to send.
+  await expect(page.getByLabel('音声を録音')).toBeVisible();
+  await expect(page.getByLabel('送信')).toHaveCount(0);
+  await page.getByLabel('メッセージを入力').fill('送信ボタンが出るための合成本文');
+  await expect(page.getByLabel('音声を録音')).toHaveCount(0);
   const [add, field, send] = [await box('添付ファイルを追加'), await box('メッセージを入力'), await box('送信')];
   expect([add!.height, send!.height]).toEqual([field!.height, field!.height]);
   expect(add!.width).toBe(add!.height); // circular
@@ -618,6 +624,87 @@ test('keeps the composer on one line, the field and both round buttons the same 
   await page.getByLabel('メッセージを入力').fill(Array.from({ length: 40 }, (_, i) => `行 ${i}`).join('\n'));
   await expect.poll(async () => (await box('メッセージを入力')).height).toBe(192);
 });
+test('records from the microphone, keeps it as an attachment to listen back to, and sends it as one', async ({ page }) => {
+  const uploads: { url: string; bytes: number }[] = [];
+  await page.route('**/api/uploads?*', async route => {
+    uploads.push({ url: route.request().url(), bytes: (route.request().postDataBuffer() ?? Buffer.alloc(0)).length });
+    await route.continue();
+  });
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByLabel('メッセージを入力')).toBeVisible();
+
+  await page.getByRole('button', { name: '音声を録音' }).click();
+  // While it is recording the field gives way to the time so far, and both ways out are in reach.
+  const strip = page.locator('.recording');
+  await expect(strip).toBeVisible();
+  await expect(page.getByLabel('メッセージを入力')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '録音をやめる' })).toBeVisible();
+  await expect.poll(() => strip.locator('.recording-time').textContent()).not.toBe('0:00');
+  await page.getByRole('button', { name: '録音を終える' }).click();
+
+  // What was heard waits with the other attachments, playable, until it is sent or taken away.
+  const kept = page.locator('.composer-voice');
+  await expect(kept).toBeVisible();
+  await expect(page.getByLabel('メッセージを入力')).toBeVisible(); // the composer comes back as it was
+  const heard = kept.locator('audio');
+  await expect.poll(() => heard.evaluate(el => (el as HTMLAudioElement).duration > 0.3)).toBe(true);
+
+  await page.getByLabel('メッセージを入力').fill('録音に添える合成本文');
+  await page.getByRole('button', { name: '送信', exact: true }).click();
+  await expect(page.getByText('送信しました。')).toBeVisible();
+  // One upload, marked as a recording so the Mac may re-encode it, and big enough to be sound.
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0]!.url).toContain('voice=1');
+  expect(uploads[0]!.url).toContain(encodeURIComponent('ボイスメッセージ.wav'));
+  expect(uploads[0]!.bytes).toBeGreaterThan(4000); // a quarter-second of 16 kHz PCM, at least
+  await expect(page.locator('.composer-voice')).toHaveCount(0);
+});
+
+test('abandons a recording without keeping it, and closes the microphone either way', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await page.getByRole('button', { name: '音声を録音' }).click();
+  await expect(page.locator('.recording')).toBeVisible();
+  await page.getByRole('button', { name: '録音をやめる' }).click();
+  await expect(page.locator('.recording')).toHaveCount(0);
+  await expect(page.locator('.composer-voice')).toHaveCount(0); // nothing kept
+  await expect(page.getByLabel('メッセージを入力')).toBeVisible();
+  // Leaving the conversation while recording stops it too, rather than leaving a microphone open.
+  await page.getByRole('button', { name: '音声を録音' }).click();
+  await expect(page.locator('.recording')).toBeVisible();
+  await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click();
+  await expect(page.locator('.recording')).toHaveCount(0);
+});
+
+test('plays a voice message where it sits, and says so when there is nothing to play', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
+  const voice = page.locator('.messages .voice');
+  await expect(voice).toHaveCount(1);
+  const sound = voice.locator('audio');
+  // Only what it takes to draw the bar is fetched until it is played.
+  await expect(sound).toHaveAttribute('preload', 'metadata');
+  await expect.poll(() => sound.evaluate(el => (el as HTMLAudioElement).duration)).toBeGreaterThan(1);
+  await expect(voice.locator('.voice-time')).toHaveText('0:02');
+
+  await voice.getByRole('button', { name: '音声メッセージを再生' }).click();
+  await expect(voice.getByRole('button', { name: '音声メッセージを一時停止' })).toBeVisible();
+  await expect.poll(() => sound.evaluate(el => (el as HTMLAudioElement).currentTime)).toBeGreaterThan(0);
+  await voice.getByRole('button', { name: '音声メッセージを一時停止' }).click();
+  await expect(voice.getByRole('button', { name: '音声メッセージを再生' })).toBeVisible();
+  // Pressing along the bar moves to that point, which is why it is a bar.
+  const bar = voice.locator('.voice-bar');
+  const box = (await bar.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect.poll(() => sound.evaluate(el => (el as HTMLAudioElement).currentTime)).toBeGreaterThan(1);
+
+  // The recording that is not on this Mac has no player, and says what it is instead.
+  await expect(page.locator('.messages .attachment', { hasText: '音声' })).toHaveCount(1);
+});
+
 test('attaches a file: uploads the raw bytes first, names it in the confirm, then sends by id', async ({ page }) => {
   const uploads: { url: string; type: string | undefined; bytes: number }[] = [];
   const sends: Record<string, unknown>[] = [];

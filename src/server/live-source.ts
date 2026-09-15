@@ -2,8 +2,9 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView, ReplyView, ReactionView, PreviewView } from '../shared/web-types.js';
-import { CONVERTIBLE, IMAGE_TYPES, PREVIEW_TYPE, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
+import { AUDIO_TYPES, CONVERTIBLE, IMAGE_TYPES, PREVIEW_TYPE, openAttachment, openAudio, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
 import type { ContactPhotos } from './contact-photos.js';
+import type { AudioConverter } from './audio-convert.js';
 import type { ImageConverter } from './image-convert.js';
 import { ReadonlyAdapter, type Attachment, type Reaction } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
@@ -63,6 +64,8 @@ export type SourceOptions = {
   converter?: ImageConverter;
   /** Contact pictures from the address book. Absent: conversations show initials only. */
   photos?: ContactPhotos;
+  /** Absent: a voice message that no browser plays is served as it is, for one that can. */
+  audio?: AudioConverter;
 };
 export function clip(text: string, length: number) {
   const cut = text.length > length;
@@ -173,19 +176,22 @@ export class LiveSource implements ReadSource, AttachmentSource {
     const { dir, name } = parse(rel);
     return name ? join(messages, 'Caches', 'Previews', 'Attachments', dir, `${name}-preview.ktx`) : undefined;
   }
-  /** Remembers a servable image under an opaque ID; anything else gets no ID. Convertible entries are also collected. */
+  /** Remembers a servable image or recording under an opaque ID; anything else gets no ID. Convertible entries are also collected. */
   #attachmentView(a: Attachment, key: string, previews: ReadonlySet<string>, convertible: FileEntry[]): AttachmentView {
-    const kind = a.type.startsWith('image/') ? 'image' : a.type.startsWith('video/') ? 'video' : 'file';
+    const kind = a.type.startsWith('image/') ? 'image' : a.type.startsWith('audio/') ? 'audio' : a.type.startsWith('video/') ? 'video' : 'file';
     const preview = this.#previewPath(a);
     let entry: FileEntry | undefined;
     if (preview && previews.has(preview)) entry = { path: preview, type: PREVIEW_TYPE, root: 'previews' };
     else if (kind === 'image' && !a.missing && IMAGE_TYPES.has(a.type) && isAbsolute(a.path)) entry = { path: a.path, type: a.type, root: 'attachments' };
+    else if (kind === 'audio' && !a.missing && AUDIO_TYPES.has(a.type) && isAbsolute(a.path)) entry = { path: a.path, type: a.type, root: 'attachments' };
     if (!entry) return { id: null, kind, sticker: a.sticker, preview: false };
     const id = this.#id('attachment', key);
     this.#files.delete(id); this.#files.set(id, entry);
     if (this.#files.size > MAX_REMEMBERED_ATTACHMENTS) this.#files.delete(this.#files.keys().next().value!);
+    // Audio is converted when it is played rather than ahead of time: a conversation can hold many
+    // voice messages, and the owner listens to one.
     if (CONVERTIBLE.has(entry.type)) convertible.push(entry);
-    return { id, kind: 'image', sticker: a.sticker, preview: entry.root === 'previews' };
+    return { id, kind: AUDIO_TYPES.has(entry.type) ? 'audio' : 'image', sticker: a.sticker, preview: entry.root === 'previews' };
   }
   /** Opaque chat id → the chat's guid, only if it belongs to the current epoch. For the send path. */
   resolveChatGuid(id: string): string | undefined { return this.#map.get(id)?.guid; }
@@ -358,6 +364,7 @@ export class LiveSource implements ReadSource, AttachmentSource {
     const file = this.#files.get(id);
     if (!file) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     const root = await this.#root(file.root);
+    if (AUDIO_TYPES.has(file.type)) return openAudio(root, file.path, file.type, this.options.audio);
     return openAttachment(root, file.path, file.type, this.options.converter && { converter: this.options.converter, accept });
   }
   capabilities(): Promise<CapabilitySnapshot> {

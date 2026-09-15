@@ -69,6 +69,26 @@ resolves no names for those (`docs/real-data-findings.md` has the matching rule)
 an id is an HMAC over the key, bound to the current database generation, and only the bytes
 are served, from `/api/avatars/:id`. No name, handle or contact identifier crosses.
 
+## Audio, in both directions
+
+One converter, `src/server/audio-convert.ts`, runs the system `afconvert` and produces AAC in an
+MPEG-4 container. Both ends need it for the same reason — what each side can produce is not what the
+other can read:
+
+- **Playing.** Messages records a voice message as CAF (`com.apple.coreaudio-format`, with no mime
+  type at all in chat.db, which is why the UTI is mapped in the adapter). No browser outside Safari
+  plays it. It is converted when it is first played rather than ahead of time: a conversation can
+  hold many voice messages and the owner listens to one.
+- **Recording.** A browser can write uncompressed PCM and nothing else without a codec it does not
+  have, so the page records 16 kHz mono WAV and the upload route re-encodes it — about a tenth of
+  the size, and the format a phone expects. The upload says it is a recording (`voice=1`); nothing
+  else is ever re-encoded. A conversion that fails is not an error: the PCM is still sendable.
+
+Audio is served whole rather than streamed from the file, so the route can answer a byte range for
+it. That is what makes a recording seekable: a player will not offer to move about one unless the
+server advertises that parts may be asked for. The part is still sent as a stream, so it is not
+subject to the response-size cap that bounds JSON.
+
 ## Styling
 
 Tailwind v4, through `@tailwindcss/vite`; no CDN, no config file. `web/src/style.css`

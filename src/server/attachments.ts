@@ -2,6 +2,8 @@ import { constants } from 'node:fs';
 import { open, realpath, type FileHandle } from 'node:fs/promises';
 import { sep } from 'node:path';
 import { Readable } from 'node:stream';
+import type { AudioConverter } from './audio-convert.js';
+import { AUDIO_OUT_TYPE } from './audio-convert.js';
 import type { ImageConverter } from './image-convert.js';
 import { WebError } from './web-error.js';
 
@@ -11,8 +13,21 @@ import { WebError } from './web-error.js';
  * they are converted to JPEG for browsers that do not accept them (see image-convert).
  */
 export const IMAGE_TYPES: ReadonlySet<string> = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif', 'image/jxl']);
+/**
+ * The audio a conversation can hold. A voice message is a CAF, which only Apple's
+ * own players read, so those are converted (see audio-convert); the rest are what
+ * any browser plays. Nothing here can carry script.
+ */
+export const AUDIO_TYPES: ReadonlySet<string> = new Set(['audio/mp4', 'audio/mpeg', 'audio/wav', 'audio/x-caf', 'audio/amr', 'audio/aiff']);
+export const PLAYABLE_AUDIO: ReadonlySet<string> = new Set(['audio/mp4', 'audio/mpeg', 'audio/wav']);
 export const MAX_ATTACHMENT_BYTES = 32 * 1024 * 1024;
-export type AttachmentFile = { type: string; size: number; stream: Readable };
+/**
+ * `seekable` is the whole file in hand, set only for audio: a player can only move about inside a
+ * recording if the server will answer for a part of it, and it can only do that from the bytes
+ * themselves. Audio is small — Messages' own voice messages are a few kilobytes — so holding one is
+ * cheaper than the machinery for slicing a file twice over.
+ */
+export type AttachmentFile = { type: string; size: number; stream: Readable; seekable?: Buffer };
 /** `accept` is the browser's Accept header, used only to choose a format. */
 export interface AttachmentSource { attachment(id: string, accept?: string): Promise<AttachmentFile> }
 
@@ -49,6 +64,23 @@ export function sniffImage(head: Buffer): string | undefined {
   return undefined;
 }
 
+/** Containers that hold audio. `ftyp` covers video too, so the kind still comes from what Messages declared. */
+const AUDIO_BRANDS = new Set(['M4A ', 'M4B ', 'mp42', 'mp41', 'isom', 'iso2', '3gp4', '3gp5', 'qt  ']);
+
+/** The type the bytes actually have, for audio, or undefined. As with images, the recorded type is not trusted. */
+export function sniffAudio(head: Buffer): string | undefined {
+  const ascii = (start: number, end: number) => head.toString('latin1', start, end);
+  if (ascii(0, 4) === 'caff') return 'audio/x-caf';
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 12) === 'WAVE') return 'audio/wav';
+  if (ascii(0, 4) === 'FORM' && (ascii(8, 12) === 'AIFF' || ascii(8, 12) === 'AIFC')) return 'audio/aiff';
+  if (ascii(0, 5) === '#!AMR') return 'audio/amr';
+  if (ascii(4, 8) === 'ftyp' && AUDIO_BRANDS.has(ascii(8, 12))) return 'audio/mp4';
+  if (ascii(0, 3) === 'ID3') return 'audio/mpeg';
+  // A bare MPEG frame: the 11 sync bits, then a layer and version that are not the reserved ones.
+  if (head[0] === 0xff && (head[1]! & 0xe0) === 0xe0 && (head[1]! & 0x18) !== 0x08 && (head[1]! & 0x06) !== 0x00) return 'audio/mpeg';
+  return undefined;
+}
+
 /** Whether an Accept header names this exact type with a nonzero quality; wildcards do not count. */
 export function accepts(accept: string | undefined, type: string): boolean {
   return (accept ?? '').slice(0, 2048).split(',').some(part => {
@@ -59,6 +91,10 @@ export function accepts(accept: string | undefined, type: string): boolean {
 }
 
 type Checked = { handle: FileHandle; real: string; size: number; key: string; actual: string };
+/** What a route will accept, and how it reads the bytes to see whether they are it. */
+type Media = { allowed(type: string): ReadonlySet<string>; sniff(head: Buffer): string | undefined };
+const images: Media = { allowed: type => (type === PREVIEW_TYPE ? new Set([PREVIEW_TYPE]) : IMAGE_TYPES), sniff: sniffImage };
+const audio: Media = { allowed: () => AUDIO_TYPES, sniff: sniffAudio };
 
 /**
  * Opens a file only if it really lies inside `root` after symlinks are
@@ -67,8 +103,8 @@ type Checked = { handle: FileHandle; real: string; size: number; key: string; ac
  * The caller owns the returned handle. Paths come from chat.db through imsg,
  * or are derived from them, and are never shown to the browser.
  */
-async function checked(root: string, path: string, type: string): Promise<Checked> {
-  const allowed = type === PREVIEW_TYPE ? new Set([PREVIEW_TYPE]) : IMAGE_TYPES;
+async function checked(root: string, path: string, type: string, media = images): Promise<Checked> {
+  const allowed = media.allowed(type);
   if (!allowed.has(type)) throw unavailable();
   let real: string;
   try { real = await realpath(path); } catch { throw unavailable(); }
@@ -80,7 +116,7 @@ async function checked(root: string, path: string, type: string): Promise<Checke
     if (!stat.isFile() || stat.size === 0 || stat.size > MAX_ATTACHMENT_BYTES) throw unavailable();
     const head = Buffer.alloc(16);
     const { bytesRead } = await handle.read(head, 0, head.length, 0);
-    const actual = sniffImage(head.subarray(0, bytesRead));
+    const actual = media.sniff(head.subarray(0, bytesRead));
     if (!actual || !allowed.has(actual)) throw unavailable();
     return { handle, real, size: stat.size, key: `${real}:${stat.size}:${stat.mtimeMs}`, actual };
   } catch (error) {
@@ -117,6 +153,31 @@ export async function openAttachment(root: string, path: string, type: string, c
     }
     // Read no more than was measured, so Content-Length stays true if the file grows.
     return { type: file.actual, size: file.size, stream: file.handle.createReadStream({ start: 0, end: file.size - 1 }) };
+  } catch (error) {
+    await file.handle.close().catch(() => {});
+    throw error instanceof WebError ? error : unavailable();
+  }
+}
+
+/**
+ * Serves audio, converting what no browser plays. A voice message is a CAF, and
+ * an older one is AMR inside it; both are Apple's own and neither plays outside
+ * Safari, so they go out as AAC. Without a converter the original is served
+ * anyway — an Apple browser can play it, and the rest simply cannot.
+ */
+export async function openAudio(root: string, path: string, type: string, converter?: AudioConverter): Promise<AttachmentFile> {
+  const file = await checked(root, path, type, audio);
+  const served = (kind: string, bytes: Buffer): AttachmentFile => ({ type: kind, size: bytes.length, stream: Readable.from([bytes]), seekable: bytes });
+  try {
+    const bytes = await readAll(file);
+    await file.handle.close();
+    if (!converter || PLAYABLE_AUDIO.has(file.actual)) return served(file.actual, bytes);
+    try {
+      return served(AUDIO_OUT_TYPE, await converter.convert(file.key, async () => bytes, file.actual));
+    } catch (error) {
+      if (error instanceof WebError && error.status === 429) throw error;
+      return served(file.actual, bytes);
+    }
   } catch (error) {
     await file.handle.close().catch(() => {});
     throw error instanceof WebError ? error : unavailable();

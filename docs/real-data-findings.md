@@ -192,6 +192,22 @@ member whether or not there is a picture, so the face still says how many people
 in there. Nothing but the pictures crosses to the browser: an id is an HMAC over the
 handle, which the browser never sees.
 
+**Voice messages (2026-09-15).** There are 3 in the owner's history, and the two
+attachments behind them carry **no mime type at all** — only the UTI
+`com.apple.coreaudio-format`, ending `.caf`, 1 and 4 KB. So audio cannot be
+recognised the way images are, and the UTI is mapped to a type in the adapter
+before anything is offered; the bytes are still read and judged for themselves
+before one is served. `message.is_audio_message` exists and is set on all three,
+but it is Messages' own flag, set by how the message was sent. Nothing sent
+through AppleScript can set it, so a recording sent from here arrives as an audio
+attachment that plays, not as a native voice bubble.
+
+`afconvert` (`/usr/bin/afconvert`, present on the M1) reads the format from the
+bytes rather than the name, reports failure honestly — exit 1, no output file,
+unlike `sips` — and converted 3 seconds of 16 kHz mono in 26 ms: 96 KB of PCM to
+12 KB of AAC at 48 kbps. Both directions were checked on files made for the
+purpose; no real attachment was read or converted.
+
 ## Known and not yet resolved
 
 - **Intel with a stale bridge lock.** The iMac also runs the owner's separate
