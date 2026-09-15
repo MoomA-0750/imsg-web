@@ -34,6 +34,14 @@ const FACE_PNG = solidPNG(64, 64);
 // Morning, morning, afternoon, afternoon: two close pairs with a long quiet in between, so each
 // day carries a day break and a resumed-after-a-pause break.
 const SLOTS = [[15, 0], [14, 40], [9, 20], [9, 5]];
+const clock = (back, hour, minute) => {
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  date.setDate(date.getDate() - back);
+  return date.toISOString();
+};
+const today = (hour, minute) => clock(0, hour, minute);
+const yesterday = (hour, minute) => clock(1, hour, minute);
 const dayOf = n => {
   const date = new Date();
   const [hour, minute] = SLOTS[(n - 1) % 4];
@@ -65,15 +73,15 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
       { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false, preview: false },
       { id: null, kind: 'image', sticker: false, preview: false }, { id: null, kind: 'video', sticker: false, preview: false },
       { id: 'T'.repeat(43), kind: 'image', sticker: false, preview: true },
-    ], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
-    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
-    { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, replyTo: null, reactions: [], createdAt: null, trimmed: false },
+    ], link: null, replyTo: null, reactions: [], createdAt: yesterday(9, 0), trimmed: false },
+    { id: 'L'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'https://example.invalid/synthetic-article', title: '合成リンクのタイトル', summary: '合成リンクの概要', siteName: '合成サイト', image: { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false } }, replyTo: null, reactions: [], createdAt: yesterday(9, 20), trimmed: false },
+    { id: 'J'.repeat(43), text: '危険なリンクの合成本文', isFromMe: false, sender: '合成送信者 Delta', avatarId: 'A'.repeat(43), attachments: [], link: { url: 'javascript:alert(1)', title: '開いてはいけない合成リンク', summary: '', siteName: '', image: null }, replyTo: null, reactions: [], createdAt: today(9, 0), trimmed: false },
     { id: 'R'.repeat(43), text: '返信の合成本文', isFromMe: false, sender: '合成送信者 Epsilon', avatarId: null, attachments: [], link: null,
       replyTo: { sender: '合成送信者 Epsilon', text: '元になった合成メッセージ', trimmed: true },
       reactions: [
         { emoji: '❤️', kind: 'love', senders: ['合成送信者 Alpha', '合成送信者 Beta'], fromMe: true, count: 3 },
         { emoji: '👍', kind: 'like', senders: ['合成送信者 Gamma'], fromMe: false, count: 1 },
-      ], createdAt: null, trimmed: false },
+      ], createdAt: today(9, 10), trimmed: false },
   ] : [
     { id: 'E'.repeat(43), text: id.startsWith('C') ? 'Alpha の合成本文 <img src="https://invalid.test/leak">' : 'Beta の合成本文', isFromMe: false, sender: '合成送信者 Hidden', avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false },
     { id: 'F'.repeat(43), text: '送信済みの合成メッセージです。', isFromMe: true, sender: null, avatarId: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: '2026-09-08T00:01:00Z', trimmed: false },

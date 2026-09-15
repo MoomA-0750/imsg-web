@@ -494,6 +494,9 @@ export function App() {
   }
 
   function choose(chat: ChatView) {
+    // Already here: clearing and reloading would only blank the conversation, and a second click
+    // on the same row does not even change `selected`, so nothing would fetch it back.
+    if (selectedId.current === chat.id) return;
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
@@ -577,6 +580,19 @@ export function App() {
   // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
   // the way Messages colours it. imsg reports the service per conversation, not per message.
   const sentTone = selected?.service === 'iMessage' ? 'sent-imessage bg-sent-imessage' : 'sent-other bg-sent-other';
+  /**
+   * Whether a line is drawn above the message at `index`, and whether it names a day. Asked of the
+   * next message as well as this one, because a run has to know where it ends, not only where it
+   * began.
+   */
+  const breakAt = (index: number) => {
+    const at = readDate(messages[index]?.createdAt ?? null);
+    const was = readDate(messages[index - 1]?.createdAt ?? null);
+    if (at === null || index >= messages.length) return { at, newDay: false, opens: false };
+    if (was === null) return { at, newDay: index === 0, opens: index === 0 };
+    const newDay = dayKey(at) !== dayKey(was);
+    return { at, newDay, opens: newDay || at.getTime() - was.getTime() >= BREAK_GAP_MS };
+  };
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
   return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
@@ -613,10 +629,14 @@ export function App() {
           {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
             style={{ transform: `translateX(${-reveal}px)`, transition: dragging.current ? 'none' : 'transform .18s ease' }}
             onPointerDown={onRevealDown} onPointerMove={onRevealMove} onPointerUp={endReveal} onPointerCancel={endReveal}>{messages.flatMap((message, index) => {
-            // A run is one person still talking: pulled close together, and named once at its start.
+            // A run is one person still talking without a break in between: pulled close together,
+            // named once at its start, and with a face at its foot. A line drawn across the
+            // conversation ends it — what comes after starts again, and says who is speaking.
             const previous = messages[index - 1], next = messages[index + 1];
             const same = (a: MessageView | undefined) => a !== undefined && a.isFromMe === message.isFromMe && a.sender === message.sender;
-            const runs = same(previous);
+            const here = breakAt(index), after = breakAt(index + 1);
+            const runs = same(previous) && !here.opens;
+            const endsRun = !same(next) || after.opens;
             const facing = selected.isGroup === true && !message.isFromMe;
             // What a message is made of, each piece in a bubble of its own: a picture is not a
             // sentence, and a card is not either, so neither belongs inside the words' padding.
@@ -628,18 +648,13 @@ export function App() {
                 ? [{ key: 'text', text: true as const }] : []),
               ...(message.link && host !== null ? [{ key: 'link', link: message.link, host }] : []),
             ];
-            // A line goes in where a day begins, and where a conversation resumes after a pause,
-            // rather than every message repeating the date.
-            const at = readDate(message.createdAt), was = readDate(previous?.createdAt ?? null);
-            const newDay = at !== null && (was === null ? index === 0 || previous === undefined : dayKey(at) !== dayKey(was));
-            const resumed = at !== null && was !== null && at.getTime() - was.getTime() >= BREAK_GAP_MS;
-            const opensDay = newDay || resumed;
+            const at = here.at;
             return [
-            ...(opensDay ? [<DayBreak key={`day-${message.id}`} at={at!} day={newDay} />] : []),
-            <li key={message.id} className={`msg relative flex items-end gap-2 ${index === 0 || opensDay ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
-              {facing && (same(next)
-                ? <span className="shrink-0 w-7" aria-hidden="true" />
-                : <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />)}
+            ...(here.opens ? [<DayBreak key={`day-${message.id}`} at={at!} day={here.newDay} />] : []),
+            <li key={message.id} className={`msg relative flex items-end gap-2 ${index === 0 || here.opens ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'}`}>
+              {facing && (endsRun
+                ? <Avatar name={message.sender ?? ''} avatarId={message.avatarId} size="w-7 h-7 text-[.7rem]" />
+                : <span className="shrink-0 w-7" aria-hidden="true" />)}
               <div className="flex flex-col min-w-0 max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)]">
               {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.15rem] ml-[.85rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
               <div className={`flex flex-col gap-1 ${message.isFromMe ? 'items-end' : 'items-start'}`}>

@@ -181,9 +181,10 @@ test('puts the sender’s face at the foot of their run in a group, and nowhere 
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
   await expect(page.getByText('返信の合成本文')).toBeVisible();
   const rows = page.locator('.messages > li.msg');
-  // Delta speaks three times, then Epsilon once: one face at the end of Delta's run, one for Epsilon.
-  await expect(rows.nth(0).locator('.chat-avatar')).toHaveCount(0);
-  await expect(rows.nth(1).locator('.chat-avatar')).toHaveCount(0);
+  // Delta speaks twice, then again the next day, then Epsilon. The day between ends the first run,
+  // so a face goes at its foot as well as at the foot of the two that follow.
+  await expect(rows.nth(0).locator('.chat-avatar')).toHaveCount(0); // still talking
+  await expect(rows.nth(1).locator('img.chat-avatar')).toHaveAttribute('src', /\/api\/avatars\//);
   await expect(rows.nth(2).locator('img.chat-avatar')).toHaveAttribute('src', /\/api\/avatars\//);
   await expect(rows.nth(3).locator('span.chat-avatar')).toHaveText('合E'); // no picture: initials
   // It sits at the foot of the bubble, not beside its top.
@@ -200,7 +201,10 @@ test('puts the sender’s face at the foot of their run in a group, and nowhere 
   const radius = (row: number) => rows.nth(row).locator('.bubble').first().evaluate(el => getComputedStyle(el).borderRadius);
   expect(await radius(0)).toBe('24px 24px 24px 4px'); // opens a run: only the foot is square
   expect(await radius(1)).toBe('4px 24px 24px 4px');  // carries on from the one above
+  expect(await radius(2)).toBe('24px 24px 24px 4px'); // a new day: it opens rather than carries on
   expect(await radius(3)).toBe('24px 24px 24px 4px'); // a new speaker opens again
+  // And the one after the line says who is speaking, as an opening should.
+  await expect(rows.nth(2).locator('.sender')).toHaveText('合成送信者 Delta');
 
   // A one-to-one conversation keeps its bubbles unadorned.
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
@@ -234,6 +238,24 @@ test('colours a sent message by the service it went out over', async ({ page }) 
   expect(await colour()).not.toBe(blue);
   // Only what was sent is coloured; what came in is not.
   await expect(page.locator('.bubble', { hasText: 'Beta の合成本文' })).not.toHaveClass(/sent-/);
+});
+
+test('clicking the conversation already open leaves it where it is', async ({ page }) => {
+  await login(page);
+  const row = page.getByRole('button', { name: /合成テスト会話 Alpha/ });
+  await row.click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  // A second click does not change what is selected, so nothing would fetch the messages back:
+  // it must not throw them away either.
+  await row.click();
+  await row.click();
+  await expect(page.getByText('メッセージはありません', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
+  // And moving away and back still reloads.
+  await page.getByRole('button', { name: /合成テスト会話 Beta/ }).click();
+  await expect(page.getByText('Beta の合成本文')).toBeVisible();
+  await row.click();
+  await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
 });
 
 test('gives a picture a bubble of its own, filled to the edges, apart from the words', async ({ page }) => {
@@ -346,9 +368,10 @@ test('pulls a run of messages together and gives room where the speaker changes'
   // In a group, the name is written once at the top of a run rather than over every bubble.
   await page.getByRole('button', { name: /合成グループ Gamma/ }).click();
   await expect(page.getByText('返信の合成本文')).toBeVisible();
-  // Three from one sender then one from another: a name at the head of each run, not on each bubble.
+  // A name at the head of each run, not on each bubble: Delta opens, the day between opens Delta
+  // again, then Epsilon.
   await expect(page.locator('.messages > li.msg')).toHaveCount(4);
-  await expect(page.locator('.messages .sender')).toHaveCount(2); // outside the bubble, above it
+  await expect(page.locator('.messages .sender')).toHaveCount(3); // outside the bubble, above it
 });
 
 test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
