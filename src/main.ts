@@ -7,6 +7,7 @@ import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
 import { adminCommand } from './server/admin.js';
+import { passwordProblem } from './server/auth.js';
 import { LiveSource } from './server/live-source.js';
 import { ImageConverter } from './server/image-convert.js';
 import { SendService, type SendMode } from './server/send-service.js';
@@ -17,6 +18,17 @@ import { startRuntime } from './server/runtime.js';
 // stdout contains a secret only for explicitly requested setup/rotation. No request logging.
 refuseTaintedLaunch();
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    size += (chunk as Buffer).length;
+    if (size > 4096) throw new Error();
+    chunks.push(chunk as Buffer);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 async function main() {
   const input = process.argv.slice(2), directory = process.env.IMSG_WEB_STATE_DIR;
   const command = input[0] === 'auth' && input.length === 2 ? input[1] === 'revoke-all' ? 'revoke' : input[1] : input.length === 1 ? input[0] : undefined;
@@ -26,6 +38,14 @@ async function main() {
   if (command === 'revoke' || command === 'rotate' || command === 'status') {
     const result = await adminCommand(store, command);
     process.stdout.write(command === 'rotate' ? `${result.key}\n` : command === 'status' ? `${JSON.stringify(result)}\n` : 'Sessions revoked.\n'); return;
+  }
+  // The password arrives on stdin, never in argv, where `ps` would show it to every process.
+  if (command === 'set-password') {
+    const password = (await readStdin()).split('\n', 1)[0] ?? '';
+    const problem = passwordProblem(password);
+    if (problem) { process.stderr.write(`${problem}\n`); process.exitCode = 1; return; }
+    await adminCommand(store, 'set-password', password);
+    process.stdout.write('Password set. Every session was signed out.\n'); return;
   }
   if (command !== 'serve') throw new Error();
   const executable = process.env.IMSG_WEB_IMSG_PATH, origin = process.env.IMSG_WEB_ORIGIN;

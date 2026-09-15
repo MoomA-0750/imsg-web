@@ -2,7 +2,7 @@
 
 A single-owner, self-hosted iMessage web UI for macOS, built on the
 [`imsg`](https://github.com/openclaw/imsg) CLI. Each Mac runs its own instance,
-reached over Tailscale and protected by an owner key. Reading is the core;
+reached over Tailscale and protected by a password the owner sets. Reading is the core;
 sending is a separate path that is off unless configured.
 
 Implemented: owner login, sessions and key rotation; conversation list and

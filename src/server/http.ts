@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { Auth, equal, tokenValid, type Session } from './auth.js';
+import { Auth, PASSWORD_MAX, equal, tokenValid, type Session } from './auth.js';
 import { WebError } from './web-error.js';
 import type { ReadSource } from '../shared/web-types.js';
 import type { AttachmentSource } from './attachments.js';
@@ -87,8 +87,9 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ code: 'NOT_FOUND' }));
   app.get('/health', async () => ({ alive: true }));
-  app.post('/api/session', { schema: { body: { type: 'object', additionalProperties: false, required: ['key'], properties: { key: { type: 'string', minLength: 43, maxLength: 43 } } } } }, async (request, reply) => {
-    const { cookie: value, session } = options.auth.login((request.body as { key: string }).key);
+  // Wide enough for a chosen password, bounded so a long one cannot make the server derive for ever.
+  app.post('/api/session', { schema: { body: { type: 'object', additionalProperties: false, required: ['key'], properties: { key: { type: 'string', minLength: 1, maxLength: PASSWORD_MAX } } } } }, async (request, reply) => {
+    const { cookie: value, session } = await options.auth.login((request.body as { key: string }).key);
     reply.setCookie(COOKIE, value, { path: '/', secure: true, httpOnly: true, sameSite: 'strict', maxAge: 7 * 86400 });
     return { csrfToken: session.csrf, mode: 'readonly' };
   });

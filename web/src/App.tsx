@@ -431,7 +431,7 @@ export function App() {
       const value = await api<Session>('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
       setKey(''); clearPrivate(); setSession(value);
     } catch (error) {
-      setLoginError((error as ApiError).status === 401 ? 'キーが正しくありません。' : (error as ApiError).status === 429 ? '試行回数が多すぎます。しばらく待ってください。' : 'ログインできませんでした。');
+      setLoginError((error as ApiError).status === 401 ? 'パスワードが正しくありません。' : (error as ApiError).status === 429 ? '試行回数が多すぎます。しばらく待ってください。' : 'ログインできませんでした。');
     } finally { setLoginBusy(false); }
   }
 
@@ -497,9 +497,9 @@ export function App() {
   if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="login-title">
     <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
     <h1 id="login-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
-    <p className="text-muted">所有者キーでログインしてください。このアプリはキーを保存しません（ブラウザーへの保存はご自身で選べます）。</p>
+    <p className="text-muted">入力したパスワードは、このアプリ側には残りません（ブラウザーへの保存はご自身で選べます）。</p>
     <form className="grid gap-3 mt-6" onSubmit={login}>
-      <label className="font-bold" htmlFor="owner-key">所有者キー</label>
+      <label className="font-bold" htmlFor="owner-key">パスワード</label>
       <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus />
       <button className="btn" disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>
       {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}

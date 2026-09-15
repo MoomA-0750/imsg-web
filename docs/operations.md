@@ -11,8 +11,8 @@ Browser -> Tailscale Serve HTTPS :443 -> http://127.0.0.1:8787 -> imsg rpc (read
 
 - The app binds loopback only. Never bind it to LAN or all interfaces, and never
   enable Funnel.
-- Tailscale gets you to the login page; the owner key is what gets you in. Do
-  not use Tailscale identity headers as authentication.
+- Tailscale gets you to the login page; the owner's secret is what gets you in.
+  Do not use Tailscale identity headers as authentication.
 - Host/Origin must be exactly `https://<host-fqdn>`.
 - HTTPS certificate issuance publishes the FQDN in Certificate Transparency
   logs.
@@ -55,11 +55,33 @@ The owner places it at `~/Library/LaunchAgents/local.imsg-web.readonly.plist`
 and loads it with `launchctl bootstrap gui/$(id -u) <plist>`. It starts at login
 and is not restarted automatically after a crash.
 
-## Owner key
+## Signing in
 
-The owner runs `setup` / `auth rotate` in their own terminal and keeps the key
-in a password manager. The key never goes into chat, logs, argv, environment or
-this repository.
+Two kinds of secret get the owner in, and only one is active at a time.
+
+- **A generated key** — 43 random characters, 256 bits. `setup` mints the first
+  one and `auth rotate` replaces it. Nothing can guess it, so the file holds a
+  plain SHA-256 of it.
+- **A password the owner chooses** — set with `auth set-password`, which reads it
+  from stdin so it never appears in argv where `ps` would show it to every
+  process. It must be at least 8 characters with a letter and a digit. Because a
+  chosen password *is* guessable, the file holds a salted scrypt derivation
+  (N=2^16, ~150 ms per attempt) rather than a bare hash.
+
+```sh
+printf '%s' 'the-password' | IMSG_WEB_STATE_DIR=<state> <release>/… set-password
+```
+
+Either way the secret never goes into chat, logs, argv, environment or this
+repository, and setting one signs every session out. A password is weaker than a
+generated key by a wide margin — 8 characters with a letter and a digit is about
+36^8 — so it rests on three things: the login limit of 20 attempts a minute, the
+scrypt cost if `owner.json` is ever stolen, and the app being reachable only
+from the tailnet. Losing the password is recoverable: `auth rotate` puts a fresh
+generated key in its place.
+
+`owner.json` still reads both forms, so a release can be deployed before a
+password is chosen without locking the owner out.
 
 ## Sending (optional, off by default)
 

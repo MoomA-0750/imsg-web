@@ -28,7 +28,7 @@ async function login(page: Page) {
     if (stillIn) return;
     shared = null; // the session was logged out or revoked by an earlier test
   }
-  await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43));
+  await page.goto('/'); await page.getByLabel('パスワード').fill('A'.repeat(43));
   await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   await expect(listed(page)).toBeVisible();
   shared = await page.context().cookies();
@@ -65,7 +65,7 @@ test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and n
   await page.screenshot({ path: 'test-results/synthetic-desktop.png', fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
   await expect(page.getByRole('button', { name: 'ログイン', exact: true })).toBeEnabled();
-  await expect(page.getByLabel('所有者キー')).toHaveValue('');
+  await expect(page.getByLabel('パスワード')).toHaveValue('');
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toHaveCount(0);
   expect((await page.request.get('/api/chats')).status()).toBe(401);
 });
@@ -376,7 +376,7 @@ test('B05 empty/error states, a pane too tall for one page, and the 1000-row cei
     const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null })) : [];
     return route.fulfill({ json: { epoch: 'epoch-a', limit, chats } });
   });
-  await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43)); await page.getByRole('button', { name: 'ログイン', exact: true }).click();
+  await page.goto('/'); await page.getByLabel('パスワード').fill('A'.repeat(43)); await page.getByRole('button', { name: 'ログイン', exact: true }).click();
   await expect(page.getByText('表示できる会話はありません')).toBeVisible();
   expect(limits.every(limit => limit === 50)).toBe(true); // an empty list never asks for a second page
   // A pane taller than one page of conversations cannot be scrolled, and scrolling is what asks
@@ -432,7 +432,7 @@ test('B02 401 clears rendered private metadata as well as message bodies', async
   await login(page); await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click(); await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   await page.route('**/api/chats?*', route => route.fulfill({ status: 401, json: { code: 'UNAUTHORIZED' } }));
   await refresh(page);
-  await expect(page.getByLabel('所有者キー')).toBeVisible();
+  await expect(page.getByLabel('パスワード')).toBeVisible();
   await expect(page.getByText('合成テスト会話 Alpha', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toHaveCount(0);
 });

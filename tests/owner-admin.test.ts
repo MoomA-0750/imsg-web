@@ -22,7 +22,7 @@ describe('B03 owner state and Unix administration / B08 shutdown', () => {
     const f = await setup();
     expect((await lstat(f.store.directory)).mode & 0o777).toBe(0o700);
     expect((await lstat(join(f.store.directory, 'owner.json'))).mode & 0o777).toBe(0o600);
-    expect(await f.store.load()).toBe(hashKey(f.key));
+    expect(await f.store.load()).toEqual({ kind: 'token', hash: hashKey(f.key) });
     expect(await readFile(join(f.store.directory, 'owner.json'), 'utf8')).not.toContain(f.key);
     await expect(f.store.setup()).rejects.toBeDefined();
     await chmod(join(f.store.directory, 'owner.json'), 0o644); await expect(f.store.load()).rejects.toMatchObject({ code: 'OWNER_UNSAFE' });
@@ -31,35 +31,59 @@ describe('B03 owner state and Unix administration / B08 shutdown', () => {
   });
   it('revoke/rotate operate only through private socket, invalidate all sessions; duplicate start never removes original socket/lock', async () => {
     const f = await setup(), admin = await startAdmin(f.store, f.auth); cleanups.push(() => admin.close(true));
-    const cookie = f.auth.login(f.key).cookie;
+    const cookie = (await f.auth.login(f.key)).cookie;
     expect((await lstat(join(f.store.directory, 'admin.sock'))).mode & 0o777).toBe(0o600);
     const inode = (await lstat(join(f.store.directory, 'admin.sock'))).ino;
     await expect(startAdmin(f.store, f.auth)).rejects.toBeDefined();
     expect((await lstat(join(f.store.directory, 'admin.sock'))).ino).toBe(inode);
     await adminCommand(f.store, 'revoke'); expect(f.auth.lookup(cookie)).toBeUndefined();
-    const old = f.auth.login(f.key).cookie, result = await adminCommand(f.store, 'rotate');
-    expect(f.auth.lookup(old)).toBeUndefined(); expect(await f.store.load()).toBe(hashKey(result.key!));
-    expect(() => f.auth.login(f.key)).toThrow(); expect(f.auth.login(result.key).cookie).toBeTruthy();
+    const old = (await f.auth.login(f.key)).cookie, result = await adminCommand(f.store, 'rotate');
+    expect(f.auth.lookup(old)).toBeUndefined(); expect(await f.store.load()).toEqual({ kind: 'token', hash: hashKey(result.key!) });
+    await expect(f.auth.login(f.key)).rejects.toThrow(); expect((await f.auth.login(result.key)).cookie).toBeTruthy();
     for (const name of await readdir(f.store.directory)) if (name !== 'admin.sock') expect(await readFile(join(f.store.directory, name), 'utf8')).not.toContain(result.key);
+  });
+  it('set-password replaces the generated key, signs everyone out, and refuses one that is too weak', async () => {
+    const f = await setup(), admin = await startAdmin(f.store, f.auth); cleanups.push(() => admin.close(true));
+    const cookie = (await f.auth.login(f.key)).cookie;
+    await expect(adminCommand(f.store, 'set-password', 'short1')).rejects.toBeDefined();
+    // A refused password changes nothing: the key still works and the session still stands.
+    expect(f.auth.lookup(cookie)).toBeDefined();
+    expect(await f.auth.login(f.key)).toBeTruthy();
+
+    expect(await adminCommand(f.store, 'set-password', 'kaisha2026')).toEqual({ ok: true });
+    expect(f.auth.lookup(cookie)).toBeUndefined();
+    await expect(f.auth.login(f.key)).rejects.toMatchObject({ code: 'INVALID_CREDENTIALS' });
+    expect((await f.auth.login('kaisha2026')).cookie).toBeTruthy();
+    expect(f.auth.kind).toBe('password');
+    // Salted and stretched on disk, and the password itself is nowhere in the directory.
+    expect(await f.store.load()).toMatchObject({ kind: 'password' });
+    for (const name of await readdir(f.store.directory)) {
+      if (name === 'admin.sock') continue;
+      expect(await readFile(join(f.store.directory, name), 'utf8')).not.toContain('kaisha2026');
+    }
+    // Rotating back to a generated key remains the way out if the password is ever lost.
+    const recovered = await adminCommand(f.store, 'rotate');
+    expect(f.auth.kind).toBe('token');
+    expect(await f.auth.login(recovered.key)).toBeTruthy();
   });
   it('failed persistence after replacement remains blocked and permits re-rotation; lost ACK does not reactivate old key', async () => {
     const f = await setup(), admin = await startAdmin(f.store, f.auth); cleanups.push(() => admin.close(true));
     const real = f.store.rotate.bind(f.store);
-    vi.spyOn(f.store, 'rotate').mockImplementationOnce(async key => { await real(key); throw new Error('simulated directory fsync failure'); });
-    const cookie = f.auth.login(f.key).cookie;
+    vi.spyOn(f.store, 'rotate').mockImplementationOnce(async credential => { await real(credential); throw new Error('simulated directory fsync failure'); });
+    const cookie = (await f.auth.login(f.key)).cookie;
     await expect(adminCommand(f.store, 'rotate')).rejects.toMatchObject({ code: 'ADMIN_COMMAND_FAILED' });
-    expect(f.auth.blocked).toBe(true); expect(f.auth.lookup(cookie)).toBeUndefined(); expect(() => f.auth.login(f.key)).toThrow();
-    const recovered = await adminCommand(f.store, 'rotate'); expect(f.auth.login(recovered.key)).toBeTruthy();
-    const priorHash = await f.store.load();
+    expect(f.auth.blocked).toBe(true); expect(f.auth.lookup(cookie)).toBeUndefined(); await expect(f.auth.login(f.key)).rejects.toThrow();
+    const recovered = await adminCommand(f.store, 'rotate'); expect(await f.auth.login(recovered.key)).toBeTruthy();
+    const priorHash = JSON.stringify(await f.store.load());
     await new Promise<void>((resolve, reject) => { const s = createConnection(join(f.store.directory, 'admin.sock')); s.on('error', reject); s.once('connect', () => { s.write('{"command":"rotate"}\n', () => { s.destroy(); resolve(); }); }); });
-    await vi.waitFor(async () => expect(await f.store.load()).not.toBe(priorHash));
-    const again = await adminCommand(f.store, 'rotate'); expect(f.auth.login(again.key)).toBeTruthy();
+    await vi.waitFor(async () => expect(JSON.stringify(await f.store.load())).not.toBe(priorHash));
+    const again = await adminCommand(f.store, 'rotate'); expect(await f.auth.login(again.key)).toBeTruthy();
   });
   it('normal stop releases owned marker and can restart; failed reader stop retains marker and rejects restart', async () => {
     const f = await setup();
     const source: ReadSource & AttachmentSource = { chats: vi.fn(), history: vi.fn(), capabilities: vi.fn(), attachment: vi.fn(), close: vi.fn(async () => {}) };
     const first = await startRuntime({ store: f.store, source, origin: 'https://owner.test', port: 0 });
-    const cookie = first.auth.login(f.key).cookie;
+    const cookie = (await first.auth.login(f.key)).cookie;
     await first.close(); expect(first.auth.lookup(cookie)).toBeUndefined(); await expect(lstat(join(f.store.directory, 'instance.lock'))).rejects.toMatchObject({ code: 'ENOENT' });
     const second = await startRuntime({ store: f.store, source: { ...source, close: async () => { throw new Error('uncertain'); } }, origin: 'https://owner.test', port: 0 });
     await expect(second.close()).rejects.toThrow(); expect((await lstat(join(f.store.directory, 'instance.lock'))).isFile()).toBe(true);
@@ -67,9 +91,9 @@ describe('B03 owner state and Unix administration / B08 shutdown', () => {
   });
   it('reloads hash under lock, and never releases ownership while an earlier rotation is writing', async () => {
     const f = await setup(), staleAuth = new Auth(hashKey(f.key));
-    await f.store.rotate('B'.repeat(43));
+    await f.store.rotate({ kind: 'token', hash: hashKey('B'.repeat(43)) });
     const admin = await startAdmin(f.store, staleAuth);
-    expect(() => staleAuth.login(f.key)).toThrow(); expect(staleAuth.login('B'.repeat(43))).toBeTruthy();
+    await expect(staleAuth.login(f.key)).rejects.toThrow(); expect(await staleAuth.login('B'.repeat(43))).toBeTruthy();
     let release!: () => void;
     const hold = new Promise<void>(resolve => { release = resolve; });
     const real = f.store.rotate.bind(f.store);

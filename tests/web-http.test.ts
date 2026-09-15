@@ -108,14 +108,17 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
     expect(missingOrigin.statusCode).toBe(403);
     const text = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'text/plain' }, payload: KEY });
     expect(text.statusCode).toBe(415);
-    for (const payload of [{ key: KEY, extra: true }, { key: 42 }, {}, { key: 'short' }, [KEY], '{']) {
+    // A short key is a bad credential, not a bad request: only the shape is judged here.
+    for (const payload of [{ key: KEY, extra: true }, { key: 42 }, {}, { key: '' }, { key: 'x'.repeat(257) }, [KEY], '{']) {
       const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload });
       expect(response.statusCode).toBe(400);
       expect(response.json()).toEqual({ code: 'INVALID_REQUEST' });
     }
-    const invalid = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: 'B'.repeat(43) } });
-    expect(invalid.statusCode).toBe(401);
-    expect(invalid.headers['set-cookie']).toBeUndefined();
+    for (const key of ['B'.repeat(43), 'short']) {
+      const invalid = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key } });
+      expect(invalid.statusCode).toBe(401);
+      expect(invalid.headers['set-cookie']).toBeUndefined();
+    }
   });
 
   it('sets and clears a host-only secure HttpOnly Strict cookie and bootstraps CSRF', async () => {
