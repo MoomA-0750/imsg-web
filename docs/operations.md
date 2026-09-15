@@ -151,3 +151,22 @@ The owner hash in `state/` is never rolled back.
 The owner uses it normally. Occasionally check memory for the app and its child
 (`ps -o rss= -p <pid>`) and that the logs stay small and free of message
 content.
+
+## When a send does not go
+
+A send that fails before it reaches Messages leaves nothing behind: no message in
+chat.db, no entry in the system log, nothing in Messages itself. So the server
+writes one line about it, and only about it, to its error log:
+
+```sh
+tail -n 20 "$HOME/Library/Application Support/imsg-web/logs/local.imsg-web.readonly.err.log"
+```
+
+Each line says what shape the failure had — whether there was an attachment, how
+far imsg got (`disposition`), whether it is safe to retry, the AppleScript error
+number Messages returned, or, for a child that died before answering, its own
+first line with paths, addresses and numbers already removed. No message text, no
+recipient and no identifier is ever written. A send that works writes nothing.
+
+If a send never reached imsg at all, the line begins `refused`, and names only the
+route and the status.

@@ -21,8 +21,29 @@ export type SendReply =
   | { ok: true; raw: Record<string, unknown> }
   /** The RPC returned an error. `data` is imsg's error payload (may name `disposition`/`retry_safe`). */
   | { ok: false; ambiguous: false; code: number; message: string; data: unknown }
-  /** No authoritative response: it may or may not have been delivered. */
-  | { ok: false; ambiguous: true };
+  /**
+   * No authoritative response: it may or may not have been delivered. `why` says which way the
+   * answer went missing, and `note` carries the child's own first words when it had any — bounded
+   * and stripped of anything that could be an address or a number, because a send that never
+   * reaches Messages leaves no other trace anywhere to read.
+   */
+  | { ok: false; ambiguous: true; why: AmbiguousReason; note?: string };
+
+/** timeout: no reply in time. closed: the child ended first. spawn: it never started. protocol: the reply made no sense. */
+export type AmbiguousReason = 'timeout' | 'closed' | 'spawn' | 'protocol';
+
+const NOTE_MAX = 160;
+/** Whatever the child said, made safe to write down: one line, bounded, with addresses and numbers removed. */
+export function safeNote(raw: string): string | undefined {
+  const line = raw.split('\n').map(part => part.trim()).find(part => part !== '');
+  if (line === undefined) return undefined;
+  const cleaned = line
+    .replace(/[^\s@]+@[^\s@]+/g, '<address>')
+    .replace(/\+?\d[\d ()-]{5,}/g, '<number>')
+    .replace(/\/\S+/g, '<path>')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ');
+  return cleaned.slice(0, NOTE_MAX);
+}
 
 export type SendClientOptions = {
   executable: string;
@@ -48,8 +69,9 @@ export class SendClient {
       let child: ChildProcessWithoutNullStreams;
       try {
         child = spawn(this.options.executable, [...(this.options.args ?? ['rpc'])], { shell: false, stdio: 'pipe', windowsHide: true, env: this.options.context.env, cwd: this.options.context.cwd });
-      } catch { resolve({ ok: false, ambiguous: true }); return; }
+      } catch { resolve({ ok: false, ambiguous: true, why: 'spawn' }); return; }
       let buffer = Buffer.alloc(0);
+      let complaint = '';
       let settled = false;
       const finish = (reply: SendReply) => {
         if (settled) return;
@@ -59,34 +81,40 @@ export class SendClient {
         child.kill('SIGTERM');
         resolve(reply);
       };
-      const timer = setTimeout(() => finish({ ok: false, ambiguous: true }), timeoutMs);
-      child.on('error', () => finish({ ok: false, ambiguous: true }));
-      child.stderr.resume();
+      /** Ambiguous, with whatever the child had to say for itself. */
+      const lost = (why: AmbiguousReason) => {
+        const note = safeNote(complaint);
+        finish({ ok: false, ambiguous: true, why, ...(note === undefined ? {} : { note }) });
+      };
+      const timer = setTimeout(() => lost('timeout'), timeoutMs);
+      child.on('error', () => lost('spawn'));
+      // Kept only to say why a send went missing, and only the first line of it ever leaves here.
+      child.stderr.on('data', (chunk: Buffer) => { if (complaint.length < 2048) complaint += chunk.toString('utf8'); });
       child.stdout.on('data', (chunk: Buffer) => {
         if (settled) return;
         buffer = Buffer.concat([buffer, chunk]);
-        if (buffer.length > maxFrame) { finish({ ok: false, ambiguous: true }); return; }
+        if (buffer.length > maxFrame) { lost('protocol'); return; }
         for (let end = buffer.indexOf(10); end !== -1; end = buffer.indexOf(10)) {
           const line = buffer.subarray(0, end); buffer = buffer.subarray(end + 1);
           let record: unknown;
-          try { record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line)); } catch { finish({ ok: false, ambiguous: true }); return; }
+          try { record = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(line)); } catch { lost('protocol'); return; }
           if (!isObject(record) || record.jsonrpc !== '2.0' || record.id !== '1') continue; // notices and stray ids are not our reply
           if (isObject(record.error) && Number.isSafeInteger(record.error.code)) {
             finish({ ok: false, ambiguous: false, code: record.error.code as number, message: typeof record.error.message === 'string' ? record.error.message : '', data: record.error.data });
           } else if (isObject(record.result)) {
             finish({ ok: true, raw: record.result });
           } else {
-            finish({ ok: false, ambiguous: true });
+            lost('protocol');
           }
           return;
         }
       });
       // The reply never came before the pipe closed: ambiguous, not a clean failure.
-      child.stdout.on('end', () => finish({ ok: false, ambiguous: true }));
-      child.once('close', () => finish({ ok: false, ambiguous: true }));
+      child.stdout.on('end', () => lost('closed'));
+      child.once('close', () => lost('closed'));
       try {
-        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: '1', method: SEND_METHOD, params }) + '\n', error => { if (error) finish({ ok: false, ambiguous: true }); });
-      } catch { finish({ ok: false, ambiguous: true }); }
+        child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: '1', method: SEND_METHOD, params }) + '\n', error => { if (error) lost('closed'); });
+      } catch { lost('closed'); }
     });
   }
 }

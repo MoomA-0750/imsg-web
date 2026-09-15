@@ -118,6 +118,22 @@ it produces waits with the other attachments rather than being sent by itself.
 The attachment route now answers a byte range for audio, because a player will not
 offer to move about a recording unless the server says parts can be asked for.
 
+## Sends that do not go (2026-09-15)
+
+The owner reported voice messages failing or coming back "unknown" fairly often.
+What the M1 shows: every send that reached imsg went and was delivered — 5 in the
+evening window, 3 of them recordings, all `is_sent=1 is_delivered=1 error=0`, each
+with its own osascript run and staged file. So the failures never reach imsg, and
+they leave no trace in chat.db, the system log, or Messages.
+
+The send path now writes one line per failure to the LaunchAgent's error log
+(`docs/operations.md` says where and what is in it): shapes only — attachment or
+not, imsg's code, `disposition`, `retry_safe`, the AppleScript error number, or
+the first line of a child that died before answering, with paths, addresses and
+numbers removed. imsg's stderr used to be thrown away, which is why there was
+nothing to look at. **Next step: the owner reproduces a failure and reads that
+log.**
+
 ## The unread count (2026-09-15)
 
 `unread_count` counted every message with `is_read = 0` over a conversation's

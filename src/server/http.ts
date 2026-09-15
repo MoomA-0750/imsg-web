@@ -101,11 +101,19 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     }
     done(null, payload);
   });
-  app.setErrorHandler((error, _request, reply) => {
-    if (error instanceof WebError) { reply.code(error.status).send({ code: error.code }); return; }
+  app.setErrorHandler((error, request, reply) => {
+    const refused = (status: number, code: string) => {
+      // Sending is the one thing whose failures leave no trace anywhere else, so the two routes it
+      // needs say so. The path only — never the query, the body, or who it was for.
+      const path = request.url.split('?')[0]!;
+      if (path === '/api/send' || path === '/api/uploads') console.error(`${new Date().toISOString()} send trouble: refused ${path} status=${status} code=${code}`);
+    };
+    if (error instanceof WebError) { refused(error.status, error.code); reply.code(error.status).send({ code: error.code }); return; }
     const code = (error as { statusCode?: number }).statusCode;
     const status = code && code >= 400 && code < 500 ? code : 503;
-    reply.code(status).send({ code: status < 500 ? 'INVALID_REQUEST' : 'READ_UNAVAILABLE' });
+    const shown = status < 500 ? 'INVALID_REQUEST' : 'READ_UNAVAILABLE';
+    refused(status, shown);
+    reply.code(status).send({ code: shown });
   });
   app.setNotFoundHandler((_request, reply) => reply.code(404).send({ code: 'NOT_FOUND' }));
   app.get('/health', async () => ({ alive: true }));

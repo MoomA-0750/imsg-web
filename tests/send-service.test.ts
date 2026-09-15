@@ -5,8 +5,9 @@ import type { SendClient, SendReply } from '../src/server/rpc/send-client.js';
 function setup(mode: SendMode, reply: SendReply = { ok: true, raw: { ok: true } }) {
   const send = vi.fn<(params: Record<string, unknown>) => Promise<SendReply>>(async () => reply);
   const resolveChatGuid = vi.fn((id: string) => (id === 'known' ? 'chat-guid-1' : undefined));
-  const service = new SendService({ mode, resolveChatGuid, clientFactory: () => ({ send } as unknown as SendClient) });
-  return { service, send, resolveChatGuid };
+  const reported: string[] = [];
+  const service = new SendService({ mode, resolveChatGuid, clientFactory: () => ({ send } as unknown as SendClient), report: line => reported.push(line) });
+  return { service, send, resolveChatGuid, reported };
 }
 const base = { chatId: 'known', text: 'Synthetic outgoing' };
 
@@ -33,6 +34,31 @@ describe('SendService (synthetic)', () => {
     expect(resolveChatGuid).toHaveBeenCalledWith('known');
     expect(send).not.toHaveBeenCalled();
   });
+  it('writes down why a send did not go, in shapes only, and says nothing when one does', async () => {
+    const fine = setup('live');
+    await fine.service.send(base);
+    expect(fine.reported).toEqual([]); // a send that works is not news
+
+    const lost = setup('live', { ok: false, ambiguous: true, why: 'closed', note: 'error: cannot open <path>' });
+    await lost.service.send(base);
+    expect(lost.reported).toHaveLength(1);
+    expect(lost.reported[0]).toContain('state=unknown');
+    expect(lost.reported[0]).toContain('lost=closed');
+    expect(lost.reported[0]).toContain('said="error: cannot open <path>"');
+    expect(lost.reported[0]).toContain('attachment=no');
+
+    const refused = setup('live', { ok: false, ambiguous: false, code: -32603, message: 'Messages automation failed with AppleScript error -1728.', data: { retry_safe: true, disposition: 'not_started', transport: 'applescript' } });
+    await refused.service.send(base);
+    expect(refused.reported[0]).toContain('state=failed');
+    expect(refused.reported[0]).toContain('code=-32603');
+    expect(refused.reported[0]).toContain('disposition=not_started');
+    expect(refused.reported[0]).toContain('retry_safe=true');
+    expect(refused.reported[0]).toContain('applescript=-1728');
+    // What was being sent, and who to, is never any part of it.
+    expect(refused.reported[0]).not.toContain('Synthetic outgoing');
+    expect(refused.reported[0]).not.toContain('chat-guid-1');
+  });
+
   it('sends by chat guid with the applescript transport and no attempt id', async () => {
     const { service, send } = setup('live');
     expect(await service.send(base)).toEqual({ state: 'sent' });
@@ -44,7 +70,7 @@ describe('SendService (synthetic)', () => {
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: '+1 (555) 000-1111' }));
   });
   it('classifies outcomes by what imsg reports about dispatch', async () => {
-    expect(await setup('live', { ok: false, ambiguous: true }).service.send(base)).toEqual({ state: 'unknown' });
+    expect(await setup('live', { ok: false, ambiguous: true, why: 'closed' }).service.send(base)).toEqual({ state: 'unknown' });
     expect(await setup('live', { ok: false, ambiguous: false, code: -32603, message: 'x', data: { retry_safe: true } }).service.send(base)).toEqual({ state: 'failed' });
     expect(await setup('live', { ok: false, ambiguous: false, code: -32603, message: 'x', data: { disposition: 'not_started' } }).service.send(base)).toEqual({ state: 'failed' });
     expect(await setup('live', { ok: false, ambiguous: false, code: -32602, message: 'bad', data: 'bad recipient' }).service.send(base)).toEqual({ state: 'failed' });
@@ -81,7 +107,7 @@ describe('SendService (synthetic)', () => {
     expect(stopped.send).toHaveBeenCalledTimes(2); // the third was never attempted
     expect(stopped.discard).toHaveBeenCalledTimes(3); // but every claimed file is released
 
-    const ambiguous = make('live', [{ ok: false, ambiguous: true }]);
+    const ambiguous = make('live', [{ ok: false, ambiguous: true, why: 'timeout' }]);
     expect(await ambiguous.service.send({ chatId: 'known', uploadIds: ['f1', 'f2'] })).toEqual({ state: 'unknown', sent: 0, total: 2 });
 
     // Dry-run claims and releases them without dispatching.

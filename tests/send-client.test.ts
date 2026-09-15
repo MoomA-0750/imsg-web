@@ -17,11 +17,23 @@ describe('SendClient (synthetic imsg, plain send over applescript)', () => {
     expect(await send('NOTSTARTED')).toEqual({ ok: false, ambiguous: false, code: -32603, message: 'Delivery failed before dispatch', data: { transport: 'applescript', retry_safe: true, disposition: 'not_started', operation: 'send' } });
     expect(await send('BADPARAM')).toMatchObject({ ok: false, ambiguous: false, code: -32602, data: 'bad recipient' });
   });
-  it('treats a timeout as ambiguous, never as a clean failure', async () => {
-    expect(await send('HANG', 200)).toEqual({ ok: false, ambiguous: true });
+  it('treats a timeout as ambiguous, never as a clean failure, and says which way it went missing', async () => {
+    expect(await send('HANG', 200)).toEqual({ ok: false, ambiguous: true, why: 'timeout' });
   });
   it('treats the child closing without a reply as ambiguous', async () => {
-    expect(await send('EXIT')).toEqual({ ok: false, ambiguous: true });
+    expect(await send('EXIT')).toEqual({ ok: false, ambiguous: true, why: 'closed' });
+  });
+  it('keeps what a child that refused to run said, with nothing private left in it', async () => {
+    const reply = await send('REFUSE');
+    expect(reply).toMatchObject({ ok: false, ambiguous: true, why: 'closed' });
+    const note = (reply as { note?: string }).note!;
+    expect(note).toContain('error: cannot open');
+    // The path and the number it complained about do not travel with it.
+    expect(note).not.toContain('Library');
+    expect(note).not.toContain('1234');
+    expect(note).toContain('<path>');
+    expect(note).toContain('<number>');
+    expect(note.length).toBeLessThanOrEqual(160);
   });
   it('refuses a relative executable', () => {
     expect(() => new SendClient({ executable: 'imsg', context: testContext() })).toThrow();

@@ -36,6 +36,8 @@ export type SendServiceOptions = {
   clientFactory: () => SendClient;
   /** Absent: attachments cannot be sent. */
   uploads?: UploadSource;
+  /** Where a send that did not go says so. Defaults to the process's own error output. */
+  report?: (line: string) => void;
 };
 
 export interface Sender {
@@ -54,6 +56,37 @@ function classifyError(reply: Extract<SendReply, { ok: false; ambiguous: false }
   if (isObject(data) && (data.retry_safe === true || data.disposition === 'not_started')) return 'failed';
   if (reply.code === -32602 || reply.code === -32600) return 'failed';
   return 'unknown';
+}
+
+/**
+ * One line saying why a send did not go, for the owner to read afterwards. A send that fails before
+ * it reaches Messages leaves no trace in chat.db and none in the system log, so without this there
+ * is nothing at all to look at.
+ *
+ * Only shapes are written: whether there was an attachment, imsg's numeric code, the words it uses
+ * for how far a send got, and — from a child that died before answering — its first line, already
+ * stripped of anything that could be an address, a number or a path. No message text, no recipient,
+ * no identifier of any kind.
+ */
+function trouble(state: SendState, reply: SendReply, attachment: boolean): string {
+  const parts = [`state=${state}`, `attachment=${attachment ? 'yes' : 'no'}`];
+  if (reply.ok) return '';
+  if (reply.ambiguous) {
+    parts.push(`lost=${reply.why}`);
+    if (reply.note !== undefined) parts.push(`said="${reply.note}"`);
+  } else {
+    parts.push(`code=${reply.code}`);
+    const data = reply.data;
+    if (isObject(data)) {
+      if (typeof data.disposition === 'string') parts.push(`disposition=${data.disposition.slice(0, 32)}`);
+      if (typeof data.retry_safe === 'boolean') parts.push(`retry_safe=${data.retry_safe}`);
+      if (typeof data.transport === 'string') parts.push(`transport=${data.transport.slice(0, 32)}`);
+    }
+    // imsg puts the AppleScript error number in its message; the number alone says what Messages refused.
+    const applescript = /AppleScript error (-?\d{1,6})/.exec(reply.message);
+    if (applescript) parts.push(`applescript=${applescript[1]}`);
+  }
+  return `send trouble: ${parts.join(' ')}`;
 }
 
 /**
@@ -105,14 +138,19 @@ export class SendService implements Sender {
       // The whole batch holds the lane: another send must not interleave between our files.
       const run = this.#tail.then(async (): Promise<SendResult> => {
         const client = this.options.clientFactory();
-        const outcome = (reply: SendReply): SendState => reply.ok ? 'sent' : reply.ambiguous ? 'unknown' : classifyError(reply);
+        const report = this.options.report ?? ((line: string) => console.error(line));
+        const outcome = (reply: SendReply, attachment: boolean): SendState => {
+          const state = reply.ok ? 'sent' : reply.ambiguous ? 'unknown' : classifyError(reply);
+          if (state !== 'sent') report(`${new Date().toISOString()} ${trouble(state, reply, attachment)}`);
+          return state;
+        };
         if (uploads.length === 0) {
-          return { state: outcome(await client.send({ ...target, text, transport: 'applescript', service: 'auto' })) };
+          return { state: outcome(await client.send({ ...target, text, transport: 'applescript', service: 'auto' }), false) };
         }
         let sent = 0;
         for (const [index, upload] of uploads.entries()) {
           // imsg sends one file per call, so each attachment is its own message; the text rides with the first.
-          const state = outcome(await client.send({ ...target, text: index === 0 ? text : '', file: upload.path, transport: 'applescript', service: 'auto' }));
+          const state = outcome(await client.send({ ...target, text: index === 0 ? text : '', file: upload.path, transport: 'applescript', service: 'auto' }), true);
           if (state !== 'sent') return { state, sent, total: uploads.length };
           sent++;
         }

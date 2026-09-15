@@ -10,6 +10,11 @@ lines.on('line', line => {
   const reply = (body) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, ...body }) + '\n');
   if (text.includes('HANG')) return;              // never answer: the client should time out (ambiguous)
   if (text.includes('EXIT')) { process.exit(0); } // close without answering (ambiguous)
+  // Dies with a complaint on stderr, the way a build that refuses to start would.
+  if (text.includes('REFUSE')) {
+    process.stderr.write('error: cannot open /Users/someone/Library/Messages/chat.db for +81 90-1234-5678\n');
+    process.exit(2);
+  }
   // imsg reports whether the send left the Mac. not_started / retry_safe → safe to retry (failed).
   if (text.includes('NOTSTARTED')) return reply({ error: { code: -32603, message: 'Delivery failed before dispatch', data: { transport: 'applescript', retry_safe: true, disposition: 'not_started', operation: 'send' } } });
   if (text.includes('BADPARAM')) return reply({ error: { code: -32602, message: 'Invalid params', data: 'bad recipient' } });
