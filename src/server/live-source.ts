@@ -1,7 +1,7 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { lstat, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative } from 'node:path';
-import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView, ReplyView, ReactionView } from '../shared/web-types.js';
+import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView, ReplyView, ReactionView, PreviewView } from '../shared/web-types.js';
 import { CONVERTIBLE, IMAGE_TYPES, PREVIEW_TYPE, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
 import type { ImageConverter } from './image-convert.js';
 import { ReadonlyAdapter, type Attachment, type Reaction } from './readonly-adapter.js';
@@ -29,6 +29,11 @@ export const RPC_ARGS = ['rpc', '--contacts-from-address-book'] as const;
  */
 export const STATUS_TTL_MS = 60_000;
 const OBJECT_REPLACEMENT = '\uFFFC';
+/** How many conversations may have their newest message read in one list refresh. */
+const PREVIEW_READS = 50;
+const MAX_REMEMBERED_PREVIEWS = 2000;
+export const PREVIEW_MAX = 100;
+const ATTACHMENT_WORD: Record<string, string> = { image: '画像', video: '動画', audio: '音声' };
 /** Servable images remembered per epoch; the oldest are forgotten first. */
 export const MAX_REMEMBERED_ATTACHMENTS = 4000;
 /** How many of the newest convertible images a history response prepares ahead of viewing. */
@@ -71,6 +76,8 @@ export class LiveSource implements ReadSource, AttachmentSource {
   #epoch = randomBytes(16).toString('hex');
   #key = randomBytes(32);
   #map = new Map<string, { row: number; guid: string }>();
+  /** Newest message per conversation, kept until that conversation's last-message time changes. */
+  #previews = new Map<string, { at: string | null; view: PreviewView | null }>();
   #tail: Promise<unknown> = Promise.resolve();
   #pending = new Map<string, Promise<unknown>>();
   #stopped = false;
@@ -78,7 +85,7 @@ export class LiveSource implements ReadSource, AttachmentSource {
   #closing: Promise<void> | undefined;
   constructor(private readonly options: SourceOptions) {}
   #id(kind: string, value: string): string { return createHmac('sha256', this.#key).update(`${this.#epoch}:${kind}:${value}`).digest('base64url'); }
-  #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); this.#files.clear(); }
+  #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); this.#files.clear(); this.#previews.clear(); }
   async #retire() {
     this.#rotateEpoch(); this.#identity = undefined; this.#status = undefined;
     if (this.#client) {
@@ -208,14 +215,42 @@ export class LiveSource implements ReadSource, AttachmentSource {
       const features = capabilities(c.raw);
       if (features.chats.state !== 'available') throw new WebError(features.chats.reasonCode);
       const rows = await c.adapter.chats(limit);
+      // chats.list carries no message text, so the newest message is read per conversation and kept
+      // until that conversation moves on. Only so many are read per pass: a long list fills in over
+      // a few refreshes rather than making one of them slow. Held in hand as well as remembered, so
+      // an epoch rotation below — which forgets what is remembered — still answers this request.
+      const shown = new Map<string, PreviewView | null>();
+      let budget = PREVIEW_READS;
+      for (const row of rows) {
+        const held = this.#previews.get(row.guid);
+        const view = held && held.at === row.lastMessageAt ? held.view
+          : budget-- > 0 ? await this.#preview(c.adapter, row.id) : undefined;
+        if (view === undefined) continue; // not read yet; the line stays blank rather than lying
+        shown.set(row.guid, view);
+        this.#previews.set(row.guid, { at: row.lastMessageAt, view });
+      }
+      if (this.#previews.size > MAX_REMEMBERED_PREVIEWS) for (const key of [...this.#previews.keys()].slice(0, this.#previews.size - MAX_REMEMBERED_PREVIEWS)) this.#previews.delete(key);
       await this.#verify(c.path, c.identity, c.epoch);
       if (this.#map.size + rows.filter(row => !this.#map.has(this.#id('chat', row.guid))).length > 2000) this.#rotateEpoch();
       return { epoch: this.#epoch, limit, chats: rows.map(row => {
         const id = this.#id('chat', row.guid); this.#map.set(id, { row: row.id, guid: row.guid });
         const name = clip(row.name, 512);
-        return { id, name: name.value, service: row.service === 'iMessage' || row.service === 'SMS' ? row.service : 'Other', isGroup: row.isGroup, unreadCount: row.unreadCount, lastMessageAt: row.lastMessageAt, trimmed: name.trimmed };
+        return { id, name: name.value, service: row.service === 'iMessage' || row.service === 'SMS' ? row.service : 'Other', isGroup: row.isGroup, unreadCount: row.unreadCount, lastMessageAt: row.lastMessageAt, trimmed: name.trimmed, preview: shown.get(row.guid) ?? null };
       }) };
     });
+  }
+  /**
+   * One line for the conversation list: the newest message's text, or what it carried when it has
+   * no text of its own. A read that fails leaves the line empty rather than the list unbuilt.
+   */
+  async #preview(adapter: ReadonlyAdapter, row: number): Promise<PreviewView | null> {
+    const newest = await adapter.history(row, 1).then(rows => rows[0], () => undefined);
+    if (!newest) return null;
+    const text = clip(newest.text.replaceAll(OBJECT_REPLACEMENT, '').trim(), PREVIEW_MAX);
+    if (text.value !== '') return { text: text.value, trimmed: text.trimmed, fromMe: newest.isFromMe };
+    const carried = newest.link ? 'リンク' : newest.attachments.some(a => a.sticker) ? 'ステッカー'
+      : newest.attachments.length > 0 ? ATTACHMENT_WORD[newest.attachments[0]!.type.split('/')[0] ?? ''] ?? '添付ファイル' : '';
+    return carried === '' ? null : { text: carried, trimmed: false, fromMe: newest.isFromMe };
   }
   history(id: string, limit: number): Promise<HistorySnapshot> {
     return this.#queue(`history:${id}:${limit}`, async () => {

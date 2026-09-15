@@ -47,6 +47,15 @@ The full application plan is a single Mac-local Node server serving a static Rea
 
 No reconnect queue, message mirror, or mutation implementation is needed to validate read contracts. A shared mutation client and an isolated read client are future alternatives: the former needs non-killing recovery semantics; the latter adds a process. Do not silently extend this read-only client to send.
 
+## Conversation list previews
+
+`chats.list` carries no message text, so the newest message of each conversation is read
+separately, as `messages.history` with `limit: 1`, and kept until that conversation's
+last-message time changes. At most 50 are read per refresh: a long list fills in over a few
+refreshes rather than making one of them slow, and a conversation not read yet leaves its line
+blank rather than claiming it has no messages. This is the one place the read profile is N+1;
+`docs/real-data-findings.md` records what it costs on real data.
+
 ## Styling
 
 Tailwind v4, through `@tailwindcss/vite`; no CDN, no config file. `web/src/style.css`
@@ -65,6 +74,10 @@ holds the whole styling layer:
   slide over one another; the `pane:` prefix carries the side-by-side layout.
 - `.btn`, `.btn-secondary` and `.btn-compact` are the only component classes,
   because those shapes recur and would otherwise drift apart.
+- Icons come from `@fluentui/react-icons`, imported one at a time so the bundle carries
+  only what is used. It is a devDependency: the icons are compiled into `dist/web`, so
+  nothing ships it. Unpacked it is large (~300 MB in `node_modules`), which is the price
+  of not hand-copying SVG paths that would drift from the set.
 
 Everything else is utilities in the markup, so a single element can be changed
 where it is written. Elements also keep their semantic class (`bubble`,

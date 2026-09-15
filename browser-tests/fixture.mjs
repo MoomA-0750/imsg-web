@@ -39,11 +39,11 @@ const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
 const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(hashKey('A'.repeat(43))), webDir: new URL('../dist/web', import.meta.url).pathname, source: {
   async chats(limit) { return { epoch: 'epoch-a', limit, chats: [
-    { id: 'C'.repeat(43), name: '合成テスト会話 Alpha', service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false },
-    { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false },
-    { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false },
-    { id: 'S'.repeat(43), name: '合成長尺 Sigma', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false },
-    { id: 'V'.repeat(43), name: '合成画像列 Vega', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false },
+    { id: 'C'.repeat(43), name: '合成テスト会話 Alpha', service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: { text: '送信済みの合成メッセージです。', trimmed: false, fromMe: true } },
+    { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false, preview: { text: '一覧に出る合成プレビュー', trimmed: true, fromMe: false } },
+    { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: { text: '画像', trimmed: false, fromMe: false } },
+    { id: 'S'.repeat(43), name: '合成長尺 Sigma', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null },
+    { id: 'V'.repeat(43), name: '合成画像列 Vega', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null },
   ] }; },
   async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('V') ? longChat(limit, true) : id.startsWith('S') ? longChat(limit) : id.startsWith('G') ? [
     { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [

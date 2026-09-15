@@ -15,6 +15,7 @@
     "test:browser": "playwright test"
   },
   "devDependencies": {
+    "@fluentui/react-icons": "^2.0.341",
     "@playwright/test": "1.63.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "24.13.3",

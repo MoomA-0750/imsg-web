@@ -36,7 +36,8 @@ async function fixture(sip: 'enabled' | 'disabled' = 'enabled', timeoutMs?: numb
   const source = new LiveSource({ context: testContext(), executable, expectedDatabasePath: join(dir, 'chat.db'), ...(timeoutMs === undefined ? {} : { factory: () => new ReadonlyRpcClient({ context: testContext(), executable, timeoutMs, shutdownGraceMs: 250 }) }) });
   cleanups.push(async () => { await unlink(join(dir, 'hold')).catch(() => {}); await source.close(); });
   const audit = async (): Promise<Audit[]> => (await readFile(join(dir, 'audit.jsonl'), 'utf8').catch(() => '')).trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const historyCalls = async () => (await audit()).filter(row => row.kind === 'request' && row.method === 'messages.history');
+  const isPreview = (row: Audit) => row.method === 'messages.history' && row.params?.limit === 1;
+  const historyCalls = async () => (await audit()).filter(row => row.kind === 'request' && row.method === 'messages.history' && !isPreview(row));
   const auth = new Auth(hashKey(KEY));
   const app = await createApp({ origin: ORIGIN, auth, source });
   cleanups.push(() => app.close());
@@ -46,7 +47,7 @@ async function fixture(sip: 'enabled' | 'disabled' = 'enabled', timeoutMs?: numb
     return { cookie: (response.headers['set-cookie'] as string).split(';')[0]!, csrf: response.json<{ csrfToken: string }>().csrfToken };
   };
   const get = (cookie: string, url: string) => app.inject({ url, headers: { host: HOST, cookie } }).then(response => response);
-  return { source, executable, audit, historyCalls, app, auth, login, get,
+  return { source, executable, audit, historyCalls, isPreview, app, auth, login, get,
     hold: () => writeFile(join(dir, 'hold'), ''), release: () => unlink(join(dir, 'hold')) };
 }
 
@@ -87,12 +88,18 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
     expect(launches.map(call => call[0])).toEqual(Array(3).fill(f.executable));
     expect(launches.map(call => call[1])).toEqual(spawns.map(row => row.args));
     for (const call of launches) expect(call[2]).toMatchObject({ shell: false });
-    // One status for the whole UI cycle: the bootstrap's result is reused until it expires.
-    expect(requests.map(row => row.method)).toEqual(['status', 'chats.list', 'messages.history', 'status', 'watch.subscribe', 'watch.unsubscribe']);
+    // One status for the whole UI cycle, and the conversation list followed by one preview read per
+    // conversation in it before the opened conversation's own history.
+    expect(requests.filter(row => row.method !== 'messages.history').map(row => row.method))
+      .toEqual(['status', 'chats.list', 'status', 'watch.subscribe', 'watch.unsubscribe']);
+    expect(requests.filter(row => row.method === 'messages.history').map(row => row.params)).toEqual([
+      ...Array.from({ length: 50 }, (_, i) => ({ chat_id: i + 1, limit: 1, attachments: true, convert_attachments: false })),
+      { chat_id: 1, limit: 50, attachments: true, convert_attachments: false },
+    ]);
     expect(requests.filter(row => !ALLOWED.includes(row.method!))).toEqual([]);
     expect(requests.filter(row => FORBIDDEN.includes(row.method!))).toEqual([]);
-    for (const row of requests) {
-      const params = row.method === 'status' ? {} : row.method === 'chats.list' ? { limit: 50 } : row.method === 'messages.history' ? { chat_id: 1, limit: 50, attachments: true, convert_attachments: false } : row.method === 'watch.subscribe' ? { attachments: false } : { subscription: 1 };
+    for (const row of requests.filter(row => row.method !== 'messages.history')) {
+      const params = row.method === 'status' ? {} : row.method === 'chats.list' ? { limit: 50 } : row.method === 'watch.subscribe' ? { attachments: false } : { subscription: 1 };
       expect(row.params).toEqual(params);
     }
   });
@@ -141,8 +148,12 @@ describe('P0c C02/C06 independent subprocess and HTTP boundaries', () => {
     expect(await f.historyCalls()).toHaveLength(1);
     await f.release();
     expect((await all).map(result => result.messages[0]!.text)).toEqual(Array(33).fill(BODY));
+    // One request and one response on the child for each of the 33 — none lost, none repeated —
+    // on top of the list's preview reads, which are counted rather than assumed.
     const events = (await f.audit()).filter(row => row.method === 'messages.history');
-    expect(events.map(row => row.kind)).toEqual(Array.from({ length: 33 }, () => ['request', 'response']).flat());
+    const previews = events.filter(row => row.kind === 'request' && f.isPreview(row)).length;
+    expect(events.filter(row => row.kind === 'request' && !f.isPreview(row))).toHaveLength(33);
+    expect(events.filter(row => row.kind === 'response')).toHaveLength(previews + 33);
     expect((await f.historyCalls()).map(row => row.params?.chat_id)).toEqual(Array.from({ length: 33 }, (_, i) => i + 1));
     await f.source.history(chats.chats[33]!.id, 50);
     expect(await f.historyCalls()).toHaveLength(34);

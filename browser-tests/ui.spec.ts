@@ -51,7 +51,7 @@ test('B01/B05 HTTPS cookie, synthetic reading, text-only rendering, logout and n
   await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   await expect(page.locator('.bubble img, .bubble a')).toHaveCount(0);
-  await expect(page.getByText('未読数不明', { exact: false })).toBeVisible();
+  await expect(page.locator('.chat-preview').first()).toBeVisible();
   expect(await page.evaluate(() => [localStorage.length, sessionStorage.length])).toEqual([0, 0]);
   await page.screenshot({ path: 'test-results/synthetic-desktop.png', fullPage: true, animations: 'disabled' });
   await page.getByRole('button', { name: 'ログアウト', exact: true }).click();
@@ -109,6 +109,20 @@ test('shows what a message replies to, and the tapbacks on it', async ({ page })
 });
 const area = (page: Page) => page.locator('.message-area');
 const metrics = (page: Page) => area(page).evaluate(el => ({ top: el.scrollTop, height: el.scrollHeight, view: el.clientHeight }));
+
+test('a conversation row carries the newest message, and its unread count as a badge', async ({ page }) => {
+  await login(page);
+  const beta = page.locator('.chat-list li', { hasText: '合成テスト会話 Beta' });
+  await expect(beta.locator('.chat-preview')).toHaveText('一覧に出る合成プレビュー…');
+  await expect(beta.getByLabel('未読 2')).toHaveText('2');
+  // The owner's own last word is marked as theirs, and a read conversation carries no badge.
+  const alpha = page.locator('.chat-list li', { hasText: '合成テスト会話 Alpha' });
+  await expect(alpha.locator('.chat-preview')).toHaveText('自分: 送信済みの合成メッセージです。');
+  await expect(alpha.getByLabel(/未読/)).toHaveCount(0);
+  // A conversation whose newest message has not been read leaves the line blank rather than
+  // claiming there is nothing there.
+  await expect(page.locator('.chat-list li', { hasText: '合成長尺 Sigma' }).locator('.chat-preview')).toHaveText('\u00a0');
+});
 
 test('colours a sent message by the service it went out over', async ({ page }) => {
   await login(page);
@@ -228,6 +242,20 @@ test('sends on click or Ctrl+Enter, with no confirmation step, and is honest abo
   await expect(page.getByText('送信されていません', { exact: false })).toBeVisible();
   await expect(box).toHaveValue('FAIL な送信');
 });
+test('keeps the composer on one line, the field and both round buttons the same height', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.getByLabel('メッセージを入力')).toBeVisible();
+  const box = async (name: string) => (await page.getByLabel(name).boundingBox())!;
+  const [add, field, send] = [await box('添付ファイルを追加'), await box('メッセージを入力'), await box('送信')];
+  expect([add!.height, send!.height]).toEqual([field!.height, field!.height]);
+  expect(add!.width).toBe(add!.height); // circular
+  expect(send!.width).toBe(send!.height);
+  // One row, in order, with the field between the two buttons.
+  expect([add!.y, send!.y]).toEqual([field!.y, field!.y]);
+  expect(add!.x).toBeLessThan(field!.x);
+  expect(field!.x + field!.width).toBeLessThanOrEqual(send!.x);
+});
 test('attaches a file: uploads the raw bytes first, names it in the confirm, then sends by id', async ({ page }) => {
   const uploads: { url: string; type: string | undefined; bytes: number }[] = [];
   const sends: Record<string, unknown>[] = [];
@@ -242,7 +270,7 @@ test('attaches a file: uploads the raw bytes first, names it in the confirm, the
   await expect(page.getByText('Alpha の合成本文', { exact: false })).toBeVisible();
   await page.getByLabel('添付ファイルを選ぶ').setInputFiles({ name: '写真 1.png', mimeType: 'image/png', buffer: Buffer.from('synthetic-image-bytes') });
   await expect(page.locator('.composer-files li')).toHaveCount(1);
-  await expect(page.getByText('写真 1.png', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: '写真 1.png を外す' })).toBeVisible();
   // Choosing a file must not upload or send anything yet.
   expect(uploads).toEqual([]);
   expect(sends).toEqual([]);
@@ -269,8 +297,8 @@ test('previews each chosen file locally and sends several as several messages', 
   // Picking again adds to the selection rather than replacing it, and ignores a file already chosen.
   await page.getByLabel('添付ファイルを選ぶ').setInputFiles([FILE_ONE, FILE_THREE]);
   await expect(rows).toHaveCount(4);
-  await expect(page.getByText('three.png', { exact: false })).toBeVisible();
-  await rows.nth(3).getByRole('button', { name: '外す' }).click();
+  await expect(rows.nth(3).getByRole('button', { name: 'three.png を外す' })).toBeVisible();
+  await rows.nth(3).getByRole('button', { name: /を外す$/ }).click();
   await expect(rows).toHaveCount(3);
   // Images preview from a local blob URL; a non-image gets a placeholder. Nothing is uploaded to draw them.
   const thumbs = page.locator('.composer-files img.composer-thumb');
@@ -280,7 +308,7 @@ test('previews each chosen file locally and sends several as several messages', 
   await expect(page.locator('.composer-files .placeholder')).toHaveCount(1);
   expect(uploads).toEqual([]);
   // One can be removed before sending.
-  await rows.nth(2).getByRole('button', { name: '外す' }).click();
+  await rows.nth(2).getByRole('button', { name: /を外す$/ }).click();
   await expect(rows).toHaveCount(2);
   await expect(page.getByText('添付は1件ずつ別のメッセージとして送られます。')).toBeVisible();
   await page.getByRole('button', { name: '送信', exact: true }).click();
@@ -325,7 +353,7 @@ test('B05 empty/error states, a pane too tall for one page, and the 1000-row cei
   await page.route('**/api/chats?*', route => {
     const limit = Number(new URL(route.request().url()).searchParams.get('limit'));
     limits.push(limit);
-    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false })) : [];
+    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null })) : [];
     return route.fulfill({ json: { epoch: 'epoch-a', limit, chats } });
   });
   await page.goto('/'); await page.getByLabel('所有者キー').fill('A'.repeat(43)); await page.getByRole('button', { name: 'ログイン', exact: true }).click();

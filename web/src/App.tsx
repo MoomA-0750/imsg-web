@@ -1,4 +1,5 @@
 import { FormEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Add24Regular, ArrowLeft24Regular, Dismiss12Regular, Send24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 
 const PAGE = 50;
@@ -88,9 +89,14 @@ const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)}
 
 const FILES_MAX = 10;
 const NOTICE_COLOUR = { ok: 'text-accent-strong', warn: 'text-warn', error: 'text-danger' } as const;
+/** The composer's two circular buttons, sized to sit level with the field beside them. */
+const ROUND = 'shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full';
 
-/** A local preview of a chosen file; the object URL is revoked when the choice changes. */
-function Thumbnail({ file }: { file: File }) {
+/**
+ * A chosen file as a rounded square, with the file name only as its tooltip and alternative text —
+ * the picture is the identification. The object URL is revoked when the choice changes.
+ */
+function Thumbnail({ file, onRemove, disabled }: { file: File; onRemove: () => void; disabled: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -99,10 +105,17 @@ function Thumbnail({ file }: { file: File }) {
     setUrl(created); setFailed(false);
     return () => { URL.revokeObjectURL(created); setUrl(null); };
   }, [file]);
-  // Nothing is uploaded to draw this, and a format the browser cannot decode (HEIC) falls back to the name.
-  const shape = 'composer-thumb shrink-0 w-[2.6rem] h-[2.6rem] rounded-lg border border-line object-cover bg-soft';
-  if (url && !failed) return <img className={shape} src={url} alt="" onError={() => setFailed(true)} />;
-  return <span className={`${shape} placeholder flex items-center justify-center text-[.65rem] text-muted`} aria-hidden="true">{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>;
+  const shape = 'composer-thumb block w-16 h-16 rounded-xl border border-line object-cover bg-soft';
+  const label = `${file.name}（${sizeLabel(file.size)}）`;
+  return <div className="relative shrink-0" title={label}>
+    {/* Nothing is uploaded to draw this; a format the browser cannot decode (HEIC) falls back to a word. */}
+    {url && !failed
+      ? <img className={shape} src={url} alt={label} onError={() => setFailed(true)} />
+      : <span className={`${shape} placeholder flex items-center justify-center text-center text-[.65rem] text-muted`}>{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>}
+    <button type="button" aria-label={`${file.name} を外す`} disabled={disabled}
+      className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full border border-line bg-surface text-muted enabled:hover:text-ink"
+      onClick={onRemove}><Dismiss12Regular /></button>
+  </div>;
 }
 
 function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: ChatView; mode: SendMode; send: (chatId: string, text: string, uploadIds: string[]) => Promise<SendResult>; upload: (file: File) => Promise<{ uploadId: string }>; onSent: () => void; onAuthError: () => void }) {
@@ -156,12 +169,19 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   const submit = () => { if (ready && !busy) void dispatch(); };
   return <form className="composer shrink-0 flex flex-col gap-2 px-4 py-[.7rem] border-t border-line bg-surface" onSubmit={event => { event.preventDefault(); submit(); }}>
     {mode === 'dry-run' && <p className="m-0 text-muted text-[.8rem]" role="status">テスト送信モードです。実際には送信されません。</p>}
-    <textarea className="w-full resize-y min-h-[2.6rem] rounded-[10px] border border-field px-[.7rem] py-[.6rem] bg-surface text-inherit" value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }} placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={2} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
-    {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-col gap-[.4rem]">{files.map((file, index) => <li key={`${file.name}:${index}`} className="flex items-center gap-[.6rem] text-muted text-[.85rem]"><Thumbnail file={file} /><span className="grow min-w-0 [overflow-wrap:anywhere]">{file.name}（{sizeLabel(file.size)}）</span><button type="button" className="btn-secondary btn-compact" onClick={() => setFiles(rest => rest.filter((_, at) => at !== index))} disabled={busy}>外す</button></li>)}</ul>}
+    {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-wrap gap-2">{files.map((file, index) =>
+      <li key={`${file.name}:${index}`}><Thumbnail file={file} disabled={busy} onRemove={() => setFiles(rest => rest.filter((_, at) => at !== index))} /></li>)}</ul>}
     {files.length > 1 && <p className="m-0 text-muted text-[.8rem]">添付は1件ずつ別のメッセージとして送られます。</p>}
     {notice && <p className={`m-0 text-[.85rem] ${NOTICE_COLOUR[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
-    <div className="flex justify-end gap-[.6rem]"><button type="button" className="btn-secondary" onClick={() => picker.current?.click()} disabled={busy}>添付</button><button type="submit" className="btn" disabled={busy || !ready}>{busy ? '送信中…' : '送信'}</button></div>
+    <div className="flex items-end gap-2">
+      <button type="button" className={`${ROUND} border border-line bg-soft text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => picker.current?.click()} disabled={busy} aria-label="添付ファイルを追加"><Add24Regular /></button>
+      <textarea className="grow min-w-0 resize-y h-11 min-h-11 max-h-48 rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
+        value={text} onChange={event => setText(event.target.value)}
+        onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
+        placeholder="メッセージを入力（Ctrl+Enter / ⌘+Enter で送信）" rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />
+      <button type="submit" className={`${ROUND} border-0 bg-accent text-white enabled:hover:bg-accent-strong`} disabled={busy || !ready} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
+    </div>
   </form>;
 }
 
@@ -496,14 +516,17 @@ export function App() {
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
     <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
       <aside className={`chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
-        <div className={HEADING}><h1 className={PANE_TITLE}>会話</h1></div>
+        <div className={HEADING}><h1 className={PANE_TITLE}>メッセージ</h1></div>
         {chatError && <ErrorBar text={chatError} retry={loadChats} />}
         <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col" ref={chatViewport} onScroll={onChatScroll}>
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
               <button className={`block w-full rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
                 <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
-                <span className="block mt-[.35rem] text-muted text-[.8rem] [overflow-wrap:anywhere]">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span>
+                <span className="flex justify-between items-center gap-2 mt-[.35rem]">
+                  <span className="chat-preview min-w-0 truncate text-muted text-[.8rem]">{chat.preview ? `${chat.preview.fromMe ? '自分: ' : ''}${chat.preview.text}${chat.preview.trimmed ? '…' : ''}` : '\u00a0'}</span>
+                  {chat.unreadCount !== null && chat.unreadCount > 0 && <span className="shrink-0 min-w-5 px-1.5 rounded-full bg-accent text-white text-[.7rem] font-bold text-center" aria-label={`未読 ${chat.unreadCount}`}>{chat.unreadCount}</span>}
+                </span>
               </button>
             </li>)}</ul>}
           {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE} role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
@@ -511,7 +534,7 @@ export function App() {
       </aside>
       <main className={`detail-pane ${PANE} bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
-          <button className="back shrink-0 w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft text-[1.25rem] pane:hidden" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button>
+          <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
