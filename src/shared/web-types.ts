@@ -1,6 +1,7 @@
 import type { Capability } from '../server/capabilities.js';
 /** `preview` is the newest message in the conversation, clipped; null when there is none to show. */
-export type ChatView = { id: string; name: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; trimmed: boolean; preview: PreviewView | null };
+/** `avatarId` is set only when the address book holds a picture for this conversation's contact. */
+export type ChatView = { id: string; name: string; service: string; isGroup: boolean | null; unreadCount: number | null; lastMessageAt: string | null; trimmed: boolean; preview: PreviewView | null; avatarId: string | null };
 export type PreviewView = { text: string; trimmed: boolean; fromMe: boolean };
 /**
  * `id` is set only for an image the server will serve at `/api/attachments/:id`:
@@ -20,6 +21,7 @@ export type HistorySnapshot = { epoch: string; messages: MessageView[]; limit: n
 export type CapabilitySnapshot = { epoch: string; mode: 'readonly'; features: Record<string, Capability> };
 export interface ReadSource {
   chats(limit: number): Promise<ChatSnapshot>;
+  avatar(id: string): Promise<{ type: string; size: number; bytes: Buffer }>;
   history(id: string, limit: number): Promise<HistorySnapshot>;
   capabilities(): Promise<CapabilitySnapshot>;
   close(): Promise<void>;

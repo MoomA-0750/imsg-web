@@ -3,10 +3,11 @@
 // import below had already been evaluated.
 import { refuseTaintedLaunch } from './server/launch-guard.js';
 import { buildChildEnv, ensureChildTmpDir } from './server/child-env.js';
-import { isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
 import { adminCommand } from './server/admin.js';
+import { ContactPhotos } from './server/contact-photos.js';
 import { passwordProblem } from './server/auth.js';
 import { LiveSource } from './server/live-source.js';
 import { ImageConverter } from './server/image-convert.js';
@@ -53,7 +54,11 @@ async function main() {
   if (!executable || !isAbsolute(executable) || executable.includes('\0') || !origin || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
   const tmpDir = await ensureChildTmpDir(directory);
   const context = buildChildEnv({ tmpDir, cwd: tmpDir });
-  const source = new LiveSource({ executable, context, expectedDatabasePath: context.databasePath, ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context }) } : {}) });
+  // The address book sits beside Messages under the same verified home; a contact's picture is read
+  // from there, read-only, and a store that will not open simply means initials instead.
+  const addressBook = join(dirname(dirname(context.databasePath)), 'Application Support', 'AddressBook');
+  const source = new LiveSource({ executable, context, expectedDatabasePath: context.databasePath,
+    ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context }), photos: new ContactPhotos(addressBook) } : {}) });
   // Sending is off unless explicitly configured, and only on macOS. IMSG_WEB_SEND=dry-run resolves and validates but sends nothing.
   const sendSetting = process.platform === 'darwin' ? process.env.IMSG_WEB_SEND : undefined;
   const sendMode: SendMode = sendSetting === '1' || sendSetting === 'live' ? 'live' : sendSetting === 'dry-run' ? 'dry-run' : 'off';

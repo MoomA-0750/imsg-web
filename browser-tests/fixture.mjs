@@ -41,11 +41,11 @@ const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
 const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(hashKey('A'.repeat(43))), webDir: new URL('../dist/web', import.meta.url).pathname, source: {
   async chats(limit) { return { epoch: 'epoch-a', limit, chats: [
-    { id: 'C'.repeat(43), name: '合成テスト会話 Alpha', service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: { text: '送信済みの合成メッセージです。', trimmed: false, fromMe: true } },
-    { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false, preview: { text: '一覧に出る合成プレビュー', trimmed: true, fromMe: false } },
-    { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: { text: '画像', trimmed: false, fromMe: false } },
-    { id: 'S'.repeat(43), name: '合成長尺 Sigma', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null },
-    { id: 'V'.repeat(43), name: '合成画像列 Vega', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null },
+    { id: 'C'.repeat(43), name: '合成テスト会話 Alpha', service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: { text: '送信済みの合成メッセージです。', trimmed: false, fromMe: true }, avatarId: 'A'.repeat(43) },
+    { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false, preview: { text: '一覧に出る合成プレビュー', trimmed: true, fromMe: false }, avatarId: null },
+    { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: { text: '画像', trimmed: false, fromMe: false }, avatarId: null },
+    { id: 'S'.repeat(43), name: '合成長尺 Sigma', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null, avatarId: null },
+    { id: 'V'.repeat(43), name: '合成画像列 Vega', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false, preview: null, avatarId: null },
   ] }; },
   async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('V') ? longChat(limit, true) : id.startsWith('S') ? longChat(limit) : id.startsWith('G') ? [
     { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [
@@ -72,6 +72,10 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
       : id === 'Q'.repeat(43) ? Buffer.from('synthetic-not-an-image') : undefined;
     if (!body) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
     return { type: id.startsWith('Q') ? 'image/heic' : 'image/png', size: body.length, stream: Readable.from([body]) };
+  },
+  async avatar(id) {
+    if (id !== 'A'.repeat(43)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+    return { type: 'image/png', size: PNG.length, bytes: PNG };
   },
   async close() {},
 }, uploads: {

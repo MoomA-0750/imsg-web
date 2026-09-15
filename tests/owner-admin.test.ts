@@ -81,7 +81,7 @@ describe('B03 owner state and Unix administration / B08 shutdown', () => {
   });
   it('normal stop releases owned marker and can restart; failed reader stop retains marker and rejects restart', async () => {
     const f = await setup();
-    const source: ReadSource & AttachmentSource = { chats: vi.fn(), history: vi.fn(), capabilities: vi.fn(), attachment: vi.fn(), close: vi.fn(async () => {}) };
+    const source: ReadSource & AttachmentSource = { chats: vi.fn(), history: vi.fn(), capabilities: vi.fn(), attachment: vi.fn(), avatar: vi.fn(), close: vi.fn(async () => {}) };
     const first = await startRuntime({ store: f.store, source, origin: 'https://owner.test', port: 0 });
     const cookie = (await first.auth.login(f.key)).cookie;
     await first.close(); expect(first.auth.lookup(cookie)).toBeUndefined(); await expect(lstat(join(f.store.directory, 'instance.lock'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -108,7 +108,7 @@ describe('B03 owner state and Unix administration / B08 shutdown', () => {
   });
   it('reports HTTP stop failure even when reader stopped and retains the marker', async () => {
     const f = await setup();
-    const source: ReadSource & AttachmentSource = { chats: vi.fn(), history: vi.fn(), capabilities: vi.fn(), attachment: vi.fn(), close: vi.fn(async () => {}) };
+    const source: ReadSource & AttachmentSource = { chats: vi.fn(), history: vi.fn(), capabilities: vi.fn(), attachment: vi.fn(), avatar: vi.fn(), close: vi.fn(async () => {}) };
     const runtime = await startRuntime({ store: f.store, source, origin: 'https://owner.test', port: 0 });
     const actualClose = runtime.app.close.bind(runtime.app);
     // Exercise the no-argument Promise overload; Vitest infers the callback overload.

@@ -3,6 +3,7 @@ import { lstat, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, parse, relative } from 'node:path';
 import type { ReadSource, ChatSnapshot, HistorySnapshot, CapabilitySnapshot, AttachmentView, LinkView, ReplyView, ReactionView, PreviewView } from '../shared/web-types.js';
 import { CONVERTIBLE, IMAGE_TYPES, PREVIEW_TYPE, openAttachment, prepareAttachment, type AttachmentFile, type AttachmentSource } from './attachments.js';
+import type { ContactPhotos } from './contact-photos.js';
 import type { ImageConverter } from './image-convert.js';
 import { ReadonlyAdapter, type Attachment, type Reaction } from './readonly-adapter.js';
 import { ReadonlyRpcClient } from './rpc/readonly-client.js';
@@ -58,6 +59,8 @@ export type SourceOptions = {
   factory?: () => Client;
   /** Converts HEIC and JPEG XL for browsers that cannot draw them. Absent: originals are served. */
   converter?: ImageConverter;
+  /** Contact pictures from the address book. Absent: conversations show initials only. */
+  photos?: ContactPhotos;
 };
 export function clip(text: string, length: number) {
   const cut = text.length > length;
@@ -78,6 +81,8 @@ export class LiveSource implements ReadSource, AttachmentSource {
   #map = new Map<string, { row: number; guid: string }>();
   /** Newest message per conversation, kept until that conversation's last-message time changes. */
   #previews = new Map<string, { at: string | null; view: PreviewView | null }>();
+  /** Contact pictures this epoch has handed out an id for. */
+  #avatars = new Map<string, { type: string; bytes: Buffer }>();
   #tail: Promise<unknown> = Promise.resolve();
   #pending = new Map<string, Promise<unknown>>();
   #stopped = false;
@@ -85,7 +90,7 @@ export class LiveSource implements ReadSource, AttachmentSource {
   #closing: Promise<void> | undefined;
   constructor(private readonly options: SourceOptions) {}
   #id(kind: string, value: string): string { return createHmac('sha256', this.#key).update(`${this.#epoch}:${kind}:${value}`).digest('base64url'); }
-  #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); this.#files.clear(); this.#previews.clear(); }
+  #rotateEpoch() { this.#epoch = randomBytes(16).toString('hex'); this.#map.clear(); this.#files.clear(); this.#previews.clear(); this.#avatars.clear(); }
   async #retire() {
     this.#rotateEpoch(); this.#identity = undefined; this.#status = undefined;
     if (this.#client) {
@@ -231,13 +236,31 @@ export class LiveSource implements ReadSource, AttachmentSource {
       }
       if (this.#previews.size > MAX_REMEMBERED_PREVIEWS) for (const key of [...this.#previews.keys()].slice(0, this.#previews.size - MAX_REMEMBERED_PREVIEWS)) this.#previews.delete(key);
       await this.#verify(c.path, c.identity, c.epoch);
+      await this.options.photos?.refresh();
       if (this.#map.size + rows.filter(row => !this.#map.has(this.#id('chat', row.guid))).length > 2000) this.#rotateEpoch();
       return { epoch: this.#epoch, limit, chats: rows.map(row => {
         const id = this.#id('chat', row.guid); this.#map.set(id, { row: row.id, guid: row.guid });
         const name = clip(row.name, 512);
-        return { id, name: name.value, service: row.service === 'iMessage' || row.service === 'SMS' ? row.service : 'Other', isGroup: row.isGroup, unreadCount: row.unreadCount, lastMessageAt: row.lastMessageAt, trimmed: name.trimmed, preview: shown.get(row.guid) ?? null };
+        return { id, name: name.value, service: row.service === 'iMessage' || row.service === 'SMS' ? row.service : 'Other', isGroup: row.isGroup, unreadCount: row.unreadCount, lastMessageAt: row.lastMessageAt, trimmed: name.trimmed, preview: shown.get(row.guid) ?? null, avatarId: this.#avatarId(row.name) };
       }) };
     });
+  }
+  /**
+   * The id of this conversation's contact picture, minted only when the address book has one under
+   * exactly that name. The name is imsg's own resolution, so this is the far end of a match that
+   * already succeeded; nothing about the contact but the picture crosses into the browser.
+   */
+  #avatarId(name: string): string | null {
+    const photo = name === '' ? undefined : this.options.photos?.get(name);
+    if (!photo) return null;
+    const id = this.#id('avatar', name);
+    this.#avatars.set(id, photo);
+    return id;
+  }
+  async avatar(id: string): Promise<{ type: string; size: number; bytes: Buffer }> {
+    const photo = this.#avatars.get(id);
+    if (!photo) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+    return { type: photo.type, size: photo.bytes.length, bytes: photo.bytes };
   }
   /**
    * One line for the conversation list: the newest message's text, or what it carried when it has

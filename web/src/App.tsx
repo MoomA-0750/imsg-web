@@ -508,11 +508,14 @@ export function App() {
         <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col" ref={chatViewport} onScroll={onChatScroll}>
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
-              <button className={`block w-full rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
-                <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
-                <span className="flex justify-between items-center gap-2 mt-[.35rem]">
-                  <span className="chat-preview min-w-0 truncate text-muted text-[.8rem]">{chat.preview ? `${chat.preview.fromMe ? '自分: ' : ''}${chat.preview.text}${chat.preview.trimmed ? '…' : ''}` : '\u00a0'}</span>
-                  {chat.unreadCount !== null && chat.unreadCount > 0 && <span className="shrink-0 min-w-5 px-1.5 rounded-full bg-accent text-white text-[.7rem] font-bold text-center" aria-label={`未読 ${chat.unreadCount}`}>{chat.unreadCount}</span>}
+              <button className={`flex w-full items-center gap-3 rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
+                <Avatar chat={chat} />
+                <span className="min-w-0 grow">
+                  <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
+                  <span className="flex justify-between items-center gap-2 mt-[.35rem]">
+                    <span className="chat-preview min-w-0 truncate text-muted text-[.8rem]">{chat.preview ? `${chat.preview.fromMe ? '自分: ' : ''}${chat.preview.text}${chat.preview.trimmed ? '…' : ''}` : '\u00a0'}</span>
+                    {chat.unreadCount !== null && chat.unreadCount > 0 && <span className="shrink-0 min-w-5 px-1.5 rounded-full bg-accent text-white text-[.7rem] font-bold text-center" aria-label={`未読 ${chat.unreadCount}`}>{chat.unreadCount}</span>}
+                  </span>
                 </span>
               </button>
             </li>)}</ul>}
@@ -602,6 +605,26 @@ function Recovery({ onBack }: { onBack: () => void }) {
     <Command title="2. 新しいパスワードを決める" command={`${CLI} auth set-password`}
       effect="新しいパスワードの入力を求められます（打っても画面には表示されません）。8文字以上で、英字と数字を1文字以上ずつ含めてください。設定すると、1のキーは使えなくなります。" />
   </div>;
+}
+
+/**
+ * A conversation's face: the contact's picture when the address book has one, and otherwise the
+ * initials over a colour derived from the name, so every row has something to recognise. The
+ * colour is decoration — it carries nothing the row does not already say.
+ */
+function Avatar({ chat }: { chat: ChatView }) {
+  const [failed, setFailed] = useState(false);
+  const shape = 'chat-avatar shrink-0 w-11 h-11 rounded-full object-cover';
+  if (chat.avatarId && !failed) {
+    return <img className={shape} src={`/api/avatars/${encodeURIComponent(chat.avatarId)}`} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} />;
+  }
+  const name = chat.name.trim();
+  const initials = [...name.replace(/[^\p{L}\p{N} ]/gu, ' ').trim().split(/\s+/).filter(Boolean)]
+    .slice(0, 2).map(word => [...word][0] ?? '').join('') || '…';
+  let hash = 0;
+  for (const code of name) hash = (hash * 31 + code.codePointAt(0)!) % 360;
+  return <span className={`${shape} grid place-items-center text-[.9rem] font-bold text-white`}
+    style={{ backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
 }
 
 function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }

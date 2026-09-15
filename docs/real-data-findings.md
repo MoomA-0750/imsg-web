@@ -70,7 +70,8 @@ would take.
 - **Profile pictures are rare and not exposed by imsg.** The address book held
   about 300 contacts and 13 thumbnails. imsg does not return them, so showing
   them would need another imsg patch or a second address-book reader in the
-  app. Group photos (6 chats) are likewise not exposed.
+  app. Group photos (6 chats) are likewise not exposed. The app now reads them
+  itself; see below.
 
 **Link previews.** The sender's device fetches the page and Messages stores the
 result with the message, so nothing has to be fetched again (and fetching from
@@ -155,6 +156,27 @@ conversations the app badged 9, 6 and 7. `imsg-patches/unread-mark` adds the mar
 the condition, leaving a conversation with no mark alone so one never opened still
 counts, as Messages does. Afterwards: 69 messages across 8 conversations, agreeing
 with Messages on every conversation checked.
+
+**Contact pictures, looked at again (2026-09-15).** The limit was never access:
+the pictures sit in the same address book the names already come from. It is that
+there are hardly any. Of 304 contacts, 13 records carry image data, but two hold a
+38-byte marker rather than a picture, one has no name to match on, and one name is
+shared by two contacts and so cannot be told apart — leaving **8 usable**, 7 JPEG
+and 1 PNG, 12–118 KB each, read in 75 ms. Exporting vCards would yield the same 8.
+Nor is anything waiting to be fetched: across both synced accounts
+`ZEXTERNALIMAGEURI` and `ZIMAGESYNCFAILEDTIME` are empty, so the accounts are not
+holding pictures back. Google's People API could return profile photos that CardDAV
+does not sync, but that means network access from the Mac, OAuth credentials and
+contact identifiers leaving the machine; it was not pursued.
+
+The app reads them with `node:sqlite` (built into Node, no dependency added),
+matching on the name imsg already resolved: imsg matched the handle to one of these
+records with a phone-number library this app does not have, so the name is the far
+end of a match that just succeeded. A name two contacts share is dropped rather than
+guessed at. Apple stores the picture one byte in, and a record can hold a short
+marker instead, so the bytes are accepted only from a JPEG or PNG signature onwards.
+Conversations without one show initials over a colour derived from the name, which
+is what Messages does.
 
 ## Known and not yet resolved
 

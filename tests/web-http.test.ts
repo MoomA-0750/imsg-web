@@ -14,9 +14,10 @@ const HOST = 'imsg.synthetic.test';
 const KEY = 'A'.repeat(43);
 const ID = 'C'.repeat(43);
 const BODY = 'SYNTHETIC_PRIVATE_BODY';
-const CHAT: ChatSnapshot = { epoch: 'epoch-a', limit: 50, chats: [{ id: ID, name: 'Synthetic conversation', service: 'iMessage', isGroup: false, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null }] };
+const CHAT: ChatSnapshot = { epoch: 'epoch-a', limit: 50, chats: [{ id: ID, name: 'Synthetic conversation', service: 'iMessage', isGroup: false, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null, avatarId: null }] };
 const HISTORY: HistorySnapshot = { epoch: 'epoch-a', limit: 50, messages: [{ id: 'D'.repeat(43), text: BODY, isFromMe: false, sender: null, attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false }] };
 const IMAGE_ID = 'I'.repeat(43);
+const AVATAR_ID = 'V'.repeat(43);
 const PNG = Buffer.from('89504e470d0a1a0a', 'hex');
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
@@ -32,6 +33,10 @@ async function fixture() {
     attachment: vi.fn<AttachmentSource['attachment']>(async id => {
       if (id !== IMAGE_ID) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
       return { type: 'image/png', size: PNG.length, stream: Readable.from([PNG]) };
+    }),
+    avatar: vi.fn<ReadSource['avatar']>(async id => {
+      if (id !== AVATAR_ID) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+      return { type: 'image/png', size: PNG.length, bytes: PNG };
     }),
   };
   const app = await createApp({ origin: ORIGIN, auth, source });
@@ -334,6 +339,7 @@ describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
       capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: { chats: { state: 'available', reasonCode: 'SUPPORTED' }, send: { state: 'unknown', reasonCode: 'NOT_IMPLEMENTED' } } })),
       close: vi.fn<ReadSource['close']>(async () => {}),
       attachment: vi.fn<AttachmentSource['attachment']>(async () => { throw new WebError('ATTACHMENT_UNAVAILABLE', 404); }),
+      avatar: vi.fn<ReadSource['avatar']>(async () => { throw new WebError('ATTACHMENT_UNAVAILABLE', 404); }),
     };
     const send = vi.fn<Sender['send']>(async () => (mode === 'dry-run' ? { state: 'dry_run' } : { state: 'sent' }));
     const sender: Sender = { mode, send };
@@ -411,6 +417,7 @@ describe('B09 attachment upload (synthetic, binary route)', () => {
       capabilities: vi.fn<ReadSource['capabilities']>(async () => ({ epoch: 'epoch-a', mode: 'readonly', features: {} })),
       close: vi.fn<ReadSource['close']>(async () => {}),
       attachment: vi.fn<AttachmentSource['attachment']>(async () => { throw new WebError('ATTACHMENT_UNAVAILABLE', 404); }),
+      avatar: vi.fn<ReadSource['avatar']>(async () => { throw new WebError('ATTACHMENT_UNAVAILABLE', 404); }),
     };
     const accepted: { name: string | undefined; bytes: number }[] = [];
     const uploads = {

@@ -18,8 +18,16 @@ const refresh = (page: Page) => page.evaluate(() => window.dispatchEvent(new Eve
  * a new one only when a test has deliberately ended the old one.
  */
 let shared: Awaited<ReturnType<BrowserContext['cookies']>> | null = null;
+/**
+ * A session is also capped at 120 requests a minute, and the suite polls. Carrying one session
+ * through every test crosses that; a handful of tests each is comfortably inside both limits.
+ */
+const TESTS_PER_SESSION = 6;
+let used = 0;
 const listed = (page: Page) => page.getByRole('button', { name: /合成テスト会話 Alpha/ });
 async function login(page: Page) {
+  if (used >= TESTS_PER_SESSION) { shared = null; used = 0; }
+  used++;
   if (shared) {
     await page.context().addCookies(shared);
     await page.goto('/');
@@ -166,6 +174,20 @@ test('a conversation row carries the newest message, and its unread count as a b
   // A conversation whose newest message has not been read leaves the line blank rather than
   // claiming there is nothing there.
   await expect(page.locator('.chat-list li', { hasText: '合成長尺 Sigma' }).locator('.chat-preview')).toHaveText('\u00a0');
+});
+
+test('shows a contact picture where the address book has one, initials where it does not', async ({ page }) => {
+  await login(page);
+  const row = (name: string) => page.locator('.chat-list li', { hasText: name });
+  const picture = row('合成テスト会話 Alpha').locator('img.chat-avatar');
+  await expect(picture).toHaveAttribute('src', /\/api\/avatars\//);
+  await expect.poll(() => picture.evaluate(img => (img as HTMLImageElement).naturalWidth)).toBe(1);
+  // No picture: the initials stand in, and they are decoration rather than something to read out.
+  const initials = row('合成テスト会話 Beta').locator('span.chat-avatar');
+  await expect(initials).toHaveText('合B');
+  await expect(initials).toHaveAttribute('aria-hidden', 'true');
+  // Every conversation has one or the other.
+  await expect(page.locator('.chat-list li .chat-avatar')).toHaveCount(await page.locator('.chat-list li').count());
 });
 
 test('colours a sent message by the service it went out over', async ({ page }) => {
@@ -432,7 +454,7 @@ test('B05 empty/error states, a pane too tall for one page, and the 1000-row cei
   await page.route('**/api/chats?*', route => {
     const limit = Number(new URL(route.request().url()).searchParams.get('limit'));
     limits.push(limit);
-    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null })) : [];
+    const chats = full ? Array.from({ length: limit }, (_, i) => ({ id: `C${String(i).padStart(42, '0')}`, name: `合成会話 ${i}`, service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false, preview: null, avatarId: null })) : [];
     return route.fulfill({ json: { epoch: 'epoch-a', limit, chats } });
   });
   await page.goto('/'); await page.getByLabel('パスワード').fill('A'.repeat(43)); await page.getByRole('button', { name: 'ログイン', exact: true }).click();

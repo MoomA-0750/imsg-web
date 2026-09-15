@@ -123,6 +123,14 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     return reply.type(file.type).header('content-length', file.size).header('content-disposition', 'inline')
       .header('content-security-policy', "default-src 'none'; sandbox").send(file.stream);
   });
+  app.get('/api/avatars/:id', { exposeHeadRoute: false }, async (request, reply) => {
+    const id = (request.params as { id: string }).id;
+    if (!tokenValid(id)) throw new WebError('ATTACHMENT_UNAVAILABLE', 404);
+    const photo = await options.source.avatar(id);
+    // A picture out of the address book, sniffed to a JPEG or PNG before an id was ever minted.
+    return reply.type(photo.type).header('content-length', photo.size).header('content-disposition', 'inline')
+      .header('content-security-policy', "default-src 'none'; sandbox").send(photo.bytes);
+  });
   if (options.sender && options.sender.mode !== 'off') {
     const sender = options.sender;
     // A send-specific ceiling on top of the general per-session rate: a mutation deserves a tighter bound.
