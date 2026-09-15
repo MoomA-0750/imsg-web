@@ -32,8 +32,8 @@ header strong { font-size:1.15rem; color:var(--green-strong); }
 .pane-heading p { margin:.2rem 0 0; font-size:.78rem; }
 .icon-button,.back { flex:0 0 auto; width:42px; height:42px; padding:0; border-radius:50%; color:var(--green-strong); background:var(--green-soft); font-size:1.25rem; }
 .back { display:none; }
-.chat-list,.messages { list-style:none; margin:0; padding:0; overflow:auto; }
-.chat-list { flex:1; }
+.chat-list,.messages { list-style:none; margin:0; padding:0; }
+.chat-list { flex:1; overflow:auto; }
 .chat-list li { border-bottom:1px solid var(--line); }
 .chat { display:block; width:100%; border-radius:0; padding:.9rem 1rem; background:transparent; color:inherit; text-align:left; }
 .chat:hover:not(:disabled),.chat.active { background:var(--green-soft); }
@@ -42,8 +42,11 @@ header strong { font-size:1.15rem; color:var(--green-strong); }
 time { flex:0 0 auto; color:var(--muted); font-size:.72rem; }
 .chat-meta { display:block; margin-top:.35rem; color:var(--muted); font-size:.8rem; overflow-wrap:anywhere; }
 .trim { color:var(--muted); font-size:.75em; }
-.message-area { flex:1; min-height:0; overflow:hidden; background:linear-gradient(145deg, #f8fbf9, #eef5f0); }
-.messages { height:100%; padding:1rem; }
+/* The message area is the scroller, not the list: the "older" strip scrolls with the messages,
+   and the element that owns the scroll position stays mounted while a conversation is empty. */
+.message-area { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; background:linear-gradient(145deg, #f8fbf9, #eef5f0); }
+.messages { padding:1rem; }
+.older { padding:.75rem 1rem; text-align:center; color:var(--muted); font-size:.75rem; }
 .messages li { display:flex; margin:.55rem 0; }
 .messages .mine { justify-content:flex-end; }
 .bubble { max-width:min(75%, 720px); padding:.7rem .85rem; background:var(--surface); border:1px solid var(--line); border-radius:4px 15px 15px 15px; box-shadow:0 2px 8px #1837250a; }

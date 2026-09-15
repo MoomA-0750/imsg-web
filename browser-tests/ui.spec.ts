@@ -88,6 +88,49 @@ test('shows what a message replies to, and the tapbacks on it', async ({ page })
   const plain = page.locator('.bubble', { hasText: '危険なリンクの合成本文' });
   await expect(plain.locator('.reply-quote, .reactions')).toHaveCount(0);
 });
+const area = (page: Page) => page.locator('.message-area');
+const metrics = (page: Page) => area(page).evaluate(el => ({ top: el.scrollTop, height: el.scrollHeight, view: el.clientHeight }));
+
+test('opens a conversation at its newest message, and follows the newest as more arrive', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  await expect(page.locator('.messages li')).toHaveCount(50);
+  // #1 is the newest and sits last. The view starts on it, not on the oldest.
+  await expect(page.getByText('合成メッセージ #1', { exact: true })).toBeInViewport();
+  await expect(page.getByText('合成メッセージ #50', { exact: true })).not.toBeInViewport();
+  const { top, height, view } = await metrics(page);
+  expect(height).toBeGreaterThan(view); // the list really does scroll
+  expect(height - top - view).toBeLessThanOrEqual(48);
+});
+
+test('scrolling to the top loads the previous page and leaves the view where it was', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成長尺 Sigma/ }).click();
+  await expect(page.locator('.messages li')).toHaveCount(50);
+  const oldest = page.getByText('合成メッセージ #50', { exact: true });
+  await area(page).evaluate(el => { el.scrollTop = 0; });
+  // No button was pressed: reaching the top is the request.
+  await expect(page.locator('.messages li')).toHaveCount(100);
+  await expect(page.getByText('合成メッセージ #100', { exact: true })).toBeVisible();
+  // The message that was at the top is still there, still at the top of the view.
+  await expect(oldest).toBeInViewport();
+  const box = await oldest.boundingBox(), frame = await area(page).boundingBox();
+  expect(box!.y - frame!.y).toBeLessThan(260);
+  // Landing at the top again pages back again, and the count is honest about it.
+  await area(page).evaluate(el => { el.scrollTop = 0; });
+  await expect(page.locator('.messages li')).toHaveCount(150);
+  await expect(page.getByText('150件表示・最大1000件')).toBeVisible();
+});
+
+test('a conversation with nothing older says so instead of asking forever', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: /合成テスト会話 Alpha/ }).click();
+  await expect(page.locator('.messages li')).toHaveCount(2);
+  // Two messages came back where 50 were asked for: there is no previous page to fetch.
+  await expect(page.getByText('これより前のメッセージはありません')).toBeVisible();
+  await expect(page.getByRole('button', { name: '以前のメッセージを読み込む' })).toHaveCount(0);
+});
+
 test('sends on click or Ctrl+Enter, with no confirmation step, and is honest about each outcome', async ({ page }) => {
   const sends: { chatId: string; text: string }[] = [];
   await page.route('**/api/send', async route => { sends.push(route.request().postDataJSON()); await route.continue(); });

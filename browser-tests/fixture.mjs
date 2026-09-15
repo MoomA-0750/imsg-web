@@ -9,6 +9,13 @@ import { Auth, hashKey } from '../dist/server/auth.js';
 import { WebError } from '../dist/server/web-error.js';
 import { Readable } from 'node:stream';
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
+// A conversation long enough to scroll. #1 is the newest and sits last, so asking for a
+// larger limit adds older messages above and leaves the bottom of the list unchanged.
+const longChat = limit => Array.from({ length: limit }, (_, index) => {
+  const n = limit - index;
+  return { id: `S${String(n).padStart(42, '0')}`, text: `合成メッセージ #${n}`, isFromMe: false, sender: '合成送信者 Sigma',
+    attachments: [], link: null, replyTo: null, reactions: [], createdAt: null, trimmed: false };
+});
 const directory = await mkdtemp(join(tmpdir(), 'iw-browser-'));
 execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(directory, 'key.pem'), '-out', join(directory, 'cert.pem'), '-days', '1', '-subj', '/CN=127.0.0.1'], { stdio: 'ignore' });
 const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(hashKey('A'.repeat(43))), webDir: new URL('../dist/web', import.meta.url).pathname, source: {
@@ -16,8 +23,9 @@ const app = await createApp({ origin: 'https://127.0.0.1:19443', auth: new Auth(
     { id: 'C'.repeat(43), name: '合成テスト会話 Alpha', service: 'iMessage', isGroup: null, unreadCount: null, lastMessageAt: null, trimmed: false },
     { id: 'D'.repeat(43), name: '合成テスト会話 Beta', service: 'SMS', isGroup: false, unreadCount: 2, lastMessageAt: '2026-09-08T00:00:00Z', trimmed: false },
     { id: 'G'.repeat(43), name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 0, lastMessageAt: null, trimmed: false },
+    { id: 'S'.repeat(43), name: '合成長尺 Sigma', service: 'iMessage', isGroup: false, unreadCount: 0, lastMessageAt: null, trimmed: false },
   ] }; },
-  async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('G') ? [
+  async history(id, limit) { return { epoch: 'epoch-a', limit, messages: id.startsWith('S') ? longChat(limit) : id.startsWith('G') ? [
     { id: 'H'.repeat(43), text: '', isFromMe: false, sender: '合成送信者 Delta', attachments: [
       { id: 'P'.repeat(43), kind: 'image', sticker: false, preview: false }, { id: 'Q'.repeat(43), kind: 'image', sticker: false, preview: false },
       { id: null, kind: 'image', sticker: false, preview: false }, { id: null, kind: 'video', sticker: false, preview: false },

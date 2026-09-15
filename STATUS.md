@@ -77,6 +77,15 @@ with the names in the tooltip. All of it was already in `messages.history`.
 Sending a reply or a tapback is not possible without imsg's bridge transport
 (SIP off + injection into Messages), so it is not offered.
 
+## Reading through a long conversation
+
+A conversation opens on its newest message and stays there while new ones
+arrive. Scrolling near the top fetches the previous 50 and holds the view on the
+message it was on; it stops on its own when a read returns fewer messages than
+were asked for, which is the only evidence that the conversation has no more.
+The button above the oldest message remains as the fallback for a list too short
+to scroll or a read that failed.
+
 Only `thread_originator_guid` counts as a reply. The first release quoted on
 `reply_to_text` alone, and the owner saw consecutive messages drawn as a chain of
 replies: Messages sets `reply_to_guid` on ordinary messages too, and imsg falls

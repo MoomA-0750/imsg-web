@@ -1,9 +1,12 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { FormEvent, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 
 const PAGE = 50;
 const MAX = 1000;
 const POLL_MS = 15_000;
+/** Scrolling this close to the top asks for the previous page; this close to the bottom means "following". */
+const NEAR_TOP = 240;
+const NEAR_BOTTOM = 48;
 
 type Session = { csrfToken: string; mode: 'readonly' };
 type ApiError = Error & { status?: number };
@@ -161,6 +164,8 @@ export function App() {
   const [selected, setSelected] = useState<ChatView | null>(null);
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [messageLimit, setMessageLimit] = useState(PAGE);
+  /** The limit the rendered messages were actually fetched with. 0 until the first page lands. */
+  const [loadedLimit, setLoadedLimit] = useState(0);
   const [chatsBusy, setChatsBusy] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [chatError, setChatError] = useState('');
@@ -173,6 +178,13 @@ export function App() {
   const epoch = useRef<string | null>(null);
   const selectedId = useRef<string | null>(null);
   const inFlight = useRef<Record<string, AbortController | undefined>>({});
+
+  const viewport = useRef<HTMLDivElement | null>(null);
+  /** Following the newest message: keep the view at the bottom as messages arrive. True until the owner scrolls up. */
+  const following = useRef(true);
+  /** The scroll geometry as it was before the current render, so a page added above can be cancelled out. */
+  const before = useRef({ height: 0, top: 0 });
+  const shown = useRef<{ count: number; first: string | null }>({ count: 0, first: null });
 
   const abortAll = useCallback(() => {
     for (const controller of Object.values(inFlight.current)) controller?.abort();
@@ -187,7 +199,8 @@ export function App() {
     setChats([]); setSelected(null); setMessages([]); setCapability(null);
     setChatError(''); setHistoryError(''); setCapabilityError(''); setEpochNotice('');
     setChatsBusy(false); setHistoryBusy(false);
-    setChatLimit(PAGE); setMessageLimit(PAGE);
+    setChatLimit(PAGE); setMessageLimit(PAGE); setLoadedLimit(0);
+    following.current = true;
   }, [abortAll]);
 
   const loseSession = useCallback(() => {
@@ -208,6 +221,7 @@ export function App() {
     setChats([]); setSelected(null); setMessages([]); setCapability(null);
     setChatsBusy(false); setHistoryBusy(false);
     setChatError(''); setHistoryError(''); setCapabilityError('');
+    setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
     setEpochNotice('メッセージデータが更新されました。会話を選び直してください。');
     return false;
   }, [abortAll]);
@@ -242,13 +256,13 @@ export function App() {
   const loadHistory = useCallback(async () => {
     const id = selectedId.current;
     if (!id) return;
-    const started = generation.current;
+    const started = generation.current, asked = messageLimit;
     setHistoryBusy(true);
     try {
       await run('history', async signal => {
-        const data = await api<HistorySnapshot>(`/api/chats/${encodeURIComponent(id)}/messages?limit=${messageLimit}`, { signal });
+        const data = await api<HistorySnapshot>(`/api/chats/${encodeURIComponent(id)}/messages?limit=${asked}`, { signal });
         if (selectedId.current !== id || !switchEpoch(data.epoch, started) || started !== generation.current) return;
-        setMessages(data.messages.slice(0, MAX)); setHistoryError('');
+        setMessages(data.messages.slice(0, MAX)); setLoadedLimit(asked); setHistoryError('');
       });
     } catch (error) {
       if ((error as ApiError).status === 401 && started === generation.current) loseSession();
@@ -332,6 +346,31 @@ export function App() {
     return () => { stopped = true; if (timer !== undefined) clearTimeout(timer); document.removeEventListener('visibilitychange', resume); window.removeEventListener('focus', resume); };
   }, [session, loadChats, loadCapabilities, loadHistory]);
 
+  // A conversation opens at its newest message and stays there while following. When a page
+  // is added above instead, the view keeps the message it was on: the list grew by exactly
+  // the height difference, so putting that back under the same scroll offset holds it still.
+  useLayoutEffect(() => {
+    const el = viewport.current;
+    if (!el) return;
+    const first = messages[0]?.id ?? null;
+    const grewAbove = messages.length > shown.current.count && first !== shown.current.first;
+    if (following.current) el.scrollTop = el.scrollHeight;
+    else if (grewAbove) el.scrollTop = el.scrollHeight - before.current.height + before.current.top;
+    shown.current = { count: messages.length, first };
+    before.current = { height: el.scrollHeight, top: el.scrollTop };
+  }, [messages]);
+
+  // Thumbnails and link images settle after their message is laid out, growing the list under
+  // the view. While following, stay at the bottom rather than drifting up by the image's height.
+  useEffect(() => {
+    const el = viewport.current;
+    if (!el) return;
+    const settle = () => { if (following.current) el.scrollTop = el.scrollHeight; };
+    el.addEventListener('load', settle, true); // `load` does not bubble; capture reaches it
+    window.addEventListener('resize', settle);
+    return () => { el.removeEventListener('load', settle, true); window.removeEventListener('resize', settle); };
+  }, [selected]);
+
   async function login(event: FormEvent) {
     event.preventDefault();
     if (logoutBusy) return;
@@ -359,8 +398,29 @@ export function App() {
 
   function choose(chat: ChatView) {
     inFlight.current.history?.abort(); delete inFlight.current.history;
-    selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError(''); setMessageLimit(PAGE);
+    selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
+    setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
   }
+
+  // Asking for one more page. The in-flight read is for the old limit, so drop it:
+  // the poll restarts on the limit change and would otherwise wait out a whole cycle.
+  function loadOlder() {
+    if (!hasOlder || olderPending) return;
+    inFlight.current.history?.abort(); delete inFlight.current.history;
+    setMessageLimit(value => Math.min(MAX, value + PAGE));
+  }
+
+  function onScroll(event: UIEvent<HTMLDivElement>) {
+    const el = event.currentTarget;
+    before.current = { height: el.scrollHeight, top: el.scrollTop };
+    following.current = el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM;
+    if (el.scrollTop <= NEAR_TOP) loadOlder();
+  }
+
+  // A larger page has been asked for but has not arrived. Getting back as many messages
+  // as were asked for is the only evidence that older ones exist.
+  const olderPending = messageLimit > loadedLimit;
+  const hasOlder = loadedLimit > 0 && messages.length >= loadedLimit && messageLimit < MAX;
 
   if (checking) return <main className="center"><p role="status">セッションを確認しています…</p></main>;
   if (!session) return <main className="center"><section className="login-card" aria-labelledby="login-title"><div className="brand">imsg Web</div><h1 id="login-title">メッセージを見る</h1><p className="muted">所有者キーでログインしてください。このアプリはキーを保存しません（ブラウザーへの保存はご自身で選べます）。</p><form onSubmit={login}><label htmlFor="owner-key">所有者キー</label><input id="owner-key" type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus /><button disabled={loginBusy || logoutBusy}>{logoutBusy ? 'ログアウト処理中…' : loginBusy ? '確認中…' : 'ログイン'}</button>{loginError && <p className="error" role="alert">{loginError}</p>}</form></section></main>;
@@ -375,11 +435,23 @@ export function App() {
     {epochNotice && <div className="notice" role="status">{epochNotice}</div>}
     <div className="panes">
       <aside className="chat-pane" aria-label="会話一覧"><div className="pane-heading"><div><h1>会話</h1><p>{chats.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadChats()} disabled={chatsBusy} aria-label="会話一覧を更新">↻</button></div>{chatError && <ErrorBar text={chatError} retry={loadChats} />}{chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list">{chats.map(chat => <li key={chat.id}><button className={selected?.id === chat.id ? 'chat active' : 'chat'} onClick={() => choose(chat)}><span className="chat-top"><strong>{chat.name || '名前のない会話'}{chat.trimmed && <span className="trim">（省略）</span>}</strong><time>{dateLabel(chat.lastMessageAt)}</time></span><span className="chat-meta">{chat.service || 'サービス不明'}{chat.isGroup === true ? '・グループ' : chat.isGroup === null ? '・グループ判定不明' : ''}{chat.unreadCount === null ? '・未読数不明' : chat.unreadCount > 0 ? `・未読 ${chat.unreadCount}` : ''}</span></button></li>)}</ul>}<LoadMore value={chatLimit} busy={chatsBusy} onMore={() => setChatLimit(value => Math.min(MAX, value + PAGE))} /></aside>
-      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" aria-live="polite">{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.replyTo && <ReplyQuote reply={message.replyTo} />}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}{message.reactions.length > 0 && <Reactions list={message.reactions} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div><LoadMore value={messageLimit} busy={historyBusy} onMore={() => setMessageLimit(value => Math.min(MAX, value + PAGE))} />{sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />}</>}</main>
+      <main className="detail-pane">{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <><div className="pane-heading detail-heading"><button className="back" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る">←</button><div><h1>{selected.name || '名前のない会話'}</h1><p>{messages.length}件表示・最大{MAX}件</p></div><button className="icon-button" onClick={() => void loadHistory()} disabled={historyBusy} aria-label="メッセージを更新">↻</button></div>{historyError && <ErrorBar text={historyError} retry={loadHistory} />}<div className="message-area" ref={viewport} onScroll={onScroll} aria-live="polite">{messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}{historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages">{messages.map(message => <li key={message.id} className={message.isFromMe ? 'mine' : 'theirs'}><div className="bubble">{selected.isGroup === true && message.sender && <span className="sender">{message.sender}</span>}{message.replyTo && <ReplyQuote reply={message.replyTo} />}{message.attachments.map((item, i) => <Attachment key={item.id ?? `none-${i}`} item={item} />)}{(message.text || (message.attachments.length === 0 && !message.link)) && <p>{message.text || '本文のないメッセージ'}{message.trimmed && <span className="trim">（省略）</span>}</p>}{message.link && <LinkCard link={message.link} />}{message.reactions.length > 0 && <Reactions list={message.reactions} />}<time>{dateLabel(message.createdAt)}</time></div></li>)}</ol>}</div>{sendMode && <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />}</>}</main>
     </div>
   </div>;
 }
 
 function Empty({ text }: { text: string }) { return <div className="empty" role="status">{text}</div>; }
 function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar" role="alert"><span>{text}</span><button className="secondary compact" onClick={() => void retry()}>再試行</button></div>; }
+/**
+ * Sits above the oldest message, so it is out of sight until the owner scrolls up to it —
+ * by which point scrolling has usually already asked for the next page. The button is the
+ * fallback for when it has not: a list too short to scroll, or a read that failed.
+ */
+function Older({ pending, more, ceiling, onMore }: { pending: boolean; more: boolean; ceiling: boolean; onMore: () => void }) {
+  return <div className="older">{
+    pending ? <span role="status">以前のメッセージを読み込んでいます…</span>
+    : ceiling ? <span>表示上限の{MAX}件です</span>
+    : more ? <button className="secondary compact" onClick={onMore}>以前のメッセージを読み込む</button>
+    : <span>これより前のメッセージはありません</span>}</div>;
+}
 function LoadMore({ value, busy, onMore }: { value: number; busy: boolean; onMore: () => void }) { return value < MAX ? <div className="load-more"><button className="secondary" disabled={busy} onClick={onMore}>さらに50件読み込む</button><span>取得上限 {value}/{MAX}</span></div> : <p className="limit">表示上限の{MAX}件です</p>; }
