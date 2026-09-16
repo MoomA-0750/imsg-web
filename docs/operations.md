@@ -154,8 +154,22 @@ ask the owner. Never delete lock or socket files automatically, and never
 ## Update
 
 Put the new build in a new `releases/<commit>/`, stop, point the plist at it,
-start, log in and check. To roll back, point the plist at the previous release.
-The owner hash in `state/` is never rolled back.
+start, log in and check, then `<base>/imsg-web prune`. To roll back, point the
+plist at the previous release. The owner hash in `state/` is never rolled back.
+
+**Wrap a pasted deploy in a guard.** These commands are for the Mac, and a shell
+on another machine will not refuse them — it will run each line and fail each one
+differently, half of them looking like real errors. One `if` makes the whole
+paste do nothing anywhere else:
+
+```sh
+if [ "$(uname)" != Darwin ]; then echo "This is for the Mac."; else
+  # …the whole deploy…
+fi
+```
+
+`exit` would do instead, except in an interactive shell, where it closes the
+window the output was in.
 
 ## During the trial
 
