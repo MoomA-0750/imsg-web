@@ -24,11 +24,11 @@ changes and typing are still not approved.
   `img-src` and `media-src` allow `blob:` so a chosen file or a recording can be
   played back locally before sending; a blob URL is minted by the page for its
   own data and admits no third-party content. `Permissions-Policy` closes every
-  device to the page except the microphone, which recording needs. It is `off` unless `IMSG_WEB_SEND` is set, and `dry-run` resolves
-  and validates without dispatching. Do not enable live sending, and do not
-  perform a real send, without the owner's approval each time. The composer
-  sends immediately (no confirmation step) at the owner's request; one send at a
-  time and honest reporting are what remain.
+  device to the page except the microphone, which recording needs. **Do not
+  perform a real send while working on this** without the owner's approval each
+  time — that the product sends by default is not permission for an agent to
+  send one. The composer sends immediately (no confirmation step) at the owner's
+  request; one send at a time and honest reporting are what remain.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived
   from screen structure or component state.
 - Do not weaken authentication, exact Origin/Host checks, Secure cookies,

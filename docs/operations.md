@@ -105,17 +105,17 @@ generated key in its place.
 `owner.json` still reads both forms, so a release can be deployed before a
 password is chosen without locking the owner out.
 
-## Sending (optional, off by default)
+## Sending
 
-Sending is a separate path and is off unless the plist carries `IMSG_WEB_SEND`.
-Add `--send dry-run` (validate and resolve a target, dispatch nothing) or
-`--send live` to the generator command:
+Sending is a separate path, and it is on. `--send off` closes it and `--send
+dry-run` validates and resolves a target without dispatching; the plist carries
+`IMSG_WEB_SEND` only for those two, since sending is what it does otherwise.
 
 ```sh
 <node> scripts/generate-launch-agent.mjs ... --send dry-run
 ```
 
-`live` needs, on this Mac, done by the owner:
+Sending needs, on the Mac, done by its owner:
 
 - Messages.app running and signed in to iMessage.
 - An Automation grant so the app's dedicated Node may control Messages (macOS
@@ -123,7 +123,7 @@ Add `--send dry-run` (validate and resolve a target, dispatch nothing) or
   → Automation). No SIP change, and no IMCore injection: sending uses the
   AppleScript transport (text and/or one attachment).
 
-Start `live` with a single message to your own number, and confirm it arrives.
+Start with a single message to your own number, and confirm it arrives.
 Sending never reuses the read path; the read RPC allowlist is unchanged.
 
 Attachments: the browser uploads the file to `POST /api/uploads` (binary,

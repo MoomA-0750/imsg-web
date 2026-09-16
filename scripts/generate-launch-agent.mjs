@@ -38,7 +38,9 @@ export function validateConfig(c) {
 export function renderLaunchAgent(input) {
   const c = validateConfig(input);
   const str = value => `<string>${xml(value)}</string>`;
-  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port), ...(c.send && c.send !== 'off' ? { IMSG_WEB_SEND: c.send } : {}) };
+  // Sending is on unless the agent says otherwise, so the variable is written whenever it is not
+  // the default — including 'off', which is the one that has to be said out loud.
+  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port), ...(c.send && c.send !== 'live' ? { IMSG_WEB_SEND: c.send } : {}) };
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>

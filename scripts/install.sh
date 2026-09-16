@@ -1,7 +1,7 @@
 #!/bin/bash
 # Installs a built checkout as a running LaunchAgent, from one command.
 #
-#   ./scripts/install.sh --imsg <path> --node <dir> --origin https://<host>.ts.net [--port 8787] [--send off]
+#   ./scripts/install.sh --imsg <path> --node <dir> --origin https://<host>.ts.net [--port 8787] [--send live]
 #
 # --no-start writes everything and stops short of loading the agent, for looking before starting.
 #
@@ -20,7 +20,7 @@ set -eu
 base="$HOME/Library/Application Support/imsg-web"
 label="local.imsg-web"
 port=8787
-send="off"
+send="live"
 start="yes"
 imsg=""
 node=""

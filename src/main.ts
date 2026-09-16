@@ -63,9 +63,11 @@ async function main() {
   const audio = process.platform === 'darwin' ? new AudioConverter({ afconvert: '/usr/bin/afconvert', context }) : undefined;
   const source = new LiveSource({ executable, context, expectedDatabasePath: context.databasePath,
     ...(process.platform === 'darwin' ? { converter: new ImageConverter({ sips: '/usr/bin/sips', context }), photos: new ContactPhotos(addressBook), audio: audio! } : {}) });
-  // Sending is off unless explicitly configured, and only on macOS. IMSG_WEB_SEND=dry-run resolves and validates but sends nothing.
-  const sendSetting = process.platform === 'darwin' ? process.env.IMSG_WEB_SEND : undefined;
-  const sendMode: SendMode = sendSetting === '1' || sendSetting === 'live' ? 'live' : sendSetting === 'dry-run' ? 'dry-run' : 'off';
+  // Sending is on: a messaging app that can only read is a strange thing to install. It is still a
+  // separate path with its own client, process and limits — `IMSG_WEB_SEND=off` closes it entirely,
+  // and `dry-run` resolves and validates but dispatches nothing. Only on macOS, where Messages is.
+  const sendSetting = process.platform === 'darwin' ? (process.env.IMSG_WEB_SEND ?? 'live') : 'off';
+  const sendMode: SendMode = sendSetting === 'off' ? 'off' : sendSetting === 'dry-run' ? 'dry-run' : 'live';
   const uploads = new UploadStore({ dir: join(tmpDir, 'uploads'), ...(audio ? { audio } : {}) });
   const sender = new SendService({ mode: sendMode, resolveChatGuid: id => source.resolveChatGuid(id), clientFactory: () => new SendClient({ executable, context }), uploads });
   const runtime = await startRuntime({ store, source, sender, uploads, origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
