@@ -43,7 +43,7 @@ code injected into Messages; this project does not go there.
 ## Setting it up
 
 ```sh
-git clone https://github.com/<you>/imsg-web && cd imsg-web
+git clone https://github.com/MoomA-0750/imsg-web && cd imsg-web
 npm ci --ignore-scripts
 npm run build
 
