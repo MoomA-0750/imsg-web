@@ -13,7 +13,7 @@ contact pictures from the address book, with initials where there is none, and a
 group wearing its members' faces gathered in one circle; voice messages played in
 place, and recording one to send;
 link cards from the preview Messages stored; the message a reply answers and
-the tapbacks on a message; sending text and attachments (off by default; see
+the tapbacks on a message; opt-in browser notifications for new messages; sending text and attachments (off by default; see
 `docs/operations.md`); a responsive UI. Not implemented: sending replies or
 tapbacks (imsg needs its bridge transport, which wants SIP off and code
 injected into Messages), read-state changes, typing, search.
@@ -73,6 +73,14 @@ owner every time:
   been read, the rest of the conversation is fetched once — up to the 1000-row
   ceiling — and the screen goes there when it lands; beyond that it says so
   rather than pretending.
+- **Notifications are off until asked for.** The bell beside メッセージ turns them
+  on, which is also when the browser is asked for permission; what was already
+  there is not announced, and neither is a message the owner sent from another
+  device, nor one arriving in the conversation on screen. They are drawn by this
+  browser alone — nothing is registered with a push service and nothing is sent
+  anywhere. With them on, a hidden tab keeps asking for the conversation list once
+  a minute instead of stopping; without them it stops, as before. iOS Safari shows
+  notifications only for a page added to the Home Screen.
 - **Times are not printed on every message.** A line marks where each day begins
   and where a conversation resumes after an hour's quiet;
   dragging the conversation to the left uncovers the time of every message beside

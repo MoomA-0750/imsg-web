@@ -1,11 +1,14 @@
 import { CSSProperties, FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Add24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
+import { Add24Regular, Alert24Filled, Alert24Regular, AlertOff24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 import { RECORD_MAX_MS, RecorderError, VoiceRecorder } from './recorder';
+import { useNotifier } from './notifications';
 
 const PAGE = 50;
 const MAX = 1000;
 const POLL_MS = 15_000;
+/** How often a tab nobody is looking at asks, when it is only watching for something to announce. */
+const WATCH_POLL_MS = 60_000;
 /** Scrolling this close to the end of a list asks for the next page. */
 const NEAR_EDGE = 240;
 /** Within this of the bottom of a conversation counts as watching for the newest message. */
@@ -595,6 +598,10 @@ export function App() {
   const [capabilityError, setCapabilityError] = useState('');
   const [epochNotice, setEpochNotice] = useState('');
 
+  /** Held for the notifier, which is given the list as it stands when it is turned on. */
+  const chatsNow = useRef<ChatView[]>([]);
+  const notifier = useNotifier(chat => { chatsNow.current.some(known => known.id === chat.id) && choose(chat); });
+
   const generation = useRef(0);
   const epoch = useRef<string | null>(null);
   const selectedId = useRef<string | null>(null);
@@ -640,6 +647,7 @@ export function App() {
   }, [abortAll]);
 
   const loseSession = useCallback(() => {
+    notifier.forget();
     clearPrivate();
     setSession(null);
     setKey('');
@@ -677,7 +685,9 @@ export function App() {
       await run('chats', async signal => {
         const data = await api<ChatSnapshot>(`/api/chats?limit=${asked}`, { signal });
         if (!switchEpoch(data.epoch, started) || started !== generation.current) return;
-        setChats(data.chats.slice(0, MAX)); setLoadedChatLimit(asked); setChatError(''); setEpochNotice('');
+        const fresh = data.chats.slice(0, MAX);
+        setChats(fresh); chatsNow.current = fresh; notifier.sync(fresh, selectedId.current);
+        setLoadedChatLimit(asked); setChatError(''); setEpochNotice('');
         if (selectedId.current && !data.chats.some(chat => chat.id === selectedId.current)) {
           selectedId.current = null; setSelected(null); setMessages([]);
           setHistoryError('選択していた会話が一覧からなくなりました。');
@@ -797,14 +807,21 @@ export function App() {
     let running = false;
     let refreshPending = false;
     const schedule = () => {
-      if (!stopped && !document.hidden) timer = window.setTimeout(() => void poll(), POLL_MS);
+      if (stopped) return;
+      if (!document.hidden) timer = window.setTimeout(() => void poll(), POLL_MS);
+      // A hidden tab stops asking, unless it is the only thing that can raise a notification.
+      else if (notifier.watching.current) timer = window.setTimeout(() => void poll(), WATCH_POLL_MS);
     };
     const poll = async () => {
-      if (stopped || document.hidden) return;
+      if (stopped) return;
+      const watching = document.hidden;
+      if (watching && !notifier.watching.current) return;
       if (running) { refreshPending = true; return; }
       if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
       running = true;
-      try { await Promise.all([loadChats(), loadCapabilities(), selectedId.current ? loadHistory() : Promise.resolve()]); }
+      // Out of sight, only the list is read: it is all a notification needs, and the rest would be
+      // work nobody is waiting on.
+      try { await (watching ? loadChats() : Promise.all([loadChats(), loadCapabilities(), selectedId.current ? loadHistory() : Promise.resolve()])); }
       finally {
         running = false;
         if (stopped) return;
@@ -814,11 +831,8 @@ export function App() {
     };
     void poll();
     const resume = () => {
-      if (document.hidden) {
-        if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
-        return;
-      }
       if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+      if (document.hidden) { schedule(); return; }
       if (running) refreshPending = true;
       else void poll();
     };
@@ -979,7 +993,17 @@ export function App() {
     {viewing && <Lightbox item={viewing} onClose={() => setViewing(null)} />}
     <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
       <aside className={`chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
-        <div className={HEADING}><h1 className={PANE_TITLE}>メッセージ</h1></div>
+        <div className={HEADING}>
+          <h1 className={`${PANE_TITLE} flex-1 min-w-0`}>メッセージ</h1>
+          {notifier.status !== 'unsupported' && <button type="button" disabled={notifier.status === 'denied'}
+            className={`shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-transparent ${notifier.status === 'on' ? 'text-accent' : 'text-muted'} enabled:hover:bg-accent-soft`}
+            onClick={() => notifier.toggle(chatsNow.current)}
+            title={notifier.status === 'denied' ? 'ブラウザーの設定で通知がブロックされています' : undefined}
+            aria-label={notifier.status === 'on' ? '通知オン' : notifier.status === 'denied' ? '通知はブロックされています' : '通知オフ'}
+            aria-pressed={notifier.status === 'on'}>
+            {notifier.status === 'on' ? <Alert24Filled /> : notifier.status === 'denied' ? <AlertOff24Regular /> : <Alert24Regular />}
+          </button>}
+        </div>
         {chatError && <ErrorBar text={chatError} retry={loadChats} />}
         <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col" ref={chatViewport} onScroll={onChatScroll}>
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>

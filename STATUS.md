@@ -19,12 +19,10 @@ to be decided.
 1. **Merge to `main`.** It can fast-forward to `reply-reactions`, which carries
    everything since the faces work. Run in the main checkout, by the owner:
    `git merge --ff-only reply-reactions`.
-2. **Decide about `attachment-images`.** It is one unmerged commit (`6427ffc`):
-   opt-in in-browser notifications for new incoming messages, including
-   `web/src/notifications.ts` and a browser test. Nothing else on it is unique.
-   It was written before the UI moved to Tailwind and before most of what is now
-   in the composer, so it would be rebuilt rather than merged. Either rebuild it
-   on the current line or delete the branch; leaving it is the only wrong answer.
+2. **Delete `attachment-images`** once the merge above lands. The only thing it
+   held that was nowhere else — opt-in notifications — has been rebuilt on the
+   current line, so nothing is left on it:
+   `git branch -D attachment-images`.
 3. **Watch the M1** for memory, log size and anything that looks wrong.
 4. **Then the iMac**, the same way (`docs/operations.md`), watching for the stale
    bridge lock issue noted in the findings.

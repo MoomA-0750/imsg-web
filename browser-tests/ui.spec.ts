@@ -202,6 +202,61 @@ test('reaches back for a message that has not been read yet', async ({ page }) =
   await expect(page.locator('.msg.marked')).toHaveCount(0, { timeout: 4000 });
 });
 
+test('announces a new incoming message once asked to, and nothing else', async ({ page, context }) => {
+  await context.grantPermissions(['notifications']);
+  // Collected in the page rather than shown by the OS. Nothing leaves the browser either way.
+  await page.addInitScript(() => {
+    (window as unknown as { __notices: unknown[] }).__notices = [];
+    class Stub {
+      static permission = 'granted';
+      static requestPermission() { return Promise.resolve('granted'); }
+      onclick: (() => void) | null = null;
+      constructor(title: string, options?: { body?: string; tag?: string }) {
+        (window as unknown as { __notices: unknown[] }).__notices.push({ title, body: options?.body, tag: options?.tag });
+      }
+      close() {}
+    }
+    (window as unknown as { Notification: unknown }).Notification = Stub;
+  });
+  const notices = () => page.evaluate(() => (window as unknown as { __notices: { title: string; body: string; tag: string }[] }).__notices);
+  const GAMMA = 'G'.repeat(43);
+  const list = (at: string, text: string, fromMe: boolean) => ({ epoch: 'epoch-a', limit: 50, chats: [
+    { id: GAMMA, name: '合成グループ Gamma', service: 'iMessage', isGroup: true, unreadCount: 1, lastMessageAt: at, trimmed: false, preview: { text, trimmed: false, fromMe }, faces: [] },
+  ] });
+  await login(page);
+  let answer = list('2026-09-10T00:00:00Z', '最初から見えている合成メッセージ', false);
+  await page.route('**/api/chats?*', route => route.fulfill({ json: answer }));
+  await refresh(page);
+  await expect(page.getByRole('button', { name: /合成グループ Gamma/ })).toBeVisible();
+  expect(await notices()).toEqual([]);
+
+  // Off until asked for, and turning it on announces nothing that was already there.
+  await page.getByRole('button', { name: '通知オフ' }).click();
+  await expect(page.getByRole('button', { name: '通知オン' })).toBeVisible();
+  await refresh(page);
+  await page.waitForTimeout(400);
+  expect(await notices()).toEqual([]);
+
+  // A newer incoming message is news, titled with the conversation and carrying its line.
+  answer = list('2026-09-11T00:00:00Z', '新着の合成メッセージ', false);
+  await refresh(page);
+  await expect.poll(notices).toEqual([{ title: '合成グループ Gamma', body: '新着の合成メッセージ', tag: `imsg:${GAMMA}` }]);
+
+  // One the owner sent from another device moves the conversation on just the same. Not news.
+  answer = list('2026-09-12T00:00:00Z', '別の端末から送った合成メッセージ', true);
+  await refresh(page);
+  await page.waitForTimeout(400);
+  expect(await notices()).toHaveLength(1);
+
+  // Turned off, nothing is announced at all.
+  await page.getByRole('button', { name: '通知オン' }).click();
+  await expect(page.getByRole('button', { name: '通知オフ' })).toBeVisible();
+  answer = list('2026-09-13T00:00:00Z', '通知を切ったあとの合成メッセージ', false);
+  await refresh(page);
+  await page.waitForTimeout(400);
+  expect(await notices()).toHaveLength(1);
+});
+
 test('a conversation row carries the newest message, and its unread count as a badge', async ({ page }) => {
   await login(page);
   const beta = page.locator('.chat-list li', { hasText: '合成テスト会話 Beta' });
