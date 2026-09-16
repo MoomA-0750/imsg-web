@@ -14,6 +14,18 @@ you signed into.
 It is built for **one person on their own Mac**. There are no accounts, no
 multi-user anything, and no attempt at being a product.
 
+<p align="center">
+  <img src="docs/screenshots/group.png" width="880"
+       alt="A group conversation open in a browser: faces on the conversation row, a voice message with a progress bar, a reply quote, a tapback, and the composer.">
+  <br><br>
+  <img src="docs/screenshots/phone.png" width="300"
+       alt="The same app at phone width: day separators, a picture in a bubble of its own, and the composer.">
+</p>
+
+<p align="center"><sub>Every message, name and picture above is synthetic. They come from
+<code>scripts/demo-preview.mjs</code>, which is where they are written down, and the screenshots are
+taken from it by <code>scripts/screenshots.mjs</code>. Nothing here was in anyone's conversation.</sub></p>
+
 ## What it does
 
 Read: the conversation list with the newest message on each row, history that

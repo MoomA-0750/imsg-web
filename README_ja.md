@@ -13,6 +13,18 @@ Mac の中にあり、ローカルのサーバーがそれを読み、その サ
 **一人が自分の Mac で使う**ために作られています。アカウントの仕組みも、複数人向けの機能も、
 製品らしく振る舞おうという意図もありません。
 
+<p align="center">
+  <img src="docs/screenshots/group.png" width="880"
+       alt="ブラウザーで開いたグループ会話。会話リストの行に参加者のアイコン、音声メッセージの再生バー、返信の引用、リアクション、そして入力欄。">
+  <br><br>
+  <img src="docs/screenshots/phone.png" width="300"
+       alt="同じ画面を電話の横幅で。日付の区切り、画像だけの吹き出し、入力欄。">
+</p>
+
+<p align="center"><sub>上の画面に出ているメッセージ・名前・画像は<strong>すべて架空</strong>です。
+<code>scripts/demo-preview.mjs</code> の中に書かれているもので、スクリーンショットは
+<code>scripts/screenshots.mjs</code> がそこから撮っています。実在の会話に由来するものは1つもありません。</sub></p>
+
 ## できること
 
 **読む**：会話リスト（各行に最新のメッセージ）、最新から開いてスクロールで遡る履歴、Mac の中に

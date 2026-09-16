@@ -17,7 +17,13 @@ test('synthetic preview: login, paging, empty history, logout and confinement', 
     const empty = await (await fetch(`${origin}/api/chats/${list.chats[3].id}/messages?limit=50`, { headers })).json();
     assert.deepEqual(empty.messages, []);
     assert.equal((await fetch(`${origin}/api/chats`, { headers: { ...headers, Origin: 'http://invalid.test' } })).status, 403);
-    assert.equal((await fetch(`${origin}/api/send`, { method: 'POST', headers })).status, 405);
+    // The composer is offered in dry-run, so these two answer — and dispatch nothing, there being
+    // nothing here to dispatch to. Everything else that is not a read is still refused.
+    const dry = await fetch(`${origin}/api/send`, { method: 'POST', headers, body: '{}' });
+    assert.equal(dry.status, 200);
+    assert.deepEqual(await dry.json(), { state: 'dry_run' });
+    assert.equal((await fetch(`${origin}/api/chats`, { method: 'POST', headers })).status, 405);
+    assert.equal((await fetch(`${origin}/api/read`, { method: 'POST', headers })).status, 405);
     assert.equal((await fetch(`${origin}/scripts/demo-preview.mjs`, { headers })).status, 404);
     const logout = await fetch(`${origin}/api/session`, { method: 'DELETE', headers: { ...headers, 'X-CSRF-Token': 'demo-only' } });
     assert.match(logout.headers.get('set-cookie'), /Max-Age=0/);

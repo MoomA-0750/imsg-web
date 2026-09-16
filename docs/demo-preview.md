@@ -42,3 +42,11 @@ remain unverified. Do not turn this preview feedback into production acceptance.
 node --test scripts/demo-preview.test.mjs
 node scripts/demo-preview-browser.mjs http://<this-machine-tailscale-ipv4>:18787
 ```
+
+## The screenshots in the README
+
+They come from here. `node scripts/screenshots.mjs` starts this same server without its banner,
+drives it with Playwright, and writes `docs/screenshots/`. So what the README shows is exactly what
+this preview shows, and no real conversation could ever appear in either: every message in it is
+written in `scripts/demo-preview.mjs`, and the pictures and the recording are generated in that file
+rather than kept as files.
