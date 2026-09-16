@@ -132,6 +132,20 @@ minutes if unsent) and the send passes its path to imsg. imsg then copies it
 into `~/Library/Messages/Attachments/imsg/<uuid>/` for Messages, and those
 copies accumulate there — clear them out occasionally if they add up.
 
+## Reaching it
+
+The server binds `127.0.0.1` and answers only for the origin it was configured
+with. Two ways to arrive at it:
+
+- **From the Mac itself.** `--origin http://localhost:8787`, which is the
+  default, and nothing else to set up. Browsers class loopback as a trustworthy
+  origin, so the session cookie keeps its `Secure` and `__Host-` guarantees over
+  plain http there. Open exactly the address it was given: `127.0.0.1` and
+  `localhost` are different origins, and the other one is refused.
+- **From a phone or another computer.** Something in front has to carry the TLS,
+  and the origin must be that address. Tailscale Serve is what this was built
+  and tested against; any reverse proxy on the Mac will do.
+
 ## Serve
 
 With the owner's approval at the time, and after checking `tailscale serve

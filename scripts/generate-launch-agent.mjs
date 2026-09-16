@@ -31,7 +31,10 @@ export function validateConfig(c) {
   if (!Number.isInteger(c.port) || c.port < 1024 || c.port > 65535) fail();
   if (typeof c.origin !== 'string') fail();
   const url = new URL(c.origin);
-  if (url.protocol !== 'https:' || url.origin !== c.origin || url.username || url.password || url.search || url.hash) fail();
+  // Loopback may be plain http — browsers treat it as a trustworthy origin, so nothing the cookies
+  // or the page rely on is given up. Anything else has to be https.
+  const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if ((url.protocol !== 'https:' && !local) || url.origin !== c.origin || url.username || url.password || url.search || url.hash) fail();
   if (Buffer.byteLength(join(c.base, c.stateName, 'admin.sock')) > 100) fail();
   return c;
 }

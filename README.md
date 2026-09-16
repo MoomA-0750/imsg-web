@@ -5,10 +5,9 @@
 Read and send your iMessages from a browser, served by your own Mac.
 
 It is a small web UI over the [`imsg`](https://github.com/openclaw/imsg) CLI: your
-Mac keeps the messages, a local server reads them, and you reach that server over
-your own [Tailscale](https://tailscale.com) network from a phone or another
-computer. Nothing is mirrored anywhere, and nothing is exposed to the public
-Internet.
+Mac keeps the messages and a local server reads them. Nothing is mirrored
+anywhere and nothing is exposed to the Internet — the server listens on loopback
+and answers only the address you configured.
 
 It is built for **one person on their own Mac**.
 
@@ -47,7 +46,6 @@ injected into Messages; this project does not go there.
   small changes upstream does not carry. That directory says what and how.
 - **Node 24**, unpacked somewhere of its own. Not the system one: this copy gets
   Full Disk Access.
-- **Tailscale**, or another private way to reach the Mac.
 
 ## Setting it up
 
@@ -58,8 +56,7 @@ npm run build
 
 ./scripts/install.sh \
   --imsg /path/to/patched/imsg \
-  --node /path/to/node-v24.20.0-darwin-arm64 \
-  --origin https://your-mac.your-tailnet.ts.net
+  --node /path/to/node-v24.20.0-darwin-arm64
 ```
 
 It lays out a private directory under `~/Library/Application Support/imsg-web`,
@@ -67,14 +64,26 @@ installs the build, asks you for a password, and starts a LaunchAgent. Run the
 same command again after `npm run build` to install a new release; the previous
 one stays as the way back.
 
-Two things it will tell you to do yourself:
+One thing it will tell you to do yourself: **Full Disk Access** for the Node
+binary it installed (System Settings → Privacy & Security). macOS holds *that*
+binary responsible for reading `chat.db`, not your terminal.
 
-- **Full Disk Access** for the Node binary it installed (System Settings →
-  Privacy & Security). macOS holds *that* binary responsible for reading
-  `chat.db`, not your terminal.
-- **`tailscale serve --bg 8787`**, so the address you gave it reaches the Mac.
+Then open **http://localhost:8787** on the Mac and sign in.
 
-Then open that address and sign in.
+### Reaching it from a phone
+
+The server is on loopback, so something has to carry it — and carry TLS, since
+anything but loopback must be https. [Tailscale](https://tailscale.com) Serve is
+the least work and what this was tested against; any reverse proxy on the Mac
+does as well.
+
+```sh
+tailscale serve --bg 8787
+./scripts/install.sh --imsg … --node … --origin https://your-mac.your-tailnet.ts.net
+```
+
+Install again with the address you will actually open, because the server
+answers for that origin and no other.
 
 ## Using it
 
@@ -108,8 +117,9 @@ npm run test:browser     # synthetic HTTPS, Chromium
 Tests use synthetic data only and never run a real `imsg`. There is no fixture
 anywhere in this repository that came from a real conversation.
 
-`node scripts/demo-preview.mjs <tailscale-ip> 18787` runs the whole UI on made-up
-data, which is a good way to see it before installing anything.
+`node scripts/demo-preview.mjs` runs the whole UI on made-up data at
+`http://127.0.0.1:18787`, which is a good way to see it before installing
+anything.
 
 ## More
 

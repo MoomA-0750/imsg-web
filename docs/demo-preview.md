@@ -10,7 +10,8 @@ control; any peer allowed to this IP/port by existing tailnet policy can view it
 After building the app:
 
 ```sh
-node scripts/demo-preview.mjs <this-machine-tailscale-ipv4> 18787
+node scripts/demo-preview.mjs                 # http://127.0.0.1:18787
+node scripts/demo-preview.mjs <tailscale-ipv4> 18787   # to open it from a phone
 ```
 
 It binds only that exact100.64.0.0/10 address, never0.0.0.0. No Serve, Funnel,

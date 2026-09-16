@@ -5,9 +5,8 @@
 自分の Mac が配信する、iMessage のウェブ画面です。
 
 [`imsg`](https://github.com/openclaw/imsg) CLI の上に載せた小さなウェブ UI です。メッセージは
-Mac の中にあり、ローカルのサーバーがそれを読み、自分の [Tailscale](https://tailscale.com)
-ネットワーク経由でスマートフォンや別のパソコンから開きます。どこかに複製されることも、
-公開インターネットに出ることもありません。
+Mac の中にあり、ローカルのサーバーがそれを読みます。どこかに複製されることも、インターネットに
+出ることもありません。サーバーはループバックだけで待ち受け、設定したアドレス以外には答えません。
 
 **一人が自分の Mac で使う**ためのものです。
 
@@ -45,7 +44,6 @@ Mac の中にあり、ローカルのサーバーがそれを読み、自分の 
   内容とビルド方法はそのディレクトリに
 - **Node 24** を専用の場所に展開したもの。システムのものは使いません（この複製に
   Full Disk Access を与えるため）
-- **Tailscale**、または Mac へ非公開で到達する手段
 
 ## セットアップ
 
@@ -56,21 +54,31 @@ npm run build
 
 ./scripts/install.sh \
   --imsg /path/to/patched/imsg \
-  --node /path/to/node-v24.20.0-darwin-arm64 \
-  --origin https://your-mac.your-tailnet.ts.net
+  --node /path/to/node-v24.20.0-darwin-arm64
 ```
 
 `~/Library/Application Support/imsg-web` の下に専用ディレクトリを作り、ビルドを配置し、
 **パスワードを尋ね**、LaunchAgent を起動します。`npm run build` のあと同じコマンドを実行すれば
 新しいリリースへの入れ替えになります。直前のリリースは戻り先として残ります。
 
-**自分でやる必要があるのは2つ**で、最後に案内されます：
+**自分でやる必要があるのは1つ**で、最後に案内されます。インストールされた Node バイナリへの
+**Full Disk Access**（システム設定 → プライバシーとセキュリティ）です。macOS が `chat.db` の
+読み取りの責任を問うのは、ターミナルではなく**その Node バイナリ**だからです。
 
-- インストールされた Node バイナリへの **Full Disk Access**（システム設定 → プライバシーとセキュリティ）。
-  macOS が `chat.db` の読み取りの責任を問うのは、ターミナルではなく**その Node バイナリ**です
-- **`tailscale serve --bg 8787`**。指定したアドレスが Mac に届くように
+あとは Mac で **http://localhost:8787** を開いてサインインします。
 
-あとはそのアドレスを開いてサインインします。
+### スマートフォンから開くには
+
+サーバーはループバックにしか居ないので、何かが前に立って中継する必要があります。ループバック
+以外は https でなければならないので、その何かが TLS を担います。[Tailscale](https://tailscale.com)
+の Serve が一番手間がかからず、動作確認もそれで行っています。Mac 上のリバースプロキシでも構いません。
+
+```sh
+tailscale serve --bg 8787
+./scripts/install.sh --imsg … --node … --origin https://your-mac.your-tailnet.ts.net
+```
+
+**実際に開くアドレスを指定して入れ直してください。** サーバーはそのオリジンにしか答えません。
 
 ## 使い方
 
@@ -101,8 +109,8 @@ npm run test:browser     # 合成の HTTPS、Chromium
 テストは合成データのみで、実際の `imsg` を起動しません。**このリポジトリに、実在の会話に
 由来するフィクスチャは1つもありません。**
 
-`node scripts/demo-preview.mjs <tailscale-ip> 18787` で、架空のデータのまま UI 全体を動かせます。
-インストール前に触ってみるならこれが早いです。
+`node scripts/demo-preview.mjs` で、架空のデータのまま UI 全体を `http://127.0.0.1:18787` に
+出せます。インストール前に触ってみるならこれが早いです。
 
 ## さらに詳しく
 

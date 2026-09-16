@@ -1,7 +1,10 @@
 #!/bin/bash
 # Installs a built checkout as a running LaunchAgent, from one command.
 #
-#   ./scripts/install.sh --imsg <path> --node <dir> --origin https://<host>.ts.net [--port 8787] [--send live]
+#   ./scripts/install.sh --imsg <path> --node <dir> [--origin https://<host>] [--port 8787] [--send live]
+#
+# Without --origin it serves http://localhost:<port>, which is all the Mac itself needs. Give an
+# https address when something in front of it — Tailscale Serve, a reverse proxy — carries the TLS.
 #
 # --no-start writes everything and stops short of loading the agent, for looking before starting.
 #
@@ -44,7 +47,8 @@ project="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 [ -f "$project/dist/main.js" ] || { echo "No build found. Run: npm ci --ignore-scripts && npm run build" >&2; exit 1; }
 [ -n "$imsg" ] && [ -x "$imsg" ] || { echo "--imsg must point at a patched imsg binary (see imsg-patches/README.md)." >&2; exit 1; }
 [ -n "$node" ] || { echo "--node must point at an unpacked Node 24 distribution, or its bin/node." >&2; exit 1; }
-[ -n "$origin" ] || { echo "--origin must be the https:// address you will reach this on, with no path." >&2; exit 1; }
+# Loopback by default: nothing to configure, nothing to install, and reachable from the Mac itself.
+[ -n "$origin" ] || origin="http://localhost:$port"
 
 # --node may name the binary or the distribution it lives in; a whole distribution is what gets copied.
 case "$node" in */bin/node) node="$(cd -- "$(dirname -- "$node")/.." && pwd)" ;; esac
@@ -130,4 +134,11 @@ echo "logs:       $base/logs/$label.{out,err}.log"
 echo
 echo "Still yours to do, if you have not already:"
 echo "  • Full Disk Access for $runtime/bin/node (System Settings → Privacy & Security)"
-echo "  • tailscale serve --bg $port, so $origin reaches it"
+case "$origin" in
+  http://localhost*|http://127.0.0.1*|http://\[::1\]*)
+    echo
+    echo "This is reachable from the Mac itself. To open it from a phone or another computer,"
+    echo "put something in front of it that carries TLS — Tailscale Serve is the easy one —"
+    echo "and install again with --origin https://<that address>." ;;
+  *) echo "  • Make $origin reach port $port on this Mac (e.g. tailscale serve --bg $port)" ;;
+esac

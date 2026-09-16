@@ -40,9 +40,19 @@ export function byteRange(header: string | undefined, size: number): { start: nu
   return { start, end };
 }
 
+/**
+ * Loopback may be plain http; everything else must be https.
+ *
+ * This is not a relaxation of the transport rule, it is the same rule: browsers class a loopback
+ * origin as trustworthy, so `Secure` cookies, a secure context and the `__Host-` prefix all hold
+ * there exactly as they do over TLS. It means the Mac itself needs nothing in front of the server,
+ * and anything reaching it from another machine still has to bring its own TLS.
+ */
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 export function checkedOrigin(value: string): URL {
   const u = new URL(value);
-  if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
+  const local = u.protocol === 'http:' && LOOPBACK.has(u.hostname);
+  if ((u.protocol !== 'https:' && !local) || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
   return u;
 }
 export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {

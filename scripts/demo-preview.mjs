@@ -183,10 +183,14 @@ export async function createDemoServer({ banner = true } = {}) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const host = process.argv[2], port = Number(process.argv[3] ?? 18787);
-  const octets = host?.split('.').map(Number);
-  if (!octets || octets.length !== 4 || octets[0] !== 100 || octets[1] < 64 || octets[1] > 127
-    || !octets.every(n => Number.isInteger(n) && n >= 0 && n <= 255) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('DEMO_TAILSCALE_ADDRESS_REQUIRED');
+  const host = process.argv[2] ?? '127.0.0.1', port = Number(process.argv[3] ?? 18787);
+  // Loopback by default. A tailnet address is allowed so the preview can be opened from a phone;
+  // nothing else is, because this serves a login screen and should not be on a shared network.
+  const octets = host.split('.').map(Number);
+  const tailnet = octets.length === 4 && octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127
+    && octets.every(n => Number.isInteger(n) && n >= 0 && n <= 255);
+  const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  if ((!tailnet && !loopback) || !Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('DEMO_LOOPBACK_OR_TAILSCALE_ADDRESS_REQUIRED');
   const server = await createDemoServer();
   server.on('error', () => { console.error('DEMO_LISTEN_FAILED'); process.exitCode = 1; });
   server.listen(port, host, () => console.log(`Synthetic preview: http://${host}:${port} — key: demo`));

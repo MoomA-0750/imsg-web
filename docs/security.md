@@ -3,13 +3,16 @@
 The threat this takes seriously is the obvious one: it reads every message you
 have, so it should be hard to reach and impossible to reach by accident.
 
-- **Loopback only.** The server binds `127.0.0.1`. Whatever fronts it — Tailscale
-  Serve, an SSH tunnel — is what decides who can connect at all. It is not
-  reachable from the network without something in front of it, and it is not
-  built to be exposed publicly.
+- **Loopback only.** The server binds `127.0.0.1`. On the Mac itself that is the
+  whole story and plain http is enough: browsers class a loopback origin as
+  trustworthy, so `Secure` cookies, the `__Host-` prefix and a secure context all
+  hold there exactly as they do over TLS. To reach it from anywhere else,
+  something in front has to carry the TLS — Tailscale Serve, a reverse proxy —
+  and that thing is then what decides who can connect at all. It is not built to
+  be exposed publicly.
 - **One password**, hashed with scrypt (N=2¹⁶, about 150 ms per attempt), stored
   in a 0700 directory. Sessions are `__Host-` cookies, `Secure`, `HttpOnly`,
-  `SameSite=Lax`, and lapse after a day idle or a week outright. There is no
+  `SameSite=Strict`, and lapse after a day idle or a week outright. There is no
   sign-out button because there is one account; `auth revoke-all` ends every
   session from the Mac.
 - **Exact `Origin` and `Host` checks** on every request, a CSRF token on every

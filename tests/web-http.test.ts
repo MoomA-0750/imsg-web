@@ -24,7 +24,7 @@ const SOUND = Buffer.from('0123456789abcdef');
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 
-async function fixture() {
+async function fixture({ origin = ORIGIN }: { origin?: string } = {}) {
   let now = 1_000_000;
   const auth = new Auth(hashKey(KEY), () => now);
   const source = {
@@ -42,7 +42,7 @@ async function fixture() {
       return { type: 'image/png', size: PNG.length, bytes: PNG };
     }),
   };
-  const app = await createApp({ origin: ORIGIN, auth, source });
+  const app = await createApp({ origin, auth, source });
   apps.push(app);
   const login = async () => {
     const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
@@ -331,6 +331,35 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
   });
 });
 
+
+describe('the address it answers for', () => {
+  it('takes https anywhere, and plain http only on loopback', () => {
+    for (const good of ['https://imsg.synthetic.test', 'https://host.example.ts.net:8443',
+      'http://localhost:8787', 'http://127.0.0.1:8787', 'http://[::1]:8787']) {
+      expect(checkedOrigin(good).origin).toBe(good);
+    }
+    // Plain http anywhere else would mean a session cookie crossing a network in the clear.
+    for (const bad of ['http://imsg.synthetic.test', 'http://192.168.1.10:8787', 'http://mac.local:8787',
+      'http://localhost.evil.test:8787', 'ws://localhost:8787',
+      'https://imsg.synthetic.test/', 'https://a:b@imsg.synthetic.test', 'https://imsg.synthetic.test?q=1']) {
+      expect(() => checkedOrigin(bad)).toThrow();
+    }
+  });
+
+  it('serves a loopback origin over plain http, session and all', async () => {
+    const f = await fixture({ origin: 'http://localhost:8787' });
+    const response = await f.app.inject({ method: 'POST', url: '/api/session',
+      headers: { host: 'localhost:8787', origin: 'http://localhost:8787', 'content-type': 'application/json' }, payload: { key: KEY } });
+    expect(response.statusCode).toBe(200);
+    // The cookie keeps every guarantee it has over TLS: browsers class loopback as trustworthy.
+    const set = response.headers['set-cookie'] as string;
+    expect(set).toContain('__Host-imsg_session=');
+    expect(set).toContain('Secure');
+    expect(set).toContain('HttpOnly');
+    // And it is still one address only: the other spelling of loopback is a different origin.
+    expect((await f.app.inject({ url: '/api/chats', headers: { host: '127.0.0.1:8787', cookie: set.split(';')[0]! } })).statusCode).toBe(403);
+  });
+});
 
 describe('a recording can be moved about in, and one can be uploaded', () => {
   it('reads a single byte range and refuses one past the end', () => {
