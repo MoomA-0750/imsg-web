@@ -21,7 +21,13 @@ entry="$base/releases/$(ls -t "$base/releases" | head -1)/dist/main.js"
 if [ "${1-}" = "prune" ]; then
   dry=""
   [ "${2-}" = "--dry-run" ] && dry="yes"
-  plist="$HOME/Library/LaunchAgents/local.imsg-web.readonly.plist"
+  # Found by what it points at rather than by its name, which has changed once and may again.
+  plist=""
+  for candidate in "$HOME/Library/LaunchAgents"/*.plist; do
+    [ -f "$candidate" ] || continue
+    if grep -q "$base/releases/" "$candidate" 2>/dev/null; then plist="$candidate"; break; fi
+  done
+  [ -n "$plist" ] || { echo "No LaunchAgent points at $base; nothing removed." >&2; exit 1; }
   running=$(grep -o 'releases/[0-9a-zA-Z_-]*' "$plist" 2>/dev/null | sed 's|releases/||' | sort -u | head -1 || true)
   [ -n "$running" ] || { echo "Cannot tell which release is running; nothing removed." >&2; exit 1; }
   [ -d "$base/releases/$running" ] || { echo "The running release is not under releases/; nothing removed." >&2; exit 1; }
@@ -33,7 +39,8 @@ if [ "${1-}" = "prune" ]; then
     if [ -n "$dry" ]; then
       echo "would remove: $release"
     else
-      rm -rf -- "$base/releases/$release" "$base/local.imsg-web.readonly.plist.$release"
+      # The plists set aside at each swap are named after whichever label was current then.
+      rm -rf -- "$base/releases/$release" "$base"/*.plist."$release"
       echo "removed: $release"
     fi
   done

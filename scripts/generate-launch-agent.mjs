@@ -27,7 +27,7 @@ export function validateConfig(c) {
   // this project owns rather than in a package-manager prefix that is
   // group-writable by design and changes under `brew upgrade`.
   within(c.base, c.imsg);
-  if (!/^local\.imsg-web\.[a-z][a-z0-9-]{0,40}$/.test(c.label) || !/^[a-z][a-z0-9-]{0,31}$/.test(c.stateName)) fail();
+  if (!/^local\.imsg-web(\.[a-z][a-z0-9-]{0,40})?$/.test(c.label) || !/^[a-z][a-z0-9-]{0,31}$/.test(c.stateName)) fail();
   if (!Number.isInteger(c.port) || c.port < 1024 || c.port > 65535) fail();
   if (typeof c.origin !== 'string') fail();
   const url = new URL(c.origin);

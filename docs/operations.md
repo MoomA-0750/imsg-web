@@ -49,10 +49,10 @@ Generate the plist; it never installs or starts anything:
 ```sh
 <node> scripts/generate-launch-agent.mjs --base <base> --release <release> \
   --imsg <release>/imsg --origin https://<host-fqdn> --port 8787 \
-  --label local.imsg-web.readonly --stateName state --output <new-plist>
+  --label local.imsg-web --stateName state --output <new-plist>
 ```
 
-The owner places it at `~/Library/LaunchAgents/local.imsg-web.readonly.plist`
+The owner places it at `~/Library/LaunchAgents/local.imsg-web.plist`
 and loads it with `launchctl bootstrap gui/$(id -u) <plist>`. It starts at login
 and is not restarted automatically after a crash.
 
@@ -144,7 +144,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:8787
 ## Stop
 
 1. Turn off only this Serve route.
-2. `launchctl bootout gui/$(id -u)/local.imsg-web.readonly`
+2. `launchctl bootout gui/$(id -u)/local.imsg-web`
 3. Check the app and its imsg child are gone and port 8787 is closed.
 
 If it does not stop cleanly or a lock remains, leave the lock where it is and
@@ -156,6 +156,24 @@ ask the owner. Never delete lock or socket files automatically, and never
 Put the new build in a new `releases/<commit>/`, stop, point the plist at it,
 start, log in and check, then `<base>/imsg-web prune`. To roll back, point the
 plist at the previous release. The owner hash in `state/` is never rolled back.
+
+**Renaming the agent.** The label is `local.imsg-web`; an installation from
+before sending shipped answers to `local.imsg-web.readonly`. To move one across,
+stop it under the old name, carry the logs over so their history is not orphaned
+under a name nothing writes to any more, generate with `--label local.imsg-web`,
+and start that:
+
+```sh
+launchctl bootout gui/$(id -u)/local.imsg-web.readonly
+for s in out err; do mv "$B/logs/local.imsg-web.readonly.$s.log" "$B/logs/local.imsg-web.$s.log"; done
+mv "$PL_OLD" "$B/local.imsg-web.readonly.plist.<release being replaced>"
+# …generate with --label local.imsg-web --output ~/Library/LaunchAgents/local.imsg-web.plist…
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.imsg-web.plist
+```
+
+Nothing but launchctl reads the label: `<base>/imsg-web` finds the agent by the
+release path inside its plist, so it keeps working across the change and after
+any later one.
 
 **Wrap a pasted deploy in a guard.** These commands are for the Mac, and a shell
 on another machine will not refuse them — it will run each line and fail each one
@@ -184,7 +202,7 @@ chat.db, no entry in the system log, nothing in Messages itself. So the server
 writes one line about it, and only about it, to its error log:
 
 ```sh
-tail -n 20 "$HOME/Library/Application Support/imsg-web/logs/local.imsg-web.readonly.err.log"
+tail -n 20 "$HOME/Library/Application Support/imsg-web/logs/local.imsg-web.err.log"
 ```
 
 Each line says what shape the failure had — whether there was an attachment, how

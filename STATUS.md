@@ -29,9 +29,13 @@ to be decided.
   (`docs/operations.md` says where and what is in it); imsg's stderr used to be
   thrown away, which is why there was nothing to read. It has not recurred since.
   **If it does: read that log.**
-- **The LaunchAgent is still named `local.imsg-web.readonly`**, which stopped
-  being true when sending shipped. Rename it at the next big swap; the owner
-  asked for this.
+- **The LaunchAgent is being renamed** from `local.imsg-web.readonly`, which
+  stopped being true when sending shipped, to `local.imsg-web`. The generator and
+  the documents carry the new name; the swap itself is one deploy, described in
+  `docs/operations.md` under Update. Until it happens the agent on the M1 still
+  answers to the old name — nothing reads the label but launchctl, and
+  `<base>/imsg-web` finds the agent by what it points at rather than by what it
+  is called.
 
 ## Settled, and not to be re-opened without new grounds
 
