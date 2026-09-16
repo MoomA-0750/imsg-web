@@ -1,5 +1,7 @@
 # imsg-web
 
+**English** · [日本語](README_ja.md)
+
 Read and send your iMessages from a browser, served by your own Mac.
 
 It is a small web UI over the [`imsg`](https://github.com/openclaw/imsg) CLI: your
