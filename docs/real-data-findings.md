@@ -117,7 +117,7 @@ that signature, and it is only ever served converted to JPEG, with a caption
 saying the original is not on the Mac. On the M1 all 40 tried were served,
 median 44K and 82 ms. Messages may drop that cache at any time.
 
-How images are served (branch `attachment-images`): history registers an
+How images are served: history registers an
 opaque per-epoch ID only for a present image of an allowed type (JPEG, PNG,
 GIF, WebP, HEIC/HEIF, JPEG XL; never SVG). `/api/attachments/:id` needs a
 session, resolves symlinks and serves the file only if it lies inside

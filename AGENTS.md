@@ -3,10 +3,9 @@
 ## Project boundary
 
 This repository implements a single-owner, self-hosted iMessage Web UI. Reading
-is the core; **sending** is approved and being added on the `send-messages`
-branch as a **separate, off-by-default** path (`src/server/send-service.ts`,
-`src/server/rpc/send-client.ts`). Read-state changes and typing are still not
-approved.
+is the core; **sending** is approved and shipped as a **separate, off-by-default**
+path (`src/server/send-service.ts`, `src/server/rpc/send-client.ts`). Read-state
+changes and typing are still not approved.
 
 - Sending is its own path. It never reuses the read-only RPC client or its
   method allowlist; the read allowlist stays `status`, `chats.list`,
