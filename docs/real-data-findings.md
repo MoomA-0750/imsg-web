@@ -1,6 +1,6 @@
 # What real data showed (2026-09-13 – 09-14)
 
-Checked on the M1 Mac with the owner's permission. The detailed step-by-step
+Checked against one real Messages database, with its owner's permission. The detailed step-by-step
 records, measurement scripts and the C06 harness were archived outside this
 repository when the project was simplified on 2026-09-14.
 
@@ -14,7 +14,7 @@ repository when the project was simplified on 2026-09-14.
   Under a LaunchAgent the process macOS holds responsible is the dedicated Node,
   so Full Disk Access belongs on that Node.
 - **The contact-batch patch changes speed, not output.** Stock and patched
-  builds returned identical data for 25 chats and 125 messages.
+  builds returned identical data over the same sample of chats and messages.
 - **The patch is about 3× faster.** Warm UI cycle at the RPC level: median
   835 ms stock, 264 ms patched. The stock build also drifted about 26% between
   runs, so read the ratio, not the milliseconds.
@@ -28,7 +28,7 @@ repository when the project was simplified on 2026-09-14.
   bridge is installed, `status` exchanges files with that bridge each time. It
   is now reused for 60 seconds.
 
-## Found in the first M1 trial (2026-09-14)
+## Found in the first trial on a real Mac (2026-09-14)
 
 - **`imsg` needs its resource bundles beside it.** Copied alone into a release
   it crashed on the first request, and the UI could only say it could not
@@ -46,18 +46,17 @@ repository when the project was simplified on 2026-09-14.
 
 ## Attachments and profile pictures (2026-09-14)
 
-Surveyed on the M1 with aggregate counts only, to decide what showing images
+Surveyed with aggregate counts only, to decide what showing images
 would take.
 
-- **Most attachments are not on the Mac.** Of the 300 newest attachment rows,
-  243 had no file (Messages keeps them in iCloud until opened). In a 28-chat,
-  881-message sample, 83 of 112 were marked `missing`. Only files already on
-  the Mac can be shown; downloading would mean driving Messages.app, which is
-  out of bounds. Of the 740 newest image attachments, the 706 with
-  `transfer_state` 0 were all absent and 33 of the 34 with state 5 were present:
-  the files were never downloaded to this Mac, not deleted from it. Recent
-  images are no exception (21 of 34 from the last 30 days absent). The owner
-  opened such images in Messages.app and they did not always appear.
+- **Most attachments are not on the Mac** — about four in five of the newest
+  attachment rows had no file, and roughly three in four across a whole sample
+  of conversations. Messages keeps them in iCloud until opened. Only files
+  already on the Mac can be shown; downloading would mean driving Messages.app,
+  which is out of bounds. `transfer_state` says which is which: every row at 0
+  was absent, and all but one at 5 was present, so the files were never
+  downloaded to this Mac rather than deleted from it. Recent images are no
+  exception. Opening such an image in Messages.app did not reliably fetch it.
 - **Types:** JPEG and PNG dominate, then HEIC (about a sixth of images) and a
   little JPEG XL. Chrome and Firefox cannot decode HEIC or JPEG XL; Safari can.
 - **Link previews arrive as attachments**: an untyped
@@ -67,20 +66,20 @@ would take.
   (`original_path`, `mime_type`, `missing`, `is_sticker`); history stayed about
   30 ms per 50 messages. `convert_attachments` stays off, so imsg never runs a
   converter or writes a cache.
-- **Profile pictures are rare and not exposed by imsg.** The address book held
-  about 300 contacts and 13 thumbnails. imsg does not return them, so showing
-  them would need another imsg patch or a second address-book reader in the
-  app. Group photos (6 chats) are likewise not exposed. The app now reads them
-  itself; see below.
+- **Profile pictures are rare and not exposed by imsg.** A few per cent of
+  contacts had a thumbnail at all. imsg does not return them, so showing them
+  would need another imsg patch or a second address-book reader in the app.
+  Group photos are likewise not exposed. The app now reads them itself; see
+  below.
 
 **Link previews.** The sender's device fetches the page and Messages stores the
 result with the message, so nothing has to be fetched again (and fetching from
-the Mac would tell the site, and the sender, when a link was viewed). About 60
-of 66 recent link messages carried title, site and URL in `payload_data`; the
-preview image is one of that message's attachments, usually not on the Mac. imsg
-does not return any of it, hence `imsg-patches/link-preview`. With the patch, in
-a 28-chat sample all 19 link messages decoded (title 19, summary 18, site name
-14); 5 preview images were on the Mac, all real images, three of them JPEG
+the Mac would tell the site, and the sender, when a link was viewed). Nine in ten
+recent link messages carried title, site and URL in `payload_data`; the preview
+image is one of that message's attachments, usually not on the Mac. imsg does not
+return any of it, hence `imsg-patches/link-preview`. With the patch every link
+message in a sample decoded, nearly all with a summary and most with a site name;
+a handful of preview images were on the Mac, all real images, some of them JPEG
 recorded as PNG. One preview attachment elsewhere turned out to be an HTML page,
 so files are checked by their first bytes and served with the type found there.
 The card opens the link in a new tab with no referrer; only absolute http(s)
@@ -100,7 +99,7 @@ conversion sends the original.
 - The newest 20 present convertible images of each history response are
   converted ahead in the background, using at most one of two slots and
   yielding to views; the file is checked again when that work starts. On the
-  M1 a first view after preparation took about 1 ms.
+  that Mac a first view after preparation took about 1 ms.
 - `sips` only ever sees a copy of the checked bytes in a private directory under
   the child TMPDIR, removed afterwards. It exits 0 when it fails (success is
   judged by the output's first bytes), and `-Z` also enlarges (it is applied
@@ -108,14 +107,13 @@ conversion sends the original.
 
 **Thumbnails of images never downloaded.** Messages caches a thumbnail at
 `Caches/Previews/Attachments/<same relative directory>/<stem>-preview.ktx`, in
-Apple's texture format (`AAPL\r\n\x1a\n`), which `sips` converts. 180 of 707
-absent images (about a quarter) had one; the rest have neither file nor
-thumbnail. With the owner's approval the app now also reads that cache: the
+Apple's texture format (`AAPL\r\n\x1a\n`), which `sips` converts. About a quarter
+of absent images had one; the rest have neither file nor thumbnail. With the owner's approval the app now also reads that cache: the
 path is derived lexically from a path inside `Messages/Attachments`, the file
 must lie inside the preview cache after symlinks are resolved and start with
 that signature, and it is only ever served converted to JPEG, with a caption
-saying the original is not on the Mac. On the M1 all 40 tried were served,
-median 44K and 82 ms. Messages may drop that cache at any time.
+saying the original is not on the Mac. Every one tried was served, median 44K
+and 82 ms. Messages may drop that cache at any time.
 
 How images are served: history registers an
 opaque per-epoch ID only for a present image of an allowed type (JPEG, PNG,
@@ -128,8 +126,8 @@ reach the browser. Anything else is shown as a line of text saying why.
 
 **Replies and tapbacks.** Both are already in what `messages.history` returns, so
 showing them needs nothing new: `reply_to_text`/`reply_to_sender` for the message
-a reply answers, and a `reactions` array. In a 28-chat, 881-message sample, 69
-messages carried 72 tapbacks (25 love, 25 like, 18 custom, 3 laugh, 1 emphasis) —
+a reply answers, and a `reactions` array. Across a sample of conversations about
+one message in twelve carried a tapback, love and like most often, then custom —
 common enough to be worth drawing. *Sending* either is not possible on this path: imsg
 answers `reply_to requires bridge transport; AppleScript fallback cannot send
 threaded replies`, and `tapback` is declared bridge-only. The bridge means SIP
@@ -137,32 +135,34 @@ off and code injected into Messages, so replies and tapbacks are display-only.
 
 **`reply_to_guid` is not a reply.** Only `thread_originator_guid` marks a threaded
 reply. Messages sets `reply_to_guid` on ordinary messages as well, almost always to
-the message just before: in the newest 4000 non-reaction rows, 889 carried
-`reply_to_guid` but only 66 were threaded replies, and 732 of the other 847 pointed
+the message just before: of several thousand non-reaction rows, a fifth carried
+`reply_to_guid` but fewer than one in ten of those were threaded replies, and most of the rest pointed
 at the immediately preceding message in the same chat. imsg resolves the quote from
 `thread_originator_guid` first and *falls back* to `reply_to_guid`, so
 `reply_to_text` alone turns every run of consecutive messages into a chain of
 replies — each one quoting the one above it. The flag has to gate the quote. On the
-real replies the fallback is harmless anyway: all 66 originators resolved, though on
-34 of them `reply_to_guid` pointed somewhere else entirely.
+real replies the fallback is harmless anyway: every originator resolved, though on
+half of them `reply_to_guid` pointed somewhere else entirely.
 
 **The unread count was counting messages already read.** `unread_count` came from
 `is_read = 0` over a conversation's whole history, and that flag only records that
 *this Mac* saw a read receipt — a message read on the phone keeps it at 0 for ever.
-139 messages across 18 conversations were being badged; 70 of them sat at or below
+twice as many messages, across twice as many conversations, were being badged as
+Messages itself showed; half of them sat at or below
 the conversation's own `chat.last_read_message_timestamp`, the high-water mark
 Messages itself keeps. Comparing the two side by side, Messages showed no badge on
 conversations the app badged 9, 6 and 7. `imsg-patches/unread-mark` adds the mark to
 the condition, leaving a conversation with no mark alone so one never opened still
-counts, as Messages does. Afterwards: 69 messages across 8 conversations, agreeing
-with Messages on every conversation checked.
+counts, as Messages does. Afterwards the badges agreed with Messages on every
+conversation checked.
 
 **Contact pictures, looked at again (2026-09-15).** The limit was never access:
 the pictures sit in the same address book the names already come from. It is that
-there are hardly any. Of 304 contacts, 13 records carry image data, but two hold a
-38-byte marker rather than a picture, one has no name to match on, and one name is
-shared by two contacts and so cannot be told apart — leaving **8 usable**, 7 JPEG
-and 1 PNG, 12–118 KB each, read in 75 ms. Exporting vCards would yield the same 8.
+there are hardly any. A few per cent of contacts carry image data at all, and some
+of those are not pictures: a short marker instead of an image, a record with no
+name to match on, a name two contacts share and so cannot be told apart. What is
+left is a handful, JPEG and PNG, tens of kilobytes each, read in well under a
+tenth of a second. Exporting vCards would yield exactly the same ones.
 Nor is anything waiting to be fetched: across both synced accounts
 `ZEXTERNALIMAGEURI` and `ZIMAGESYNCFAILEDTIME` are empty, so the accounts are not
 holding pictures back. Google's People API could return profile photos that CardDAV
@@ -185,16 +185,16 @@ those the app matches on the handle itself, from the phone and address tables of
 same address book — an address lowercased, a number cut to its last 9 digits so a
 card written `090-…` answers for the `+8190…` Messages holds. That rule is blunt:
 two numbers ending alike collide, so a key two contacts claim is dropped rather than
-shown as either. Measured over the owner's data: 8 group conversations, 14 distinct
-members, **8 matched**; 5 of the 8 groups have every member matched and every group
-has at least one. A group wears those faces gathered in one circle, one place per
+shown as either. Measured over real data, it matched somewhat over half of the
+distinct group members; most groups had every member matched, and every group had
+at least one. A group wears those faces gathered in one circle, one place per
 member whether or not there is a picture, so the face still says how many people are
 in there. Nothing but the pictures crosses to the browser: an id is an HMAC over the
 handle, which the browser never sees.
 
-**Voice messages (2026-09-15).** There are 3 in the owner's history, and the two
-attachments behind them carry **no mime type at all** — only the UTI
-`com.apple.coreaudio-format`, ending `.caf`, 1 and 4 KB. So audio cannot be
+**Voice messages (2026-09-15).** The attachments behind them carry **no mime type
+at all** — only the UTI `com.apple.coreaudio-format`, ending `.caf`, a few
+kilobytes each. So audio cannot be
 recognised the way images are, and the UTI is mapped to a type in the adapter
 before anything is offered; the bytes are still read and judged for themselves
 before one is served. `message.is_audio_message` exists and is set on all three,
@@ -216,13 +216,12 @@ the Messages app produces, and asked whether it could be made the same. It canno
 over this transport, and that was settled by experiment rather than argument.
 
 What decides it is `message.is_audio_message`, which the *sending* client sets.
-Three of these exist in the owner's history, all with `is_audio_message = 1`,
-`is_expirable = 1`, a CAF attachment named `Audio Message.caf` and no mime type at
-all. A fourth arrived on 09-16 in exactly that form — same UTI, same name — but
-with `is_audio_message = 0`, and it rendered as a file card. So the form is not
-what does it.
+Every real one carries `is_audio_message = 1`, `is_expirable = 1`, a CAF
+attachment named `Audio Message.caf` and no mime type at all. One that arrived in
+exactly that form — same UTI, same name — but with `is_audio_message = 0`
+rendered as a file card instead. So the form is not what does it.
 
-The experiment, with the owner's approval and to their own Apple ID: a two-second
+The experiment, to the author's own Apple ID: a two-second
 tone converted to **Opus 24 kHz mono at 32 kbps in a CAF** named `Audio
 Message.caf` — byte-for-byte the shape `AudioMessagePreparer` in imsg produces —
 sent through the same AppleScript path the app uses. imsg reported `ok`, and
@@ -235,7 +234,7 @@ into Messages. That is outside this project. So a recording stays an audio
 attachment, and AAC in an `.m4a` is kept over Apple's CAF/Opus because it is the
 one every phone, browser and desktop can already play.
 
-`afconvert` (`/usr/bin/afconvert`, present on the M1) reads the format from the
+`afconvert` (`/usr/bin/afconvert`, present on macOS) reads the format from the
 bytes rather than the name, reports failure honestly — exit 1, no output file,
 unlike `sips` — and converted 3 seconds of 16 kHz mono in 26 ms: 96 KB of PCM to
 12 KB of AAC at 48 kbps. Both directions were checked on files made for the

@@ -29,13 +29,11 @@ to be decided.
   (`docs/operations.md` says where and what is in it); imsg's stderr used to be
   thrown away, which is why there was nothing to read. It has not recurred since.
   **If it does: read that log.**
-- **The LaunchAgent is being renamed** from `local.imsg-web.readonly`, which
-  stopped being true when sending shipped, to `local.imsg-web`. The generator and
-  the documents carry the new name; the swap itself is one deploy, described in
-  `docs/operations.md` under Update. Until it happens the agent on the M1 still
-  answers to the old name — nothing reads the label but launchctl, and
-  `<base>/imsg-web` finds the agent by what it points at rather than by what it
-  is called.
+- **Publishing.** The repository is public as of 2026-09-16: MIT, full history,
+  with the real-data record kept but the author's own message counts taken out of
+  it. `scripts/install.sh` is the setup path an outsider follows; it has been
+  exercised against a scratch base, but nobody has yet installed from a clean
+  machine, and that is the thing most likely to have a gap in it.
 
 ## Settled, and not to be re-opened without new grounds
 

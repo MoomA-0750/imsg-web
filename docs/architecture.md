@@ -39,7 +39,7 @@ Close rejects new work synchronously, sends EOF, then SIGTERM after 2 seconds an
 | SIP disabled + individual flag + method | diagnostic available / SUPPORTED |
 | Individual flag false | unavailable / FEATURE_UNAVAILABLE |
 
-Unknown CLI SIP/flag combinations remain unknown. A single bridge selector or a compiled method list is never sufficient. Initial checked versions: imsg0.14.2 and0.15.1. The M1 host's stock imsg is now 0.15.3; every audited call-path file is byte-identical to 0.15.1.
+Unknown CLI SIP/flag combinations remain unknown. A single bridge selector or a compiled method list is never sufficient. Initial checked versions: imsg0.14.2 and0.15.1. The Mac in use had stock imsg 0.15.3; every audited call-path file is byte-identical to 0.15.1.
 
 ## Decisions and alternatives
 
