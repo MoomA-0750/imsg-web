@@ -16,15 +16,8 @@ to be decided.
 
 ## Next
 
-1. **Merge to `main`.** It can fast-forward to `reply-reactions`, which carries
-   everything since the faces work. Run in the main checkout, by the owner:
-   `git merge --ff-only reply-reactions`.
-2. **Delete `attachment-images`** once the merge above lands. The only thing it
-   held that was nowhere else — opt-in notifications — has been rebuilt on the
-   current line, so nothing is left on it:
-   `git branch -D attachment-images`.
-3. **Watch the M1** for memory, log size and anything that looks wrong.
-4. **Then the iMac**, the same way (`docs/operations.md`), watching for the stale
+1. **Watch the M1** for memory, log size and anything that looks wrong.
+2. **Then the iMac**, the same way (`docs/operations.md`), watching for the stale
    bridge lock issue noted in the findings.
 
 ## Open threads
@@ -55,10 +48,11 @@ to be decided.
 
 ## Leftovers on the Macs
 
-The M1 keeps the running release plus one rollback step; pruning is part of
-handing over a release rather than something to catch up on later. Temporary
-build and measurement directories remain on the Intel Mac. Specifics are in the
-owner's private notes, not here.
+The M1 keeps the running release plus one rollback step. Pruning is
+`<base>/imsg-web prune`, the last step of a deploy; it lived in `/tmp` until
+2026-09-16, which macOS cleared, so several handovers pruned nothing and four
+releases accumulated. Temporary build and measurement directories remain on the
+Intel Mac. Specifics are in the owner's private notes, not here.
 
 ## Standing rules
 

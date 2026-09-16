@@ -78,7 +78,18 @@ release and the runtime beside it, and supplies the state directory.
 "$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate         # prints a new key
 "$HOME/Library/Application Support/imsg-web/imsg-web" auth revoke-all
 "$HOME/Library/Application Support/imsg-web/imsg-web" auth status
+"$HOME/Library/Application Support/imsg-web/imsg-web" prune --dry-run     # says what it would remove
+"$HOME/Library/Application Support/imsg-web/imsg-web" prune               # and removes it
 ```
+
+`prune` is the last step of a deploy. A release is about 27 MB and one arrives per handover, so
+without it they pile up: it keeps the release the LaunchAgent is actually running — read from the
+agent, not guessed — and the newest of the rest as the step back, and removes the others along
+with the plists set aside for them. It never touches the runtime, the state directory or logs, and
+it refuses to remove anything at all if it cannot establish what is running.
+
+This used to be a script in `/tmp`, which macOS eventually cleared; the last line of several
+handovers quietly did nothing. That is why it lives in the release now.
 
 The sign-in screen carries `auth rotate` behind a "パスワードを忘れた場合" link, so being locked
 out does not mean going looking for this file.
