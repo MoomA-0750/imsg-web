@@ -118,6 +118,13 @@ it produces waits with the other attachments rather than being sent by itself.
 The attachment route now answers a byte range for audio, because a player will not
 offer to move about a recording unless the server says parts can be asked for.
 
+A recording sent from here arrives as an audio attachment, not the waveform bubble
+the Messages app makes. Tested on 2026-09-16 with the identical file — Opus in a
+CAF named `Audio Message.caf` — over the same AppleScript path: Messages still
+recorded `is_audio_message=0`. The flag is the sending client's, and imsg only
+sets it over the bridge (SIP off, injection), which is out of bounds. See
+`docs/real-data-findings.md`. Settled; not to be re-litigated without the bridge.
+
 ## Going back to what a reply answers (2026-09-15)
 
 The quote above a reply is now a button: it goes to the message being answered

@@ -210,6 +210,31 @@ name each before anything is offered, and a name the app has never seen falls
 back to the UTI, which macOS is stricter about writing than a sender is about the
 mime type. The bytes still decide what is actually served.
 
+**A recording cannot be made into a voice message (2026-09-16).** The owner saw
+that a recording sent from here arrives as a file card, not the playable bubble
+the Messages app produces, and asked whether it could be made the same. It cannot,
+over this transport, and that was settled by experiment rather than argument.
+
+What decides it is `message.is_audio_message`, which the *sending* client sets.
+Three of these exist in the owner's history, all with `is_audio_message = 1`,
+`is_expirable = 1`, a CAF attachment named `Audio Message.caf` and no mime type at
+all. A fourth arrived on 09-16 in exactly that form — same UTI, same name — but
+with `is_audio_message = 0`, and it rendered as a file card. So the form is not
+what does it.
+
+The experiment, with the owner's approval and to their own Apple ID: a two-second
+tone converted to **Opus 24 kHz mono at 32 kbps in a CAF** named `Audio
+Message.caf` — byte-for-byte the shape `AudioMessagePreparer` in imsg produces —
+sent through the same AppleScript path the app uses. imsg reported `ok`, and
+Messages recorded `is_audio_message=0, is_expirable=0, expire_state=0`. A file
+attachment, like any other.
+
+imsg does implement voice notes (`AudioMessagePreparer` plus `isAudioMessage: true`),
+but only over the **bridge** transport, which needs SIP disabled and code injected
+into Messages. That is outside this project. So a recording stays an audio
+attachment, and AAC in an `.m4a` is kept over Apple's CAF/Opus because it is the
+one every phone, browser and desktop can already play.
+
 `afconvert` (`/usr/bin/afconvert`, present on the M1) reads the format from the
 bytes rather than the name, reports failure honestly — exit 1, no output file,
 unlike `sips` — and converted 3 seconds of 16 kHz mono in 26 ms: 96 KB of PCM to

@@ -63,7 +63,10 @@ owner every time:
   back, throw it away, or write something to go with it — and sending it is a
   separate act. A browser can only write uncompressed PCM, so the Mac re-encodes
   a recording to AAC on the way through: about a tenth of the size, and what a
-  phone expects to be handed. It stops itself after five minutes.
+  phone expects to be handed. It stops itself after five minutes. It arrives as an
+  audio attachment rather than the waveform bubble the Messages app makes: that
+  bubble comes from a flag the sending app sets, which this transport cannot set —
+  tested, with the identical file, in `docs/real-data-findings.md`.
 - **A reply's quote is the way back to it.** Pressing it goes to the message
   being answered and rings it for a couple of seconds, which is the only way to
   pick it out once the screen has moved. If that message is further back than has
