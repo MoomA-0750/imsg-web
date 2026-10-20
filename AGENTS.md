@@ -32,8 +32,8 @@ changes and typing are still not approved.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived
   from screen structure or component state.
 - Do not weaken authentication, exact Origin/Host checks, Secure cookies,
-  the transport rule (plain http on loopback only; the LAN port is https with the
-  installer's certificate, on by default at the owner's request), the read RPC
+  the transport rule (https only, with the installer's certificate, on one port
+  open to the LAN by default at the owner's request; no plain http listener), the read RPC
   method allowlist, the send method restriction, CSRF, or response bounds,
   including for development or previews.
 - Never log or commit message text, recipients, chat/message IDs, owner keys,

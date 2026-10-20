@@ -3,15 +3,13 @@
 The threat this takes seriously is the obvious one: it reads every message you
 have, so it should be hard to reach and impossible to reach by accident.
 
-- **Loopback, and the LAN over TLS.** The server binds `127.0.0.1` for the Mac
-  itself, where plain http is enough: browsers class a loopback origin as
-  trustworthy, so `Secure` cookies, the `__Host-` prefix and a secure context all
-  hold there exactly as they do over TLS. Unless installed with `--no-lan`, it
-  also listens on every interface on a second port, over https only, with a
+- **https only, on one port.** The server carries its own TLS, with a
   certificate the installer made on the Mac (RSA 2048, key 0600 in the state
-  directory). That port answers to the Mac's `.local` name and to the Mac's own
-  current addresses, nothing else, so the cookie and Origin rules are the same as
-  anywhere. The certificate is self-signed: a device warns once, and the
+  directory); there is no plain http listener at all. It listens on every
+  interface, or on `127.0.0.1` alone when installed with `--no-lan`, and answers
+  to `localhost`, the Mac's `.local` name, the Mac's own current addresses and
+  whatever address was given for something in front — nothing else, each Host
+  held to its own Origin. The certificate is self-signed: a device warns once, and the
   installer prints its fingerprint so the owner can check it is this one rather
   than someone else's on the same network. Anyone on that network can reach the
   sign-in page; the password is what keeps them out. Beyond the LAN, something in

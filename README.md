@@ -69,19 +69,17 @@ One thing it will tell you to do yourself: **Full Disk Access** for the Node
 binary it installed (System Settings → Privacy & Security). macOS holds *that*
 binary responsible for reading `chat.db`, not your terminal.
 
-Then open **http://localhost:8787** on the Mac and sign in.
+Then open the address it printed — **https://your-mac.local:8787**, under the
+Mac's local hostname (System Settings → General → Sharing) — and sign in. It is
+the same address on the Mac and on any phone or computer on the same Wi-Fi.
 
-### Reaching it from a phone
+The installer makes a certificate for it on the Mac, so there is nothing to set
+up, but it is self-signed: each device warns once that it is not trusted. The
+installer prints the certificate's fingerprint so you can check it is this one
+before going on (on an iPhone: *Show Details → visit this website*). If the
+macOS firewall is on, allow the Node binary when it asks.
 
-On the same Wi-Fi, open the address the installer printed —
-**https://your-mac.local:8788**, under the Mac's local hostname (System Settings →
-General → Sharing). The installer makes a certificate for it on the Mac, so
-there is nothing to set up, but it is self-signed: each device warns once that
-it is not trusted. The installer prints the certificate's fingerprint so you
-can check it is this one before going on (on an iPhone: *Show Details → visit
-this website*). If the macOS firewall is on, allow the Node binary when it asks.
-
-`--no-lan` keeps it to the Mac alone; `--lan-port` moves it off 8788.
+`--no-lan` keeps it to the Mac alone, as **https://localhost:8787**.
 
 ### Reaching it from anywhere
 
@@ -90,12 +88,14 @@ Outside your network, something has to carry it, with TLS of its own.
 tested against; any reverse proxy on the Mac does as well.
 
 ```sh
-tailscale serve --bg 8787
+tailscale serve --bg https+insecure://127.0.0.1:8787
 ./scripts/install.sh --imsg … --node … --origin https://your-mac.your-tailnet.ts.net
 ```
 
-Install again with the address you will actually open, because the server
-answers for that origin and no other. The LAN address stays as it was.
+`https+insecure` because the server's own certificate is self-signed; Tailscale
+presents its real one to the browser. Install again with the address you will
+actually open, because the server answers for that origin and no other. The LAN
+address stays as it was.
 
 ## Using it
 
