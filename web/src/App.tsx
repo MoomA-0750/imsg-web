@@ -610,6 +610,7 @@ export function App() {
   const inFlight = useRef<Record<string, AbortController | undefined>>({});
 
   const viewport = useRef<HTMLDivElement | null>(null);
+  const detail = useRef<HTMLElement | null>(null);
   /** Where each drawn message is, so the screen can go back to one a reply names. */
   const rows = useRef(new Map<string, HTMLLIElement>());
   /** The message being pointed out, until the mark fades. */
@@ -880,6 +881,27 @@ export function App() {
     query.addEventListener('change', change);
     return () => query.removeEventListener('change', change);
   }, []);
+  // On a phone the conversation is pinned over the list, which is still the page. A drag that starts
+  // on something in the conversation that cannot scroll itself — its heading, the composer — would
+  // otherwise fall through and scroll the list behind it. Only a drag inside something that can
+  // scroll in that direction is let through, and that thing keeps it (overscroll-contain).
+  useEffect(() => {
+    const pane = detail.current;
+    if (!pane || !narrow) return;
+    let startY = 0;
+    const onStart = (event: TouchEvent) => { startY = event.touches[0]?.clientY ?? 0; };
+    const onMove = (event: TouchEvent) => {
+      const down = (event.touches[0]?.clientY ?? startY) > startY;
+      for (let node = event.target as Element | null; node && node !== pane; node = node.parentElement) {
+        if (!/(auto|scroll)/.test(getComputedStyle(node).overflowY) || node.scrollHeight <= node.clientHeight) continue;
+        if (down ? node.scrollTop > 0 : node.scrollTop + node.clientHeight < node.scrollHeight) return;
+      }
+      if (event.cancelable) event.preventDefault();
+    };
+    pane.addEventListener('touchstart', onStart, { passive: true });
+    pane.addEventListener('touchmove', onMove, { passive: false });
+    return () => { pane.removeEventListener('touchstart', onStart); pane.removeEventListener('touchmove', onMove); };
+  }, [narrow, session]);
   useEffect(() => {
     if (!paged) return;
     const onScroll = () => { if (document.documentElement.scrollHeight - scrollY - innerHeight <= NEAR_EDGE) loadMoreChats(); };
@@ -1053,7 +1075,7 @@ export function App() {
           {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE} role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
         </div>
       </aside>
-      <main className={`detail-pane ${PANE} max-pane:fixed max-pane:bottom-auto max-pane:h-dvh max-pane:z-20 bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
+      <main ref={detail} className={`detail-pane ${PANE} max-pane:fixed max-pane:bottom-auto max-pane:h-dvh max-pane:z-20 bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
           <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>

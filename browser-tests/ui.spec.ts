@@ -897,6 +897,19 @@ test('on a phone the browser’s back leaves a conversation, and the page behind
   await page.evaluate(() => window.scrollTo(0, 200));
   expect(Math.round((await page.locator('.detail-pane').boundingBox())!.y)).toBe(0);
   expect(Math.round((await page.locator('.detail-pane').boundingBox())!.height)).toBe(800);
+  // A drag on the conversation's heading stops there; one inside something that can scroll is its own.
+  const drag = (selector: string, dy: number) => page.evaluate(([selector, dy]) => {
+    const target = document.querySelector(selector as string)!;
+    const touch = (y: number) => new Touch({ identifier: 1, target, clientX: 100, clientY: y });
+    target.dispatchEvent(new TouchEvent('touchstart', { touches: [touch(300)], bubbles: true, cancelable: true }));
+    const move = new TouchEvent('touchmove', { touches: [touch(300 + (dy as number))], bubbles: true, cancelable: true });
+    target.dispatchEvent(move);
+    return move.defaultPrevented;
+  }, [selector, dy]);
+  expect(await drag('.detail-pane h1', -80)).toBe(true);
+  await page.evaluate(() => { const tall = document.createElement('div'); tall.style.height = '3000px'; tall.className = 'tall'; document.querySelector('.message-area')!.append(tall); });
+  expect(await drag('.message-area .tall', -80)).toBe(false);
+  await page.evaluate(() => document.querySelector('.message-area .tall')!.remove());
   await page.goBack(); await expect(chat).toBeVisible(); await expect(page.locator('.detail-pane')).toBeHidden();
   // The button and the browser walk the same history: going back by the button leaves nothing to undo.
   await chat.click(); await page.getByRole('button', { name: '会話一覧へ戻る' }).click(); await expect(chat).toBeVisible();
