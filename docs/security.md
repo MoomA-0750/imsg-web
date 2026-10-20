@@ -23,6 +23,14 @@ have, so it should be hard to reach and impossible to reach by accident.
   the first sign-in with it asks for the owner's own, and that request (session
   plus CSRF, like every mutation) is the only way the browser can change the
   password — once one is chosen, changing it again is done on the Mac.
+- **Other programs use a client token**, never the password (`docs/api.md`).
+  The owner issues a token on the Mac, scoped to reading or to reading and
+  sending. Only its SHA-256 is stored, and removing the client cuts it off
+  at once. A token request must carry no `Origin`, `Cookie` or `Sec-Fetch-Site`,
+  so no web page can use one: the browser's path keeps all of the checks
+  below. A token reaches only the read and send routes, never the session or
+  password routes. Each token has the same 120 requests and 10 sends a minute
+  as a session, counted separately.
 - **Exact `Origin` and `Host` checks** on every request, a CSRF token on every
   mutation, at most 20 logins a minute, 16 sessions at once, 120 requests a
   minute per session, and 10 sends a minute.

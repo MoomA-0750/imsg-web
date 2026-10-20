@@ -35,6 +35,7 @@ Nothing in it was in anyone's conversation.</sub></p>
 - **Link cards**, from the preview Messages already stored
 - **Sending** text, files and voice recordings you make in the browser
 - **Notifications** for new messages, once you turn them on
+- **An API for other programs**, reading and sending, with a token you issue ([`docs/api.md`](docs/api.md))
 
 Not supported: sending a reply or a tapback, read receipts, typing indicators,
 search. The first two need imsg's bridge, which wants SIP disabled and code
@@ -122,6 +123,7 @@ anything.
 
 - [`docs/security.md`](docs/security.md) — how it is kept safe, and what it is not defended against
 - [`docs/behaviour.md`](docs/behaviour.md) — what the screen does not say: why a row is blank, why an image is missing, what a failed send means
+- [`docs/api.md`](docs/api.md) — the API for other programs, and how to let one in
 - [`docs/operations.md`](docs/operations.md) — install, LaunchAgent, Serve, stop, update, and what to do when a send fails
 - [`docs/architecture.md`](docs/architecture.md) — the read-only RPC contract, and how attachments, faces and audio are handled
 - [`docs/real-data-findings.md`](docs/real-data-findings.md) — what real data proved, and disproved, about Messages' own storage

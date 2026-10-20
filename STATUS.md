@@ -22,6 +22,12 @@ to be decided.
 
 ## Open threads
 
+- **An API for other programs** (`docs/api.md`), asked for so a home dashboard
+  can show a chat panel: client tokens issued with `imsg-web client add`, scoped
+  `read` or `send`, on the same routes the page uses. Tested with synthetic data
+  only; not yet deployed to the M1. The dashboard side is not part of this
+  repository.
+
 - **One https address.** The server has a single listener, https with a
   self-signed certificate the installer makes, open to the LAN by default
   (`--no-lan` for loopback only); the Mac and the LAN both use

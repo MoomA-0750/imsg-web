@@ -33,6 +33,7 @@ Mac の中にあり、ローカルのサーバーがそれを読みます。ど�
 - **リンクカード**。Messages が保存済みのプレビューから
 - **送信**。テキスト、ファイル、ブラウザーで録音した音声
 - **新着通知**（有効にした場合）
+- **ほかのプログラムからの API**。自分で発行した連携用トークンで、読み取りと送信（[`docs/api.md`](docs/api.md)）
 
 **できないこと**：返信としての送信、リアクションの送信、既読、入力中の表示、検索。
 最初の2つは imsg のブリッジが必要で、SIP の無効化と Messages へのコード注入を要求するため、
@@ -114,6 +115,7 @@ npm run test:browser     # 合成の HTTPS、Chromium
 
 - [`docs/security.md`](docs/security.md) — 安全性の考え方と、守っていないもの
 - [`docs/behaviour.md`](docs/behaviour.md) — 画面に書いていないこと：なぜ行が空白なのか、なぜ画像が無いのか、送信失敗の意味
+- [`docs/api.md`](docs/api.md) — ほかのプログラムから使う API と、連携用トークンの発行
 - [`docs/operations.md`](docs/operations.md) — インストール、LaunchAgent、Serve、停止、更新、送信が失敗したときの調べ方
 - [`docs/architecture.md`](docs/architecture.md) — 読み取り専用 RPC の契約、添付・アイコン・音声の扱い
 - [`docs/real-data-findings.md`](docs/real-data-findings.md) — 実データが証明した（そして否定した）Messages の保存形式のこと

@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { Auth, PASSWORD_MAX, equal, passwordProblem, tokenValid, type Session } from './auth.js';
+import { Auth, PASSWORD_MAX, equal, passwordProblem, tokenValid, type Client, type Session } from './auth.js';
 import { WebError } from './web-error.js';
 import type { ReadSource } from '../shared/web-types.js';
 import type { AttachmentSource } from './attachments.js';
@@ -64,6 +64,12 @@ export function checkedLanOrigin(value: string): URL {
 export function localAddresses(): string[] {
   return Object.values(networkInterfaces()).flat().flatMap(a => a && a.family === 'IPv4' && !a.internal ? [a.address] : []);
 }
+/**
+ * What a program holding a client token may call (docs/api.md): reading, and with the `send` scope
+ * the two routes sending needs. Never the session or password routes, which are the owner's.
+ */
+const CLIENT_READ = /^GET \/api\/(?:capabilities|chats|chats\/[^/]+\/messages|attachments\/[^/]+|avatars\/[^/]+)$/;
+const CLIENT_SEND = /^POST \/api\/(?:send|uploads)$/;
 export async function createApp(options: { origins: string[]; lanOrigin?: string; addresses?: () => string[]; tls?: { cert: Buffer; key: Buffer }; auth: Auth; setPassword?: (password: string) => Promise<void>; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
   const named = options.origins.map(checkedOrigin);
   const lan = options.lanOrigin === undefined ? undefined : checkedLanOrigin(options.lanOrigin);
@@ -86,6 +92,7 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
   const app = options.tls ? Fastify({ ...settings, https: options.tls }) as unknown as FastifyInstance : Fastify(settings);
   await app.register(cookie);
   const authenticated = new WeakMap<object, Session>();
+  const clients = new WeakMap<object, Client>();
   const uploadsEnabled = Boolean(options.uploads && options.sender && options.sender.mode !== 'off');
   let active = 0;
   app.server.maxConnections = 64;
@@ -100,6 +107,30 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
     const release = () => { if (!released) { released = true; active--; } };
     reply.raw.once('finish', release); reply.raw.once('close', release);
     const expected = originFor(request.headers.host);
+    // A program, not a browser: it names itself with a client token and comes with no Origin, no
+    // cookie and no Sec-Fetch-Site, which every browser sends here (Node's own fetch sends only
+    // Sec-Fetch-Mode). So a page can never use this path, and everything a browser does stays on
+    // the cookie, the exact Origin and CSRF. The Host is held to the same list as ever.
+    const authorization = request.headers.authorization;
+    if (authorization !== undefined) {
+      const path = request.url.split('?')[0]!;
+      const bearer = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(authorization);
+      if (!expected) { reply.code(403).send({ code: 'ORIGIN_REJECTED' }); return; }
+      if (request.headers.origin !== undefined || request.headers['sec-fetch-site'] !== undefined || request.headers.cookie !== undefined) { reply.code(403).send({ code: 'CLIENT_FROM_BROWSER' }); return; }
+      const client = bearer ? options.auth.client(bearer[1]) : undefined;
+      if (!client) { reply.code(401).send({ code: 'UNAUTHORIZED' }); return; }
+      const route = `${request.method} ${path}`;
+      if (!CLIENT_READ.test(route) && !(client.scope === 'send' && CLIENT_SEND.test(route))) { reply.code(403).send({ code: 'CLIENT_FORBIDDEN' }); return; }
+      if (request.method === 'POST') {
+        const binary = uploadsEnabled && path === '/api/uploads';
+        const type = (request.headers['content-type'] ?? '').split(';')[0]!.trim().toLowerCase();
+        const acceptable = binary ? type === 'application/octet-stream' : /^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(request.headers['content-type'] ?? '');
+        if (!acceptable) { reply.code(415).send({ code: binary ? 'BINARY_REQUIRED' : 'JSON_REQUIRED' }); return; }
+      }
+      try { options.auth.clientAccess(client); } catch (error) { done(error as Error); return; }
+      clients.set(request, client);
+      done(); return;
+    }
     if (!expected || (request.headers.origin !== undefined && request.headers.origin !== expected)
       || (request.url.startsWith('/api/') && request.headers['sec-fetch-site'] === 'cross-site')) {
       reply.code(403).send({ code: 'ORIGIN_REJECTED' }); return;
@@ -127,7 +158,13 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
     done();
   });
   app.addHook('onSend', (request, reply, payload, done) => {
-    const session = authenticated.get(request);
+    const session = authenticated.get(request), client = clients.get(request);
+    // A program removed while its request was being answered gets nothing out of it.
+    if (client && reply.statusCode < 300 && !options.auth.clientValid(client)) {
+      if (payload instanceof Readable) payload.destroy();
+      reply.removeHeader('content-length').removeHeader('content-disposition').header('content-security-policy', CSP);
+      reply.code(401).type('application/json'); done(null, JSON.stringify({ code: 'UNAUTHORIZED' })); return;
+    }
     // Signing out and setting a first password both end the session that asked, on purpose.
     if (session && reply.statusCode < 300 && !(request.method === 'DELETE' && request.url === '/api/session') && !(request.method === 'POST' && request.url === '/api/password') && !options.auth.valid(session)) {
       if (payload instanceof Readable) payload.destroy(); // an attachment stream holds an open file
@@ -184,9 +221,10 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
     if (typeof raw !== 'string' || !/^(?:[1-9]\d{0,2}|1000)$/.test(raw)) throw new WebError('INVALID_LIMIT', 400);
     const n = Number(raw); if (n < 50 || n > 1000 || n % 50) throw new WebError('INVALID_LIMIT', 400); return n;
   };
-  app.get('/api/capabilities', async () => {
+  app.get('/api/capabilities', async request => {
     const snapshot = await options.source.capabilities();
-    if (options.sender) snapshot.features.send = sendCapability(options.sender.mode);
+    // A program that may only read is told sending is off, which for it is the truth.
+    if (options.sender) snapshot.features.send = sendCapability(clients.get(request)?.scope === 'read' ? 'off' : options.sender.mode);
     return snapshot;
   });
   app.get('/api/chats', async request => options.source.chats(limit((request.query as Record<string, unknown>).limit)));
@@ -229,10 +267,11 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
     const sendWindows = new Map<string, { window: number; count: number }>();
     const SEND_PER_MIN = 10;
     const spend = (request: FastifyRequest) => {
-      const session = authenticated.get(request)!;
+      // Per session, and per program: a client does not share the owner's allowance or another's.
+      const key = authenticated.get(request)?.hash ?? `client:${clients.get(request)!.hash}`;
       const now = Date.now();
-      const window = sendWindows.get(session.hash);
-      if (!window || now - window.window >= 60_000) sendWindows.set(session.hash, { window: now, count: 1 });
+      const window = sendWindows.get(key);
+      if (!window || now - window.window >= 60_000) sendWindows.set(key, { window: now, count: 1 });
       else if (++window.count > SEND_PER_MIN) throw new WebError('RATE_LIMITED', 429);
     };
     app.post('/api/send', { schema: { body: { type: 'object', additionalProperties: false, properties: {

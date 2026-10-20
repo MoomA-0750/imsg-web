@@ -2,7 +2,7 @@ import { constants } from 'node:fs';
 import { chmod, lstat, open, unlink } from 'node:fs/promises';
 import { createServer, createConnection, type Socket } from 'node:net';
 import { join } from 'node:path';
-import { Auth, hashKey, hashPassword, newToken, passwordProblem, type Credential } from './auth.js';
+import { Auth, CLIENTS_MAX, clientNameValid, hashKey, hashPassword, newToken, passwordProblem, type ClientRecord, type Credential } from './auth.js';
 import { OwnerStore } from './owner-store.js';
 import { WebError } from './web-error.js';
 
@@ -14,7 +14,7 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
   const lock = await open(lockPath, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
   const ownLock = await lock.stat();
   await lock.close();
-  let ownedSocket = false, rotating = false, stopping = false;
+  let ownedSocket = false, rotating = false, editing = false, stopping = false;
   let rotationWork: Promise<void> | undefined;
   const sockets = new Set<Socket>();
   /** Swaps the credential on disk and in memory, with every session ended while it happens. */
@@ -27,6 +27,39 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
       if (stopping) throw new WebError('STOPPING');
       auth.activate(credential);
     } finally { rotating = false; rotationWork = undefined; }
+  };
+  /**
+   * Programs let in by name: `client-add` hands back a token once and keeps only its hash,
+   * `client-list` shows names and scopes, `client-remove` cuts one off at once.
+   */
+  const clientCommand = async (raw: Record<string, unknown>): Promise<object> => {
+    const keys = Object.keys(raw).sort().join(',');
+    if (raw.command === 'client-list') {
+      if (keys !== 'command') throw new WebError('INVALID_REQUEST', 400);
+      return { clients: (await store.loadClients()).map(({ name, scope, created }) => ({ name, scope, created })) };
+    }
+    const adding = raw.command === 'client-add';
+    if (!adding && raw.command !== 'client-remove') throw new WebError('INVALID_REQUEST', 400);
+    if (keys !== (adding ? 'command,name,scope' : 'command,name') || !clientNameValid(raw.name)) throw new WebError('INVALID_REQUEST', 400);
+    if (adding && raw.scope !== 'read' && raw.scope !== 'send') throw new WebError('INVALID_REQUEST', 400);
+    if (editing) throw new WebError('ADMIN_BUSY', 429);
+    editing = true;
+    try {
+      const clients = await store.loadClients();
+      let next: ClientRecord[], token: string | undefined;
+      if (adding) {
+        if (clients.some(c => c.name === raw.name)) throw new WebError('CLIENT_EXISTS', 409);
+        if (clients.length >= CLIENTS_MAX) throw new WebError('CLIENT_LIMIT', 429);
+        token = newToken();
+        next = [...clients, { name: raw.name as string, scope: raw.scope as ClientRecord['scope'], hash: hashKey(token), created: Date.now() }];
+      } else {
+        next = clients.filter(c => c.name !== raw.name);
+        if (next.length === clients.length) throw new WebError('CLIENT_UNKNOWN', 404);
+      }
+      await store.saveClients(next);
+      auth.setClients(next);
+      return token ? { token } : { ok: true };
+    } finally { editing = false; }
   };
   const removeLock = async () => {
     const current = await lstat(lockPath);
@@ -48,6 +81,7 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
           const raw: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(data));
           if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('command' in raw)) throw new WebError('INVALID_REQUEST', 400);
           const keys = Object.keys(raw);
+          if (typeof raw.command === 'string' && raw.command.startsWith('client-')) { socket.end(`${JSON.stringify(await clientCommand(raw as Record<string, unknown>))}\n`); return; }
           if (raw.command === 'set-password') {
             if (keys.length !== 2 || !('password' in raw)) throw new WebError('INVALID_REQUEST', 400);
             const problem = passwordProblem(raw.password);
@@ -70,7 +104,7 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
   try {
     // The disk hash is authoritative only AFTER exclusive ownership. A previous
     // instance may have rotated between a caller's earlier read and this lock.
-    auth.block(); auth.activate(await store.load());
+    auth.block(); auth.activate(await store.load()); auth.setClients(await store.loadClients());
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject);
       server.listen(socketPath, () => { server.off('error', reject); resolve(); });
@@ -105,7 +139,8 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
   };
 }
 
-export async function adminCommand(store: OwnerStore, command: 'revoke' | 'rotate' | 'status' | 'set-password', password?: string): Promise<{ key?: string; ok?: boolean; blocked?: boolean; sessions?: number; rotating?: boolean }> {
+/** One request over the admin socket, after checking the socket is the owner's own. */
+async function ask(store: OwnerStore, request: object): Promise<Record<string, unknown>> {
   await store.validate();
   const path = join(store.directory, 'admin.sock');
   const s = await lstat(path);
@@ -114,16 +149,33 @@ export async function adminCommand(store: OwnerStore, command: 'revoke' | 'rotat
     const socket = createConnection(path);
     const fail = () => { socket.destroy(); reject(new WebError('ADMIN_UNAVAILABLE')); };
     socket.setTimeout(5000, fail); socket.on('error', fail);
-    socket.once('connect', () => socket.write(`${JSON.stringify(command === 'set-password' ? { command, password } : { command })}\n`));
+    socket.once('connect', () => socket.write(`${JSON.stringify(request)}\n`));
     let data = Buffer.alloc(0);
-    socket.on('data', chunk => { data = Buffer.concat([data, chunk]); if (data.length > 2048) fail(); });
+    socket.on('data', chunk => { data = Buffer.concat([data, chunk]); if (data.length > 4096) fail(); });
     socket.once('end', () => {
       socket.destroy();
       try {
-        const raw = JSON.parse(data.toString('utf8')) as { key?: string; ok?: boolean; code?: string; blocked?: boolean; sessions?: number; rotating?: boolean };
-        if (raw.code || (command === 'rotate' ? typeof raw.key !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(raw.key) : command === 'status' ? typeof raw.blocked !== 'boolean' || !Number.isSafeInteger(raw.sessions) || typeof raw.rotating !== 'boolean' : raw.ok !== true)) throw new Error();
-        resolve(raw);
+        const raw: unknown = JSON.parse(data.toString('utf8'));
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error();
+        resolve(raw as Record<string, unknown>);
       } catch { reject(new WebError('ADMIN_COMMAND_FAILED')); }
     });
   });
+}
+
+export async function adminCommand(store: OwnerStore, command: 'revoke' | 'rotate' | 'status' | 'set-password', password?: string): Promise<{ key?: string; ok?: boolean; blocked?: boolean; sessions?: number; rotating?: boolean }> {
+  const raw = await ask(store, command === 'set-password' ? { command, password } : { command }) as { key?: string; ok?: boolean; code?: string; blocked?: boolean; sessions?: number; rotating?: boolean };
+  if (raw.code || (command === 'rotate' ? typeof raw.key !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(raw.key) : command === 'status' ? typeof raw.blocked !== 'boolean' || !Number.isSafeInteger(raw.sessions) || typeof raw.rotating !== 'boolean' : raw.ok !== true)) throw new WebError('ADMIN_COMMAND_FAILED');
+  return raw;
+}
+
+export type ClientRequest = { command: 'client-add'; name: string; scope: 'read' | 'send' } | { command: 'client-remove'; name: string } | { command: 'client-list' };
+/** The server's refusal code is passed on (CLIENT_EXISTS, CLIENT_UNKNOWN, …): the owner can act on it. */
+export async function clientCommand(store: OwnerStore, request: ClientRequest): Promise<{ token?: string; ok?: boolean; clients?: { name: string; scope: string; created: number }[] }> {
+  const raw = await ask(store, request);
+  if (typeof raw.code === 'string') throw new WebError(raw.code);
+  const fine = request.command === 'client-add' ? typeof raw.token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(raw.token)
+    : request.command === 'client-list' ? Array.isArray(raw.clients) : raw.ok === true;
+  if (!fine) throw new WebError('ADMIN_COMMAND_FAILED');
+  return raw;
 }

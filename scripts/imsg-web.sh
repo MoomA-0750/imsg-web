@@ -8,6 +8,9 @@
 #   <base>/imsg-web auth revoke-all     signs every session out
 #   <base>/imsg-web auth status
 #   <base>/imsg-web prune [--dry-run]    removes releases older than the running one and its rollback
+#   <base>/imsg-web client add <name> [--send]   lets another program use the API; prints its token
+#   <base>/imsg-web client list
+#   <base>/imsg-web client remove <name>
 set -eu
 
 base="$(cd -- "$(dirname -- "$0")" && pwd)"

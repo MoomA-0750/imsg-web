@@ -7,10 +7,11 @@ import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
-import { adminCommand } from './server/admin.js';
+import { adminCommand, clientCommand, type ClientRequest } from './server/admin.js';
 import { ContactPhotos } from './server/contact-photos.js';
 import { AudioConverter } from './server/audio-convert.js';
-import { passwordProblem } from './server/auth.js';
+import { clientNameValid, passwordProblem } from './server/auth.js';
+import { WebError } from './server/web-error.js';
 import { LiveSource } from './server/live-source.js';
 import { ImageConverter } from './server/image-convert.js';
 import { SendService, type SendMode } from './server/send-service.js';
@@ -32,8 +33,42 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+/**
+ * `client add <name> [--send]`, `client list`, `client remove <name>`: the programs let in to the
+ * API (docs/api.md). The token is printed once, on stdout alone, so it can be piped where it goes.
+ */
+const CLIENT_PROBLEMS: Record<string, string> = {
+  CLIENT_EXISTS: 'That name is already in use; remove it first to issue a new token.',
+  CLIENT_UNKNOWN: 'No client by that name.',
+  CLIENT_LIMIT: 'There are already 16 clients; remove one first.',
+  ADMIN_UNAVAILABLE: 'The server is not running, and clients are managed through it.',
+};
+async function client(store: OwnerStore, args: string[]) {
+  const [verb, name, flag] = args;
+  const usage = () => { process.stderr.write('Usage: client add <name> [--send] | client list | client remove <name>\n  name: lower-case letters, digits and -, up to 32\n'); process.exitCode = 1; };
+  let request: ClientRequest;
+  if (verb === 'list' && args.length === 1) request = { command: 'client-list' };
+  else if (verb === 'remove' && args.length === 2 && clientNameValid(name)) request = { command: 'client-remove', name };
+  else if (verb === 'add' && clientNameValid(name) && (args.length === 2 || (args.length === 3 && flag === '--send'))) request = { command: 'client-add', name, scope: flag ? 'send' : 'read' };
+  else { usage(); return; }
+  try {
+    const result = await clientCommand(store, request);
+    if (result.token) {
+      process.stderr.write(`Client "${name}" may ${flag ? 'read and send' : 'read'}. Its token, shown only this once:\n`);
+      process.stdout.write(`${result.token}\n`);
+    } else if (result.clients) {
+      if (result.clients.length === 0) process.stdout.write('No clients.\n');
+      for (const c of result.clients) process.stdout.write(`${c.name}\t${c.scope}\t${new Date(c.created).toISOString().slice(0, 10)}\n`);
+    } else process.stdout.write(`Client "${name}" removed; its token no longer works.\n`);
+  } catch (error) {
+    const code = error instanceof WebError ? error.code : '';
+    process.stderr.write(`${CLIENT_PROBLEMS[code] ?? 'The client command failed.'}\n`); process.exitCode = 1;
+  }
+}
+
 async function main() {
   const input = process.argv.slice(2), directory = process.env.IMSG_WEB_STATE_DIR;
+  if (input[0] === 'client' && directory) { await client(new OwnerStore(directory), input.slice(1)); return; }
   const command = input[0] === 'auth' && input.length === 2 ? input[1] === 'revoke-all' ? 'revoke' : input[1] : input.length === 1 ? input[0] : undefined;
   if (!directory || !command) throw new Error();
   const store = new OwnerStore(directory);

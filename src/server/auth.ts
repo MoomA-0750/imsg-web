@@ -76,8 +76,27 @@ export function credentialValid(value: unknown): value is Credential {
     && Object.keys(c).every(key => ['kind', 'salt', 'hash', 'temporary'].includes(key));
 }
 
+/**
+ * Another program the owner lets in, such as a home dashboard: a name, what it may do, and the
+ * SHA-256 of the generated token it presents (256 bits, like a key, so nothing to stretch). `read`
+ * is the read routes; `send` adds sending. Kept apart from the owner's credential, so changing the
+ * password does not cut a program off, and removing a program does not sign the owner out.
+ */
+export type ClientScope = 'read' | 'send';
+export type ClientRecord = { name: string; scope: ClientScope; hash: string; created: number };
+export type Client = ClientRecord & { window: number; count: number };
+export const CLIENTS_MAX = 16;
+export const clientNameValid = (value: unknown): value is string => typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,31}$/.test(value);
+export function clientRecordValid(value: unknown): value is ClientRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const c = value as Record<string, unknown>;
+  return clientNameValid(c.name) && (c.scope === 'read' || c.scope === 'send') && typeof c.hash === 'string' && /^[a-f0-9]{64}$/.test(c.hash)
+    && Number.isSafeInteger(c.created) && Object.keys(c).length === 4;
+}
+
 export class Auth {
   readonly #sessions = new Map<string, Session>();
+  #clients = new Map<string, Client>();
   #credential: Credential;
   #blocked = false;
   #attempts = 0;
@@ -138,6 +157,24 @@ export class Auth {
     if (now - session.window >= 60_000) { session.window = now; session.count = 0; }
     if (++session.count > 120) throw new WebError('RATE_LIMITED', 429);
     session.seen = now;
+  }
+  /** Replaces the programs let in. One that stays keeps its rate window; one removed is out at once. */
+  setClients(records: ClientRecord[]): void {
+    const now = this.now();
+    this.#clients = new Map(records.map(r => [r.hash, this.#clients.get(r.hash) ?? { ...r, window: now, count: 0 }]));
+  }
+  /** The program a bearer token belongs to. Nobody gets in while the server is blocked. */
+  client(token: unknown): Client | undefined {
+    if (this.#blocked || !tokenValid(token)) return;
+    return this.#clients.get(hashKey(token));
+  }
+  clientValid(client: Client): boolean { return !this.#blocked && this.#clients.get(client.hash) === client; }
+  /** The same 120 a minute a session gets. */
+  clientAccess(client: Client): void {
+    if (!this.clientValid(client)) throw new WebError('UNAUTHORIZED', 401);
+    const now = this.now();
+    if (now - client.window >= 60_000) { client.window = now; client.count = 0; }
+    if (++client.count > 120) throw new WebError('RATE_LIMITED', 429);
   }
   logout(session: Session): void { this.#sessions.delete(session.hash); }
   revokeAll(): void { this.#sessions.clear(); }

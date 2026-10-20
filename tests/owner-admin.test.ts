@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { createConnection } from 'node:net';
 import { OwnerStore } from '../src/server/owner-store.js';
 import { Auth, hashKey } from '../src/server/auth.js';
-import { startAdmin, adminCommand } from '../src/server/admin.js';
+import { startAdmin, adminCommand, clientCommand } from '../src/server/admin.js';
 import { startRuntime } from '../src/server/runtime.js';
 import type { ReadSource } from '../src/shared/web-types.js';
 import type { AttachmentSource } from '../src/server/attachments.js';
@@ -182,4 +182,48 @@ describe('a temporary password to start with, and a password of the owner’s ow
     // Once there is a password of the owner's own, changing it is a thing done on the Mac.
     expect((await choose('another2026', fresh, chosen.json<{ csrfToken: string }>().csrfToken)).json()).toEqual({ code: 'PASSWORD_ALREADY_SET' });
   }, 15_000);
+});
+
+describe('clients let in to the API', () => {
+  it('adds, lists and removes clients through the private socket, keeping only hashes on disk', async () => {
+    const f = await setup(), admin = await startAdmin(f.store, f.auth); cleanups.push(() => admin.close(true));
+    expect(await clientCommand(f.store, { command: 'client-list' })).toEqual({ clients: [] });
+    const { token } = await clientCommand(f.store, { command: 'client-add', name: 'dashboard', scope: 'send' });
+    expect(f.auth.client(token)).toMatchObject({ name: 'dashboard', scope: 'send' });
+    const file = join(f.store.directory, 'clients.json');
+    expect((await lstat(file)).mode & 0o777).toBe(0o600);
+    expect(await readFile(file, 'utf8')).not.toContain(token!);
+    expect(await readFile(file, 'utf8')).toContain(hashKey(token!));
+    await expect(clientCommand(f.store, { command: 'client-add', name: 'dashboard', scope: 'read' })).rejects.toMatchObject({ code: 'CLIENT_EXISTS' });
+    const listed = await clientCommand(f.store, { command: 'client-list' });
+    expect(listed.clients).toEqual([{ name: 'dashboard', scope: 'send', created: expect.any(Number) }]);
+    expect(JSON.stringify(listed)).not.toContain(hashKey(token!));
+    // The owner's password changing does not cut the program off.
+    expect(await adminCommand(f.store, 'set-password', 'kaisha2026')).toEqual({ ok: true });
+    expect(f.auth.client(token)).toBeDefined();
+    expect(await clientCommand(f.store, { command: 'client-remove', name: 'dashboard' })).toEqual({ ok: true });
+    expect(f.auth.client(token)).toBeUndefined();
+    await expect(clientCommand(f.store, { command: 'client-remove', name: 'dashboard' })).rejects.toMatchObject({ code: 'CLIENT_UNKNOWN' });
+  });
+  it('refuses malformed client requests and loads saved clients when the server starts', async () => {
+    const f = await setup();
+    let admin = await startAdmin(f.store, f.auth);
+    for (const bad of [{ command: 'client-add', name: 'Bad Name', scope: 'read' }, { command: 'client-add', name: 'ok', scope: 'admin' }, { command: 'client-add', name: 'ok' }, { command: 'client-list', extra: 1 }]) {
+      await expect(clientCommand(f.store, bad as never)).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    }
+    const { token } = await clientCommand(f.store, { command: 'client-add', name: 'reader', scope: 'read' });
+    await admin.close(true);
+    const fresh = new Auth(await f.store.load());
+    admin = await startAdmin(f.store, fresh); cleanups.push(() => admin.close(true));
+    expect(fresh.client(token)).toMatchObject({ name: 'reader', scope: 'read' });
+  });
+  it('refuses a clients file that is loose, linked or malformed', async () => {
+    const f = await setup();
+    await f.store.saveClients([{ name: 'a', scope: 'read', hash: 'a'.repeat(64), created: 1 }]);
+    const file = join(f.store.directory, 'clients.json');
+    await chmod(file, 0o644); await expect(f.store.loadClients()).rejects.toMatchObject({ code: 'CLIENTS_UNSAFE' });
+    await rm(file); await symlink(join(f.dir, 'elsewhere'), file); await expect(f.store.loadClients()).rejects.toBeDefined();
+    await rm(file); await f.store.saveClients([{ name: 'a', scope: 'read', hash: 'a'.repeat(64), created: 1 }, { name: 'a', scope: 'send', hash: 'b'.repeat(64), created: 1 }]);
+    await expect(f.store.loadClients()).rejects.toMatchObject({ code: 'CLIENTS_INVALID' });
+  });
 });

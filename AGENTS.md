@@ -36,6 +36,11 @@ changes and typing are still not approved.
   open to the LAN by default at the owner's request; no plain http listener), the read RPC
   method allowlist, the send method restriction, CSRF, or response bounds,
   including for development or previews.
+- Other programs reach the API only with a client token (`docs/api.md`): issued
+  on the Mac, stored as a hash, scoped `read` or `send`, refused if the request
+  carries `Origin`, `Cookie` or `Sec-Fetch-Site`, and never admitted to the
+  session or password routes. Do not add CORS, framing or any other way for a
+  page on another origin to reach the API.
 - Never log or commit message text, recipients, chat/message IDs, owner keys,
   cookies, local database paths, raw RPC responses or private machine inventory.
 - Do not change SIP/TCC, request permissions, launch or repair Messages.app,
