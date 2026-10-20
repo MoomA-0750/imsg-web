@@ -891,9 +891,12 @@ test('on a phone the browser’s back leaves a conversation, and the page behind
   await page.evaluate(() => { document.querySelector('.chat-list li:last-child')!.remove(); window.scrollTo(0, 0); });
   const chat = page.getByRole('button', { name: /合成テスト会話 Alpha/ });
   await chat.click(); await expect(page.locator('.detail-pane')).toBeVisible();
-  // A conversation is pinned: the page behind it has nothing to scroll, so nothing can shift it up.
+  // A conversation is pinned over the list: the page under it never stops being a scrolling page
+  // (Safari would not draw under its toolbar again), and scrolling it cannot move the conversation.
+  expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('visible');
   await page.evaluate(() => window.scrollTo(0, 200));
-  expect(Math.round((await page.locator('.app').boundingBox())!.y)).toBe(0);
+  expect(Math.round((await page.locator('.detail-pane').boundingBox())!.y)).toBe(0);
+  expect(Math.round((await page.locator('.detail-pane').boundingBox())!.height)).toBe(800);
   await page.goBack(); await expect(chat).toBeVisible(); await expect(page.locator('.detail-pane')).toBeHidden();
   // The button and the browser walk the same history: going back by the button leaves nothing to undo.
   await chat.click(); await page.getByRole('button', { name: '会話一覧へ戻る' }).click(); await expect(chat).toBeVisible();

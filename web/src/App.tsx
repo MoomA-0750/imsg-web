@@ -625,11 +625,9 @@ export function App() {
   const from = useRef<{ x: number; y: number } | undefined>(undefined);
   const dragging = useRef(false);
   const chatViewport = useRef<HTMLDivElement | null>(null);
-  // Below the side-by-side width the list is the page itself (see `paged` below), and this is where
-  // it was scrolled to when a conversation was opened over it.
+  // Below the side-by-side width the list is the page itself (see the render below).
   const [narrow, setNarrow] = useState(() => !matchMedia(SIDE_BY_SIDE).matches);
-  const listTop = useRef(0);
-  const paged = narrow && !selected;
+  const paged = narrow;
   /** Following the newest message: keep the view at the bottom as messages arrive. True until the owner scrolls up. */
   const following = useRef(true);
   /** The scroll geometry as it was before the current render, so a page added above can be cancelled out. */
@@ -882,12 +880,6 @@ export function App() {
     query.addEventListener('change', change);
     return () => query.removeEventListener('change', change);
   }, []);
-  // The list moves between the page's scroll and its own pane as a conversation opens and closes
-  // over it; carry the position across both ways so it never jumps under the sliding panes.
-  useLayoutEffect(() => {
-    if (paged) window.scrollTo(0, listTop.current);
-    else if (narrow && chatViewport.current) chatViewport.current.scrollTop = listTop.current;
-  }, [paged]);
   useEffect(() => {
     if (!paged) return;
     const onScroll = () => { if (document.documentElement.scrollHeight - scrollY - innerHeight <= NEAR_EDGE) loadMoreChats(); };
@@ -923,7 +915,7 @@ export function App() {
     // Already here: clearing and reloading would only blank the conversation, and a second click
     // on the same row does not even change `selected`, so nothing would fetch it back.
     if (selectedId.current === chat.id) return;
-    if (!selectedId.current && !matchMedia(SIDE_BY_SIDE).matches) { history.pushState({ chat: true }, ''); listTop.current = scrollY; }
+    if (!selectedId.current && !matchMedia(SIDE_BY_SIDE).matches) history.pushState({ chat: true }, '');
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
@@ -1023,15 +1015,15 @@ export function App() {
   };
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
-  // Safari only draws a page under its toolbar when the page itself scrolls. So on a phone, with no
-  // conversation open, the list is laid out in the page and scrolls with it. Everywhere else the app
-  // is pinned to the viewport and the page has nothing to scroll — which is also what stops a phone
-  // that scrolled to keep the password field above the keyboard from leaving it shifted up.
+  // Safari only draws a page under its toolbar when the page itself scrolls, and having once been
+  // made unscrollable it does not take that back. So on a phone the list is always laid out in the
+  // page and scrolls with it, and a conversation is pinned over it rather than replacing it. Side
+  // by side, the app is pinned to the viewport and the page has nothing to scroll.
   return <div className={`app flex flex-col bg-surface ${paged ? 'min-h-dvh' : 'app-fixed fixed inset-x-0 top-0 h-dvh overflow-hidden'}`}>
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
     {viewing && <Lightbox item={viewing} onClose={() => setViewing(null)} />}
     <div className={`relative flex-1 ${paged ? 'overflow-x-clip' : 'min-h-0 overflow-hidden'} pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]`}>
-      <aside className={paged ? 'chat-pane flex flex-col' : `chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
+      <aside className={paged ? `chat-pane flex flex-col ${selected ? 'invisible' : ''}` : `chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
         <div className={`${HEADING} ${paged ? 'sticky top-0 z-10 bg-surface' : ''}`}>
           <h1 className={`${PANE_TITLE} flex-1 min-w-0`}>メッセージ</h1>
           {notifier.status !== 'unsupported' && <button type="button" disabled={notifier.status === 'denied'}
@@ -1061,7 +1053,7 @@ export function App() {
           {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE} role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
         </div>
       </aside>
-      <main className={`detail-pane ${PANE} bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
+      <main className={`detail-pane ${PANE} max-pane:fixed max-pane:bottom-auto max-pane:h-dvh max-pane:z-20 bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
           <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
