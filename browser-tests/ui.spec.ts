@@ -878,6 +878,10 @@ test('on a phone the browser’s back leaves a conversation, and the page behind
   await login(page);
   const body = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(await body()).toBe('rgb(255, 255, 255)');
+  // The page itself has nothing to scroll, so nothing can leave the app shifted up.
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 200));
+  expect(Math.round((await page.locator('.app').boundingBox())!.y)).toBe(0);
   const chat = page.getByRole('button', { name: /合成テスト会話 Alpha/ });
   await chat.click(); await expect(page.locator('.detail-pane')).toBeVisible();
   await page.goBack(); await expect(chat).toBeVisible(); await expect(page.locator('.detail-pane')).toBeHidden();

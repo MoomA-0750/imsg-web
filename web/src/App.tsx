@@ -890,7 +890,7 @@ export function App() {
     setLoginBusy(true); setLoginError('');
     try {
       const value = await api<Session>('/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) });
-      setKey(''); clearPrivate(); setSession(value);
+      setKey(''); clearPrivate(); setSession(value); window.scrollTo(0, 0);
     } catch (error) {
       setLoginError((error as ApiError).status === 401 ? 'パスワードが正しくありません。' : (error as ApiError).status === 429 ? '試行回数が多すぎます。しばらく待ってください。' : 'ログインできませんでした。');
     } finally { setLoginBusy(false); }
@@ -1000,7 +1000,12 @@ export function App() {
   };
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
-  return <div className="app h-dvh flex flex-col overflow-hidden bg-surface">
+  // Pinned to the viewport rather than laid out in the page, so the page itself has nothing to
+  // scroll: a phone that scrolled it to keep the password field above the keyboard would otherwise
+  // leave the whole app shifted up after signing in. On a phone the list runs on under the browser's
+  // toolbar (the large viewport) with room at its end to scroll the last row clear of it; a
+  // conversation stops above the toolbar, where its composer has to be.
+  return <div className={`app fixed inset-x-0 top-0 flex flex-col overflow-hidden bg-surface h-dvh ${selected ? '' : 'max-pane:h-lvh'}`}>
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
     {viewing && <Lightbox item={viewing} onClose={() => setViewing(null)} />}
     <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
@@ -1017,7 +1022,7 @@ export function App() {
           </button>}
         </div>
         {chatError && <ErrorBar text={chatError} retry={loadChats} />}
-        <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col" ref={chatViewport} onScroll={onChatScroll}>
+        <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col max-pane:pb-[calc(100lvh_-_100dvh)]" ref={chatViewport} onScroll={onChatScroll}>
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
               <button className={`flex w-full items-center gap-3 rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
