@@ -22,12 +22,15 @@ to be decided.
 
 ## Open threads
 
-- **LAN by default.** A plain install now also serves
-  `https://<name>.local:8788` with a self-signed certificate it makes
-  (`--no-lan` to keep it to the Mac). On the M1 since 2026-10-20: the
-  certificate was made by macOS's LibreSSL, and the LAN port answered by name
-  and by address from another machine, with Tailscale Serve unchanged. Not yet
-  tried: an iPhone accepting the certificate, signing in, and recording over it.
+- **One https address.** The server has a single listener, https with a
+  self-signed certificate the installer makes, open to the LAN by default
+  (`--no-lan` for loopback only); the Mac and the LAN both use
+  `https://<name>.local:8787`. On the M1 since 2026-10-20, with Tailscale Serve
+  now proxying to `https+insecure://127.0.0.1:8787`; checked from another machine
+  on the LAN, from the Mac itself, and over the tailnet. Not yet tried: an iPhone
+  accepting the certificate, signing in, and recording over it. If it goes
+  wrong, the rollback release is the two-listener one, and Serve would then need
+  `http://127.0.0.1:8787` again.
 - **The generator's disk tests fail on macOS** (and passed on Linux): they work
   under `/tmp`, which is a symlink there, and the generator refuses symlinked
   ancestors. A test-fixture problem, not a product one; it predates the LAN work.
