@@ -30,7 +30,8 @@ to be decided.
   on the LAN, from the Mac itself, and over the tailnet. The owner's iPhone,
   from outside over the Mac's Tailscale IP (which the server answers to as one
   of its own addresses, no Serve involved), accepted the certificate, signed in
-  and recorded. Not yet tried from the iPhone: the `.local` name. If it goes
+  and recorded. A Windows PC on the home LAN opened it by the `.local` name.
+  Not yet tried: the `.local` name from the iPhone itself. If it goes
   wrong, the rollback release is the two-listener one, and Serve would then need
   `http://127.0.0.1:8787` again.
 - **The generator's disk tests fail on macOS** (and passed on Linux): they work
