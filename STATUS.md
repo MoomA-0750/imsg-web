@@ -31,9 +31,7 @@ to be decided.
   from outside over the Mac's Tailscale IP (which the server answers to as one
   of its own addresses, no Serve involved), accepted the certificate, signed in
   and recorded. A Windows PC on the home LAN opened it by the `.local` name.
-  Not yet tried: the `.local` name from the iPhone itself. If it goes
-  wrong, the rollback release is the two-listener one, and Serve would then need
-  `http://127.0.0.1:8787` again.
+  Not yet tried: the `.local` name from the iPhone itself.
 - **The generator's disk tests fail on macOS** (and passed on Linux): they work
   under `/tmp`, which is a symlink there, and the generator refuses symlinked
   ancestors. A test-fixture problem, not a product one; it predates the LAN work.
