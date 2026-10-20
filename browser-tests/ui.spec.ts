@@ -53,16 +53,15 @@ test('the sign-in screen offers a way back in: a link, then a screen of its own 
   await expect(page.getByLabel('パスワード', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'パスワードを忘れた場合' })).toBeVisible();
   await expect(page.getByText('SSH経由では拒否されます')).toBeVisible();
-  // Both commands in full, each saying what it does.
+  // The one command in full, saying what it does: the key it prints leads to choosing a password here.
   const commands = page.locator('pre');
-  await expect(commands).toHaveCount(2);
+  await expect(commands).toHaveCount(1);
   await expect(commands.nth(0)).toHaveText('"$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate');
-  await expect(commands.nth(1)).toHaveText('"$HOME/Library/Application Support/imsg-web/imsg-web" auth set-password');
-  await expect(page.getByText('ランダムな43文字のキー', { exact: false })).toBeVisible();
+  await expect(page.getByText('新しいパスワードを決める画面', { exact: false })).toBeVisible();
 
-  await page.getByRole('button', { name: /2\. 新しいパスワードを決めるのコマンドをコピー/ }).click();
+  await page.getByRole('button', { name: /仮のキーを発行するのコマンドをコピー/ }).click();
   expect(await page.evaluate(() => navigator.clipboard.readText()))
-    .toBe('"$HOME/Library/Application Support/imsg-web/imsg-web" auth set-password');
+    .toBe('"$HOME/Library/Application Support/imsg-web/imsg-web" auth rotate');
 
   // Back to signing in, with nothing typed carried over.
   await page.getByRole('button', { name: 'ログイン画面へ戻る' }).click();
@@ -78,6 +77,41 @@ test('the sign-in screen offers a way back in: a link, then a screen of its own 
   expect(block!.x + block!.width).toBeLessThanOrEqual(card!.x + card!.width + 1);
 });
 
+test('a sign-in with a password the owner did not choose asks for one first, then carries on', async ({ page }) => {
+  // The server says so on signing in; the password it is then given is taken here without a real swap.
+  const chosen: unknown[] = [];
+  await page.route('**/api/session', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...(await response.json()), mustSetPassword: true } });
+  });
+  await page.route('**/api/password', async route => {
+    chosen.push({ body: route.request().postDataJSON(), csrf: route.request().headers()['x-csrf-token'] });
+    await route.fulfill({ json: { csrfToken: 'C'.repeat(43), mode: 'readonly', mustSetPassword: false } });
+  });
+  let chatsAsked = 0;
+  await page.route('**/api/chats*', route => { chatsAsked++; return route.continue(); });
+  await page.context().clearCookies();
+  await page.goto('/'); await page.getByLabel('パスワード').fill('A'.repeat(43));
+  await page.getByRole('button', { name: 'ログイン', exact: true }).click();
+
+  await expect(page.getByRole('heading', { name: 'パスワードを決める' })).toBeVisible();
+  expect(chatsAsked).toBe(0); // nothing is read until a password has been chosen
+  const choose = async (a: string, b: string) => {
+    await page.getByLabel('新しいパスワード').fill(a); await page.getByLabel('もう一度').fill(b);
+    await page.getByRole('button', { name: '決定' }).click();
+  };
+  await choose('short1', 'short1');
+  await expect(page.getByRole('alert')).toContainText('8文字以上');
+  await choose('kaisha2026', 'kaisha2027');
+  await expect(page.getByRole('alert')).toHaveText('2つの入力が一致していません。');
+  expect(chosen).toHaveLength(0); // neither reached the server
+  await choose('kaisha2026', 'kaisha2026');
+  await expect(listed(page)).toBeVisible();
+  expect(chosen).toHaveLength(1);
+  expect(chosen[0]).toMatchObject({ body: { password: 'kaisha2026' } });
+  expect((chosen[0] as { csrf: string }).csrf).toMatch(/^[A-Za-z0-9_-]{43}$/);
+});
 test('says nothing about features it does not offer, and admits when it could not ask', async ({ page }) => {
   await page.route('**/api/capabilities', route => route.fulfill({ json: { epoch: 'epoch-a', mode: 'readonly', features: {
     chats: { state: 'available', reasonCode: 'SUPPORTED' },

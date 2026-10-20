@@ -17,6 +17,17 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
   let ownedSocket = false, rotating = false, stopping = false;
   let rotationWork: Promise<void> | undefined;
   const sockets = new Set<Socket>();
+  /** Swaps the credential on disk and in memory, with every session ended while it happens. */
+  const replace = async (credential: Credential) => {
+    if (rotating) throw new WebError('ADMIN_BUSY', 429);
+    rotating = true; auth.block();
+    try {
+      rotationWork = store.rotate(credential);
+      await rotationWork;
+      if (stopping) throw new WebError('STOPPING');
+      auth.activate(credential);
+    } finally { rotating = false; rotationWork = undefined; }
+  };
   const removeLock = async () => {
     const current = await lstat(lockPath);
     if (current.ino === ownLock.ino && current.dev === ownLock.dev && !current.isSymbolicLink()) await unlink(lockPath);
@@ -50,14 +61,8 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
           const setting = raw.command === 'set-password';
           const key = setting ? undefined : newToken();
           const credential: Credential = setting ? await hashPassword((raw as { password?: unknown }).password as string) : { kind: 'token', hash: hashKey(key!) };
-          rotating = true; auth.block();
-          try {
-            rotationWork = store.rotate(credential);
-            await rotationWork;
-            if (stopping) throw new WebError('STOPPING');
-            auth.activate(credential);
-            socket.end(`${JSON.stringify(setting ? { ok: true } : { key })}\n`);
-          } finally { rotating = false; rotationWork = undefined; }
+          await replace(credential);
+          socket.end(`${JSON.stringify(setting ? { ok: true } : { key })}\n`);
         } catch (error) { socket.end(`${JSON.stringify({ code: error instanceof WebError ? error.code : 'AUTH_RECOVERY_REQUIRED' })}\n`); }
       })();
     });
@@ -77,6 +82,14 @@ export async function startAdmin(store: OwnerStore, auth: Auth) {
     await removeLock(); throw error;
   }
   return {
+    /**
+     * The owner's first password of their own, chosen in the browser after signing in with one they
+     * did not choose. Refused once they have one: changing it after that stays a thing done on the Mac.
+     */
+    async setPassword(password: string) {
+      if (!auth.mustSetPassword) throw new WebError('PASSWORD_ALREADY_SET', 403);
+      await replace(await hashPassword(password));
+    },
     async close(releaseLock: boolean) {
       stopping = true; auth.block();
       for (const socket of sockets) socket.destroy();

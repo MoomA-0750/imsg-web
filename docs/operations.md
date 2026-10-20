@@ -56,11 +56,19 @@ Access, restart it with `launchctl kickstart -k gui/$(id -u)/local.imsg-web`.
 
 ## Signing in
 
-Two kinds of secret get the owner in, and only one is active at a time.
+Three kinds of secret get the owner in, and only one is active at a time. The
+first two are ones the owner did not choose, so signing in with either goes
+straight to a screen that asks for a password of their own (`POST
+/api/password`, refused once there is one; changing it after that is done on the
+Mac).
 
-- **A generated key** — 43 random characters, 256 bits. `setup` mints the first
-  one and `auth rotate` replaces it. Nothing can guess it, so the file holds a
-  plain SHA-256 of it.
+- **A temporary password** — what the installer hands out (`auth temporary`,
+  only when there is no credential yet): sixteen characters in four groups from
+  an alphabet without easily misread letters, about 79 bits, stored with scrypt
+  like any password.
+- **A generated key** — 43 random characters, 256 bits, from `auth rotate`, the
+  way back in after a forgotten password. Nothing can guess it, so the file holds
+  a plain SHA-256 of it.
 - **A password the owner chooses** — set with `auth set-password`, which reads it
   from stdin so it never appears in argv where `ps` would show it to every
   process. It must be at least 8 characters with a letter and a digit. Because a

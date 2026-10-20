@@ -19,7 +19,10 @@ have, so it should be hard to reach and impossible to reach by accident.
   in a 0700 directory. Sessions are `__Host-` cookies, `Secure`, `HttpOnly`,
   `SameSite=Strict`, and lapse after a day idle or a week outright. There is no
   sign-out button because there is one account; `auth revoke-all` ends every
-  session from the Mac.
+  session from the Mac. The installer starts with a random temporary password;
+  the first sign-in with it asks for the owner's own, and that request (session
+  plus CSRF, like every mutation) is the only way the browser can change the
+  password — once one is chosen, changing it again is done on the Mac.
 - **Exact `Origin` and `Host` checks** on every request, a CSRF token on every
   mutation, at most 20 logins a minute, 16 sessions at once, 120 requests a
   minute per session, and 10 sends a minute.

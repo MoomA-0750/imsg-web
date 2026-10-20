@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, readdir, lstat, chmod, symlink, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, lstat, chmod, symlink, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createConnection } from 'node:net';
@@ -129,4 +129,57 @@ describe('B03 owner state and Unix administration / B08 shutdown', () => {
     expect((await lstat(join(f.store.directory, 'instance.lock'))).isFile()).toBe(true);
     await expect(startAdmin(f.store, f.auth)).rejects.toBeDefined();
   }, 10_000);
+});
+
+describe('a temporary password to start with, and a password of the owner’s own after the first sign-in', () => {
+  it('hands out a readable temporary password, stored stretched and marked temporary', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'iw-temp-')); cleanups.push(() => rm(dir, { recursive: true, force: true }));
+    // The installer lays the state directory out first; this adopts it, but only as the owner's 0700.
+    const store = new OwnerStore(join(dir, 'state'));
+    await mkdir(store.directory, { mode: 0o755 }); await expect(store.setupTemporary()).rejects.toMatchObject({ code: 'STATE_DIR_UNSAFE' });
+    await chmod(store.directory, 0o700);
+    const password = await store.setupTemporary();
+    expect(password).toMatch(/^[a-hjkmnp-z2-9]{4}(-[a-hjkmnp-z2-9]{4}){3}$/);
+    expect(await store.load()).toMatchObject({ kind: 'password', temporary: true });
+    expect(await readFile(join(store.directory, 'owner.json'), 'utf8')).not.toContain(password);
+    await expect(store.setupTemporary()).rejects.toBeDefined(); // never replaces a credential
+    const auth = new Auth(await store.load());
+    expect(auth.mustSetPassword).toBe(true);
+    expect((await auth.login(password)).cookie).toBeTruthy();
+  });
+
+  it('asks for a password after the first sign-in, takes one that is good enough, and keeps the owner signed in', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'iw-first-')); cleanups.push(() => rm(dir, { recursive: true, force: true }));
+    const store = new OwnerStore(join(dir, 'state'));
+    await mkdir(store.directory, { mode: 0o700 });
+    const temporary = await store.setupTemporary();
+    const source: ReadSource & AttachmentSource = { chats: vi.fn(async () => ({ epoch: 'e', limit: 50, chats: [] })), history: vi.fn(), capabilities: vi.fn(), attachment: vi.fn(), avatar: vi.fn(), close: vi.fn(async () => {}) };
+    const runtime = await startRuntime({ store, source, origins: ['https://owner.test'], port: 0 });
+    cleanups.push(() => runtime.close());
+    const headers = { host: 'owner.test', origin: 'https://owner.test', 'content-type': 'application/json' };
+    const signIn = (key: string) => runtime.app.inject({ method: 'POST', url: '/api/session', headers, payload: { key } });
+    const first = await signIn(temporary);
+    expect(first.json()).toMatchObject({ mustSetPassword: true });
+    const cookie = (first.headers['set-cookie'] as string).split(';')[0]!, csrf = first.json<{ csrfToken: string }>().csrfToken;
+    const choose = (password: string, c = cookie, token = csrf) => runtime.app.inject({ method: 'POST', url: '/api/password', headers: { ...headers, cookie: c, 'x-csrf-token': token }, payload: { password } });
+
+    // Too weak, or without the CSRF token: refused, and the temporary password still stands.
+    expect((await choose('short1')).json()).toEqual({ code: 'PASSWORD_WEAK' });
+    expect((await choose('kaisha2026', cookie, 'x'.repeat(43))).statusCode).toBe(403);
+    expect((await store.load())).toMatchObject({ temporary: true });
+
+    const chosen = await choose('kaisha2026');
+    expect(chosen.statusCode).toBe(200);
+    expect(chosen.json()).toMatchObject({ mustSetPassword: false });
+    // Signed straight back in: the new cookie works, the old one does not.
+    const fresh = (chosen.headers['set-cookie'] as string).split(';')[0]!;
+    expect((await runtime.app.inject({ url: '/api/session', headers: { ...headers, cookie: fresh } })).json()).toMatchObject({ mustSetPassword: false });
+    expect((await runtime.app.inject({ url: '/api/session', headers: { ...headers, cookie } })).statusCode).toBe(401);
+    expect(await store.load()).toMatchObject({ kind: 'password' });
+    expect(await store.load()).not.toHaveProperty('temporary');
+    expect((await signIn(temporary)).statusCode).toBe(401);
+    expect((await signIn('kaisha2026')).statusCode).toBe(200);
+    // Once there is a password of the owner's own, changing it is a thing done on the Mac.
+    expect((await choose('another2026', fresh, chosen.json<{ csrfToken: string }>().csrfToken)).json()).toEqual({ code: 'PASSWORD_ALREADY_SET' });
+  }, 15_000);
 });

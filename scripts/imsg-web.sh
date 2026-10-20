@@ -2,6 +2,7 @@
 # imsg-web administration, installed at <base>/imsg-web so the command stays the same whatever
 # release is running. Run it on the Mac itself: the app refuses an SSH environment.
 #
+#   <base>/imsg-web auth temporary      the first credential: a temporary password, printed (installer)
 #   <base>/imsg-web auth rotate         replaces the secret with a generated key, and prints it
 #   <base>/imsg-web auth set-password   asks for a password without echoing it
 #   <base>/imsg-web auth revoke-all     signs every session out

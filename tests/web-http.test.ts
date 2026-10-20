@@ -135,9 +135,9 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
     expect(setCookie).toMatch(/^__Host-imsg_session=[A-Za-z0-9_-]{43};/);
     for (const attribute of ['Path=/', 'Secure', 'HttpOnly', 'SameSite=Strict']) expect(setCookie).toContain(attribute);
     expect(setCookie).not.toMatch(/domain=/i);
-    expect(response.json()).toEqual({ csrfToken: csrf, mode: 'readonly' });
+    expect(response.json()).toEqual({ csrfToken: csrf, mode: 'readonly', mustSetPassword: true });
     const status = await app.inject({ url: '/api/session', headers: { host: HOST, cookie } });
-    expect(status.json()).toEqual({ csrfToken: csrf, mode: 'readonly' });
+    expect(status.json()).toEqual({ csrfToken: csrf, mode: 'readonly', mustSetPassword: true });
     const logout = await app.inject({ method: 'DELETE', url: '/api/session', headers: { host: HOST, cookie, origin: ORIGIN, 'x-csrf-token': csrf }, payload: {} });
     expect(logout.statusCode).toBe(200);
     expect(logout.headers['set-cookie']).toContain('__Host-imsg_session=;');

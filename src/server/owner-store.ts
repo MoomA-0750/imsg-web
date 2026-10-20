@@ -1,7 +1,7 @@
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, rename, unlink } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
-import { credentialValid, hashKey, newToken, type Credential } from './auth.js';
+import { credentialValid, hashKey, newToken, temporaryPassword, type Credential } from './auth.js';
 import { WebError } from './web-error.js';
 
 /** Version 2 is the only form written now; version 1 is still read. See `load`. */
@@ -18,13 +18,26 @@ export class OwnerStore {
   }
   async setup(): Promise<string> {
     await mkdir(this.directory, { mode: 0o700 }); // Existing directory is deliberately not silently adopted.
-    await this.validate();
     const key = newToken();
+    await this.#create({ kind: 'token', hash: hashKey(key) });
+    return key;
+  }
+  /**
+   * The first credential, as the installer makes it: a temporary password, in a state directory the
+   * installer has already laid out (0700, the owner's — `validate` still insists). Never replaces
+   * an existing credential.
+   */
+  async setupTemporary(): Promise<string> {
+    const { password, credential } = await temporaryPassword();
+    await this.#create(credential);
+    return password;
+  }
+  async #create(credential: Credential) {
+    await this.validate();
     const file = await open(join(this.directory, 'owner.json'), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-    try { await file.writeFile(record({ kind: 'token', hash: hashKey(key) })); await file.sync(); }
+    try { await file.writeFile(record(credential)); await file.sync(); }
     finally { await file.close(); }
     await this.#syncDir();
-    return key;
   }
   async load(): Promise<Credential> {
     await this.validate();

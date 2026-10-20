@@ -38,7 +38,8 @@ const STAMP = 'shrink-0 text-muted text-[.72rem]';
 const SIDE_BY_SIDE = '(width >= 600px)';
 const PANE = 'flex flex-col min-w-0 min-h-0 overflow-hidden absolute inset-0 transition-transform duration-200 motion-reduce:transition-none pane:static pane:visible pane:translate-x-0';
 
-type Session = { csrfToken: string; mode: 'readonly' };
+/** `mustSetPassword`: signed in with a password the owner did not choose, so one is asked for first. */
+type Session = { csrfToken: string; mode: 'readonly'; mustSetPassword?: boolean };
 type ApiError = Error & { status?: number };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -821,7 +822,7 @@ export function App() {
     return () => controller.abort();
   }, []);
 
-  useEffect(() => { if (session && selected) void loadHistory(); }, [session, selected, loadHistory]);
+  useEffect(() => { if (session && !session.mustSetPassword && selected) void loadHistory(); }, [session, selected, loadHistory]);
 
   // On a phone the conversation is a screen of its own, so the browser's back (and the edge swipe)
   // should leave it. Opening one from the list adds a history entry; going back removes it.
@@ -833,7 +834,7 @@ export function App() {
   }, [closeChat]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || session.mustSetPassword) return;
     let timer: number | undefined;
     let stopped = false;
     let running = false;
@@ -1035,6 +1036,9 @@ export function App() {
     <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-[.85rem] underline underline-offset-2 hover:text-accent" onClick={() => setRecovering(true)}>パスワードを忘れた場合</button>
     </>}
   </section></main>;
+  if (session.mustSetPassword) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="choose-title">
+    <ChoosePassword csrf={session.csrfToken} onDone={setSession} onLost={loseSession} />
+  </section></main>;
 
   // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
   // the way Messages colours it. imsg reports the service per conversation, not per message.
@@ -1200,6 +1204,49 @@ const CLI = '"$HOME/Library/Application Support/imsg-web/imsg-web"';
  * A screen of its own inside the card rather than an expanding panel: someone who is locked out
  * is reading, not filling in a form, and the form has nothing to offer them until they are done.
  */
+/** What a chosen password has to be. The server holds the same rule and has the last word. */
+const PASSWORD_RULE = '8文字以上で、英字と数字をそれぞれ1文字以上含めてください。前後に空白は使えません。';
+const passwordFits = (value: string) => [...value].length >= 8 && /[A-Za-z]/.test(value) && /[0-9]/.test(value) && value.trim() === value;
+
+/**
+ * The first screen after signing in with a password the owner did not choose — the installer's
+ * temporary one, or a key from `auth rotate`. The owner picks their own here and carries straight on:
+ * the server swaps the credential and signs this browser back in with the new password.
+ */
+function ChoosePassword({ csrf, onDone, onLost }: { csrf: string; onDone: (session: Session) => void; onLost: () => void }) {
+  const [password, setPassword] = useState('');
+  const [again, setAgain] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!passwordFits(password)) { setError(PASSWORD_RULE); return; }
+    if (password !== again) { setError('2つの入力が一致していません。'); return; }
+    setBusy(true); setError('');
+    try {
+      onDone(await api<Session>('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf }, body: JSON.stringify({ password }) }));
+    } catch (failure) {
+      const status = (failure as ApiError).status;
+      if (status === 401) { onLost(); return; }
+      setError(status === 400 ? PASSWORD_RULE : status === 429 ? '試行回数が多すぎます。しばらく待ってください。' : '設定できませんでした。もう一度試してください。');
+    } finally { setBusy(false); }
+  }
+  return <>
+    <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
+    <h1 id="choose-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">パスワードを決める</h1>
+    <p className="m-0 mt-2 text-muted text-[.9rem]">仮のパスワードでログインしました。これから使うパスワードを決めてください。仮のパスワードは使えなくなります。</p>
+    <form className="grid gap-3 mt-6" onSubmit={submit}>
+      <label className="font-bold" htmlFor="new-password">新しいパスワード</label>
+      <input id="new-password" className={FIELD} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} required autoFocus />
+      <label className="font-bold" htmlFor="new-password-again">もう一度</label>
+      <input id="new-password-again" className={FIELD} type="password" autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} required />
+      <p className="m-0 text-muted text-[.8rem]">{PASSWORD_RULE}</p>
+      <button className="btn" disabled={busy}>{busy ? '設定中…' : '決定'}</button>
+      {error && <p className="m-0 mt-1 text-danger" role="alert">{error}</p>}
+    </form>
+  </>;
+}
+
 function Recovery({ onBack }: { onBack: () => void }) {
   return <div className="grid gap-4 text-[.85rem] text-muted">
     <div className="flex items-center gap-3">
@@ -1207,11 +1254,9 @@ function Recovery({ onBack }: { onBack: () => void }) {
         className="shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full text-accent-strong bg-accent-soft"><ArrowLeft24Regular /></button>
       <h1 className="m-0 text-[1.25rem] leading-tight text-ink">パスワードを忘れた場合</h1>
     </div>
-    <p className="m-0">下のコマンドを、Mac本体のターミナルで実行してください（SSH経由では拒否されます）。どちらも、実行すると全端末でログアウトされます。</p>
-    <Command title="1. ログインできるようにする" command={`${CLI} auth rotate`}
-      effect="ランダムな43文字のキーが画面に表示されます。それをこのログイン画面のパスワード欄に入力すると入れます。" />
-    <Command title="2. 新しいパスワードを決める" command={`${CLI} auth set-password`}
-      effect="新しいパスワードの入力を求められます（打っても画面には表示されません）。8文字以上で、英字と数字を1文字以上ずつ含めてください。設定すると、1のキーは使えなくなります。" />
+    <p className="m-0">下のコマンドを、Mac本体のターミナルで実行してください（SSH経由では拒否されます）。実行すると全端末でログアウトされます。</p>
+    <Command title="仮のキーを発行する" command={`${CLI} auth rotate`}
+      effect="ランダムな43文字のキーが画面に表示されます。それをこのログイン画面のパスワード欄に入力すると、新しいパスワードを決める画面になります。" />
   </div>;
 }
 

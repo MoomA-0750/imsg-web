@@ -51,8 +51,8 @@ git clone https://github.com/MoomA-0750/imsg-web && cd imsg-web
 ```
 
 This fetches Node 24, builds the app and a patched `imsg`
-([`imsg-patches/`](imsg-patches/)), asks you for a password, and starts the
-server. It ends by printing the addresses to open.
+([`imsg-patches/`](imsg-patches/)), and starts the server. It ends by printing
+the addresses to open and a temporary password.
 
 Then, once:
 
@@ -63,6 +63,8 @@ Then, once:
    IP address — on the Mac or on anything on the same Wi-Fi. Each device warns
    once that the certificate is not trusted: it is self-signed, made on your
    Mac. If the fingerprint matches what the installer printed, go on.
+3. **Sign in with the temporary password.** You are asked to choose your own,
+   and the temporary one stops working.
 
 To update: `git pull && ./scripts/setup.sh`. The previous version is kept.
 

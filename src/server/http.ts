@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { Auth, PASSWORD_MAX, equal, tokenValid, type Session } from './auth.js';
+import { Auth, PASSWORD_MAX, equal, passwordProblem, tokenValid, type Session } from './auth.js';
 import { WebError } from './web-error.js';
 import type { ReadSource } from '../shared/web-types.js';
 import type { AttachmentSource } from './attachments.js';
@@ -64,7 +64,7 @@ export function checkedLanOrigin(value: string): URL {
 export function localAddresses(): string[] {
   return Object.values(networkInterfaces()).flat().flatMap(a => a && a.family === 'IPv4' && !a.internal ? [a.address] : []);
 }
-export async function createApp(options: { origins: string[]; lanOrigin?: string; addresses?: () => string[]; tls?: { cert: Buffer; key: Buffer }; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
+export async function createApp(options: { origins: string[]; lanOrigin?: string; addresses?: () => string[]; tls?: { cert: Buffer; key: Buffer }; auth: Auth; setPassword?: (password: string) => Promise<void>; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
   const named = options.origins.map(checkedOrigin);
   const lan = options.lanOrigin === undefined ? undefined : checkedLanOrigin(options.lanOrigin);
   const addresses = options.addresses ?? localAddresses;
@@ -128,7 +128,8 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
   });
   app.addHook('onSend', (request, reply, payload, done) => {
     const session = authenticated.get(request);
-    if (session && reply.statusCode < 300 && !(request.method === 'DELETE' && request.url === '/api/session') && !options.auth.valid(session)) {
+    // Signing out and setting a first password both end the session that asked, on purpose.
+    if (session && reply.statusCode < 300 && !(request.method === 'DELETE' && request.url === '/api/session') && !(request.method === 'POST' && request.url === '/api/password') && !options.auth.valid(session)) {
       if (payload instanceof Readable) payload.destroy(); // an attachment stream holds an open file
       reply.removeHeader('content-length').removeHeader('content-disposition').header('content-security-policy', CSP);
       reply.code(401).type('application/json'); done(null, JSON.stringify({ code: 'UNAUTHORIZED' })); return;
@@ -158,9 +159,21 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
   app.post('/api/session', { schema: { body: { type: 'object', additionalProperties: false, required: ['key'], properties: { key: { type: 'string', minLength: 1, maxLength: PASSWORD_MAX } } } } }, async (request, reply) => {
     const { cookie: value, session } = await options.auth.login((request.body as { key: string }).key);
     reply.setCookie(COOKIE, value, { path: '/', secure: true, httpOnly: true, sameSite: 'strict', maxAge: 7 * 86400 });
-    return { csrfToken: session.csrf, mode: 'readonly' };
+    return { csrfToken: session.csrf, mode: 'readonly', mustSetPassword: options.auth.mustSetPassword };
   });
-  app.get('/api/session', async request => ({ csrfToken: authenticated.get(request)!.csrf, mode: 'readonly' }));
+  app.get('/api/session', async request => ({ csrfToken: authenticated.get(request)!.csrf, mode: 'readonly', mustSetPassword: options.auth.mustSetPassword }));
+  // The owner's first password of their own, from a session opened with the temporary one. Replacing
+  // the credential ends every session, this one included, so it signs straight back in with the new
+  // password and hands over a fresh cookie and CSRF token: the owner carries on where they were.
+  app.post('/api/password', { schema: { body: { type: 'object', additionalProperties: false, required: ['password'], properties: { password: { type: 'string', minLength: 1, maxLength: PASSWORD_MAX } } } } }, async (_request, reply) => {
+    if (!options.setPassword || !options.auth.mustSetPassword) throw new WebError('PASSWORD_ALREADY_SET', 403);
+    const { password } = _request.body as { password: string };
+    if (passwordProblem(password)) throw new WebError('PASSWORD_WEAK', 400);
+    await options.setPassword(password);
+    const { cookie: value, session } = await options.auth.login(password);
+    reply.setCookie(COOKIE, value, { path: '/', secure: true, httpOnly: true, sameSite: 'strict', maxAge: 7 * 86400 });
+    return { csrfToken: session.csrf, mode: 'readonly', mustSetPassword: false };
+  });
   app.delete('/api/session', async (request, reply) => {
     options.auth.logout(authenticated.get(request)!);
     reply.clearCookie(COOKIE, { path: '/', secure: true, httpOnly: true, sameSite: 'strict' });

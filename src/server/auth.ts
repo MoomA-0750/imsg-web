@@ -14,7 +14,7 @@ export type Session = { hash: string; csrf: string; created: number; seen: numbe
  * `password` is chosen by the owner and therefore guessable, so it is stretched with scrypt and
  * salted, which is what makes a stolen owner.json expensive rather than instant to crack.
  */
-export type Credential = { kind: 'token'; hash: string } | { kind: 'password'; salt: string; hash: string };
+export type Credential = { kind: 'token'; hash: string } | { kind: 'password'; salt: string; hash: string; temporary?: true };
 
 /** ~64 MiB and a few hundred ms per attempt: slow for a cracker, unnoticeable once a day. */
 export const SCRYPT: ScryptOptions = { N: 65536, r: 8, p: 1, maxmem: 96 * 1024 * 1024 };
@@ -43,9 +43,28 @@ export function passwordProblem(value: unknown): string | undefined {
 export async function hashPassword(value: string): Promise<Credential> {
   const problem = passwordProblem(value);
   if (problem) throw new WebError('PASSWORD_WEAK', 400);
+  return derive(value);
+}
+async function derive(value: string): Promise<Credential & { kind: 'password' }> {
   const salt = randomBytes(16);
   const derived = await scrypt(value.normalize('NFC'), salt, 32, SCRYPT);
   return { kind: 'password', salt: salt.toString('hex'), hash: derived.toString('hex') };
+}
+
+/**
+ * The password the installer hands out before the owner has chosen one: sixteen characters in four
+ * groups, from an alphabet without the ones that are easy to misread (0/o, 1/l/i), so it can be
+ * typed on a phone from what the terminal showed. About 79 bits, and stored stretched like any
+ * password; `temporary` is what makes the first sign-in ask for one of the owner's own.
+ */
+const READABLE = 'abcdefghjkmnpqrstuvwxyz23456789';
+export async function temporaryPassword(): Promise<{ password: string; credential: Credential }> {
+  const bytes = randomBytes(64), chars: string[] = [];
+  // Rejection sampling keeps every character equally likely: 248 is the largest multiple of 31 under 256.
+  for (const byte of bytes) if (byte < 248 && chars.length < 16) chars.push(READABLE[byte % READABLE.length]!);
+  if (chars.length < 16) return temporaryPassword();
+  const password = chars.join('').match(/.{4}/g)!.join('-');
+  return { password, credential: { ...(await derive(password)), temporary: true } };
 }
 
 export function credentialValid(value: unknown): value is Credential {
@@ -53,7 +72,8 @@ export function credentialValid(value: unknown): value is Credential {
   const c = value as Record<string, unknown>;
   if (c.kind === 'token') return typeof c.hash === 'string' && /^[a-f0-9]{64}$/.test(c.hash);
   return c.kind === 'password' && typeof c.salt === 'string' && /^[a-f0-9]{32}$/.test(c.salt)
-    && typeof c.hash === 'string' && /^[a-f0-9]{64}$/.test(c.hash);
+    && typeof c.hash === 'string' && /^[a-f0-9]{64}$/.test(c.hash) && (c.temporary === undefined || c.temporary === true)
+    && Object.keys(c).every(key => ['kind', 'salt', 'hash', 'temporary'].includes(key));
 }
 
 export class Auth {
@@ -70,6 +90,11 @@ export class Auth {
   get count() { this.#prune(); return this.#sessions.size; }
   /** Which kind of secret the owner logs in with, for the sign-in screen's wording. */
   get kind(): Credential['kind'] { return this.#credential.kind; }
+  /**
+   * Whether the owner is still on a secret they did not choose — the installer's temporary password,
+   * or a key from `auth rotate` — and so is asked for a password of their own after signing in.
+   */
+  get mustSetPassword(): boolean { const c = this.#credential; return c.kind === 'token' || c.temporary === true; }
   #prune() { for (const s of this.#sessions.values()) if (!this.valid(s)) this.#sessions.delete(s.hash); }
   valid(s: Session): boolean {
     return !this.#blocked && this.#sessions.get(s.hash) === s && this.now() - s.created < this.maxAge && this.now() - s.seen < this.idleAge;

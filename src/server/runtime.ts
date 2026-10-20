@@ -19,7 +19,7 @@ export async function startRuntime(options: { store: OwnerStore; source: ReadSou
   const admin = await startAdmin(options.store, auth);
   let app: Awaited<ReturnType<typeof createApp>>;
   try {
-    app = await createApp({ auth, source: options.source, origins: options.origins, ...(options.lanOrigin ? { lanOrigin: options.lanOrigin } : {}), ...(options.tls ? { tls: options.tls } : {}), ...(options.sender ? { sender: options.sender } : {}), ...(options.uploads ? { uploads: options.uploads } : {}), ...(options.webDir ? { webDir: options.webDir } : {}) });
+    app = await createApp({ auth, setPassword: password => admin.setPassword(password), source: options.source, origins: options.origins, ...(options.lanOrigin ? { lanOrigin: options.lanOrigin } : {}), ...(options.tls ? { tls: options.tls } : {}), ...(options.sender ? { sender: options.sender } : {}), ...(options.uploads ? { uploads: options.uploads } : {}), ...(options.webDir ? { webDir: options.webDir } : {}) });
     // One listener: every interface when there is a LAN address to answer for, loopback otherwise.
     await app.listen({ host: options.lanOrigin ? '::' : '127.0.0.1', port: options.port });
   } catch (error) { await admin.close(true); throw error; }

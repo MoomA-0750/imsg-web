@@ -38,6 +38,8 @@ async function main() {
   if (!directory || !command) throw new Error();
   const store = new OwnerStore(directory);
   if (command === 'setup') { process.stdout.write(`${await store.setup()}\n`); return; }
+  // `auth temporary`: the installer's first credential, printed once for the owner to sign in with.
+  if (command === 'temporary') { process.stdout.write(`${await store.setupTemporary()}\n`); return; }
   if (command === 'revoke' || command === 'rotate' || command === 'status') {
     const result = await adminCommand(store, command);
     process.stdout.write(command === 'rotate' ? `${result.key}\n` : command === 'status' ? `${JSON.stringify(result)}\n` : 'Sessions revoked.\n'); return;

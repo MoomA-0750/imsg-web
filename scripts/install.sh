@@ -6,7 +6,7 @@
 #                        [--origin https://<host>] [--send live|dry-run|off] [--no-start]
 #
 # It copies the build into a release of its own under ~/Library/Application Support/imsg-web, makes
-# a self-signed certificate the first time, asks for a password the first time, and starts the
+# a self-signed certificate and a temporary password the first time, and starts the
 # server on https://<this Mac>.local:<port> (https://localhost with --no-lan). --origin names an
 # address that something in front of it — Tailscale Serve — serves. The previous release stays as
 # the way back. --no-start writes everything but does not start it.
@@ -112,19 +112,12 @@ if ! { echo "$current" | grep -q "DNS:localhost" && { [ -z "$lanhost" ] || echo 
   mv "$tls/key.pem.new" "$tls/key.pem"; mv "$tls/cert.pem.new" "$tls/cert.pem"
 fi
 
-# The agent cannot be written before there is a password to let anyone in: the generator checks that
-# the credential file exists and is the owner's alone. So this is asked for here, once, and the
-# install continues into a server that is already closed to everyone else.
+# The agent cannot be written before there is a credential to let the owner in: the generator checks
+# that the file exists and is the owner's alone. The first one is a temporary password, shown once at
+# the end; signing in with it asks for a password of the owner's own.
+temporary=""
 if [ ! -f "$base/state/owner.json" ]; then
-  if [ -t 0 ]; then
-    echo
-    "$base/imsg-web" auth set-password
-  else
-    echo "No password is set yet, and the agent cannot be written without one. Run:" >&2
-    echo "  \"$base/imsg-web\" auth set-password" >&2
-    echo "then run this again." >&2
-    exit 1
-  fi
+  temporary="$("$base/imsg-web" auth temporary)"
 fi
 
 plist="$HOME/Library/LaunchAgents/$label.plist"
@@ -162,6 +155,11 @@ fi
 [ -z "$origin" ] || echo "  $origin (once it is served there)"
 echo "Each device warns once that the certificate is not trusted. It is this one if it shows"
 echo "  $(openssl x509 -in "$tls/cert.pem" -noout -fingerprint -sha256 | sed 's/^.*=//')"
+if [ -n "$temporary" ]; then
+  echo
+  echo "Temporary password: $temporary"
+  echo "  Sign in with it once; you will be asked to choose your own."
+fi
 echo
 echo "If you have not yet:"
 echo "  • Give Full Disk Access to $runtime/bin/node"
