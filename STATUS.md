@@ -27,8 +27,10 @@ to be decided.
   (`--no-lan` for loopback only); the Mac and the LAN both use
   `https://<name>.local:8787`. On the M1 since 2026-10-20, with Tailscale Serve
   now proxying to `https+insecure://127.0.0.1:8787`; checked from another machine
-  on the LAN, from the Mac itself, and over the tailnet. Not yet tried: an iPhone
-  accepting the certificate, signing in, and recording over it. If it goes
+  on the LAN, from the Mac itself, and over the tailnet. The owner's iPhone,
+  from outside over the Mac's Tailscale IP (which the server answers to as one
+  of its own addresses, no Serve involved), accepted the certificate, signed in
+  and recorded. Not yet tried from the iPhone: the `.local` name. If it goes
   wrong, the rollback release is the two-listener one, and Serve would then need
   `http://127.0.0.1:8787` again.
 - **The generator's disk tests fail on macOS** (and passed on Linux): they work
