@@ -24,9 +24,12 @@ to be decided.
 
 - **An API for other programs** (`docs/api.md`), asked for so a home dashboard
   can show a chat panel: client tokens issued with `imsg-web client add`, scoped
-  `read` or `send`, on the same routes the page uses. Tested with synthetic data
-  only; not yet deployed to the M1. The dashboard side is not part of this
-  repository.
+  `read` or `send`, on the same routes the page uses. On the M1 since
+  2026-10-21 (8ac2fe9); no client has been issued yet, so nothing has used it
+  against real data. The dashboard side is not part of this repository.
+- **Slow start after that update.** The new release took about two minutes from
+  launch to listening; the system log showed nothing about why. If a restart is
+  slow again, find out where the time goes before blaming the network.
 
 - **One https address.** The server has a single listener, https with a
   self-signed certificate the installer makes, open to the LAN by default

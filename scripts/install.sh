@@ -122,7 +122,11 @@ fi
 
 plist="$HOME/Library/LaunchAgents/$label.plist"
 mkdir -p "$HOME/Library/LaunchAgents"
-[ "$start" = yes ] && launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+if [ "$start" = yes ] && launchctl bootout "gui/$(id -u)/$label" 2>/dev/null; then
+  # bootout returns before the old server has finished stopping, and bootstrapping the same label
+  # while it still exists fails with an I/O error. Wait for it to go, up to 15 seconds.
+  for _ in $(seq 30); do launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 || break; sleep 0.5; done
+fi
 # Set aside under the release it was pointing at, so pruning that release takes this with it.
 if [ -f "$plist" ]; then
   was=$(grep -o 'releases/[0-9a-zA-Z_-]*' "$plist" | sed 's|releases/||' | sort -u | head -1)
