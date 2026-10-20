@@ -105,6 +105,9 @@
     color: var(--ink);
     background: var(--page);
   }
+  /* Behind the app itself the page is the app's own white, because a phone's browser tints its
+     status bar and toolbar with it. The sign-in screen keeps the grey its card sits on. */
+  body:has(.app) { background: var(--surface); }
   button, input, textarea { font: inherit; }
   button { cursor: pointer; }
   button:disabled { cursor: default; opacity: .55; }

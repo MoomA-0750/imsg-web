@@ -34,6 +34,8 @@ const HEADING = 'flex items-center gap-3 min-h-[64px] px-4 py-[.85rem] border-b 
 const PANE_TITLE = 'my-1 text-[1.25rem] leading-tight [overflow-wrap:anywhere]';
 const TRIM = 'text-muted text-[.75em]';
 const STAMP = 'shrink-0 text-muted text-[.72rem]';
+/** The width at which the two panes sit side by side: `--breakpoint-pane` in style.css. */
+const SIDE_BY_SIDE = '(width >= 600px)';
 const PANE = 'flex flex-col min-w-0 min-h-0 overflow-hidden absolute inset-0 transition-transform duration-200 motion-reduce:transition-none pane:static pane:visible pane:translate-x-0';
 
 type Session = { csrfToken: string; mode: 'readonly' };
@@ -800,6 +802,15 @@ export function App() {
 
   useEffect(() => { if (session && selected) void loadHistory(); }, [session, selected, loadHistory]);
 
+  // On a phone the conversation is a screen of its own, so the browser's back (and the edge swipe)
+  // should leave it. Opening one from the list adds a history entry; going back removes it.
+  const closeChat = useCallback(() => { selectedId.current = null; setSelected(null); setMessages([]); }, []);
+  useEffect(() => {
+    const onPop = () => { if (selectedId.current) closeChat(); };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [closeChat]);
+
   useEffect(() => {
     if (!session) return;
     let timer: number | undefined;
@@ -889,6 +900,7 @@ export function App() {
     // Already here: clearing and reloading would only blank the conversation, and a second click
     // on the same row does not even change `selected`, so nothing would fetch it back.
     if (selectedId.current === chat.id) return;
+    if (!selectedId.current && !matchMedia(SIDE_BY_SIDE).matches) history.pushState({ chat: true }, '');
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
@@ -1024,7 +1036,7 @@ export function App() {
       </aside>
       <main className={`detail-pane ${PANE} bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
-          <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { selectedId.current = null; setSelected(null); setMessages([]); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
+          <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}

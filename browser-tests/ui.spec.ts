@@ -873,6 +873,22 @@ test('B05 mobile360/dark/keyboard and long synthetic content does not overflow',
   await page.screenshot({ path: 'test-results/synthetic-mobile.png', animations: 'disabled' });
   await page.getByRole('button', { name: '会話一覧へ戻る' }).click(); await expect(chat).toBeVisible();
 });
+test('on a phone the browser’s back leaves a conversation, and the page behind the app is its white', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await login(page);
+  const body = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  expect(await body()).toBe('rgb(255, 255, 255)');
+  const chat = page.getByRole('button', { name: /合成テスト会話 Alpha/ });
+  await chat.click(); await expect(page.locator('.detail-pane')).toBeVisible();
+  await page.goBack(); await expect(chat).toBeVisible(); await expect(page.locator('.detail-pane')).toBeHidden();
+  // The button and the browser walk the same history: going back by the button leaves nothing to undo.
+  await chat.click(); await page.getByRole('button', { name: '会話一覧へ戻る' }).click(); await expect(chat).toBeVisible();
+  expect(await page.evaluate(() => history.state?.chat)).toBeFalsy();
+  // Side by side, choosing a conversation is not a step to go back from.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const before = await page.evaluate(() => history.length);
+  await chat.click(); expect(await page.evaluate(() => history.length)).toBe(before);
+});
 test('B02 a read that lands after the session ends cannot restore private data', async ({ page }) => {
   await login(page);
   let complete!: () => Promise<void>; const gate = new Promise<void>(resolve => {
