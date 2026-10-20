@@ -7,13 +7,16 @@ Messages owner's GUI session.
 
 ```
 Browser -> Tailscale Serve HTTPS :443 -> http://127.0.0.1:8787 -> imsg rpc (read-only)
+Browser on the LAN -> https://<name>.local:8788 (its own TLS) ---^
 ```
 
-- The app binds loopback only. Never bind it to LAN or all interfaces, and never
-  enable Funnel.
+- The app binds loopback for plain http, and all interfaces only for the LAN
+  port, which is https only. Never put plain http on anything but loopback, and
+  never enable Funnel.
 - Tailscale gets you to the login page; the owner's secret is what gets you in.
   Do not use Tailscale identity headers as authentication.
-- Host/Origin must be exactly `https://<host-fqdn>`.
+- Host/Origin must be exactly `https://<host-fqdn>`, or on the LAN port the
+  Mac's `.local` name or one of its own current addresses.
 - HTTPS certificate issuance publishes the FQDN in Certificate Transparency
   logs.
 - Only `status`, `chats.list`, `messages.history`, `watch.subscribe` and
@@ -27,6 +30,7 @@ Browser -> Tailscale Serve HTTPS :443 -> http://127.0.0.1:8787 -> imsg rpc (read
   releases/<commit>/                      dist, package files, node_modules,
                                           imsg + its two .bundle directories
   state/                                  owner credential (0600), lock
+  state/tls/                              LAN certificate and key (0600)
   logs/                                   stdout / stderr (0600)
   imsg-web                                administration wrapper (0700)
 ```
@@ -134,17 +138,25 @@ copies accumulate there — clear them out occasionally if they add up.
 
 ## Reaching it
 
-The server binds `127.0.0.1` and answers only for the origin it was configured
-with. Two ways to arrive at it:
+The server answers only for the origins it was configured with. Three ways to
+arrive at it:
 
 - **From the Mac itself.** `--origin http://localhost:8787`, which is the
   default, and nothing else to set up. Browsers class loopback as a trustworthy
   origin, so the session cookie keeps its `Secure` and `__Host-` guarantees over
   plain http there. Open exactly the address it was given: `127.0.0.1` and
   `localhost` are different origins, and the other one is refused.
-- **From a phone or another computer.** Something in front has to carry the TLS,
-  and the origin must be that address. Tailscale Serve is what this was built
-  and tested against; any reverse proxy on the Mac will do.
+- **From the local network.** `https://<LocalHostName>.local:8788`, on by
+  default (`--lan-port` to move it, `--no-lan` to drop it). The installer makes
+  `state/tls/` once and keeps it across installs, so a device that accepted the
+  certificate is not asked again; it is made again only when the Mac's name is
+  no longer in it. To replace it on purpose, move `state/tls/` aside and install
+  again. The same port also answers by the Mac's own IPv4 addresses, for devices
+  that do not resolve `.local`; the certificate names the addresses the Mac had
+  when it was made, so a later address gets the same warning plus a name mismatch.
+- **From anywhere else.** Something in front has to carry the TLS, and the origin
+  must be that address. Tailscale Serve is what this was built and tested
+  against; any reverse proxy on the Mac will do.
 
 ## Serve
 

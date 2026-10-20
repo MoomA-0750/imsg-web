@@ -6,8 +6,9 @@ Read and send your iMessages from a browser, served by your own Mac.
 
 It is a small web UI over the [`imsg`](https://github.com/openclaw/imsg) CLI: your
 Mac keeps the messages and a local server reads them. Nothing is mirrored
-anywhere and nothing is exposed to the Internet — the server listens on loopback
-and answers only the address you configured.
+anywhere and nothing is exposed to the Internet — the server answers on the Mac
+itself and on your local network, and only for the addresses it was installed
+with.
 
 It is built for **one person on their own Mac**.
 
@@ -72,10 +73,21 @@ Then open **http://localhost:8787** on the Mac and sign in.
 
 ### Reaching it from a phone
 
-The server is on loopback, so something has to carry it — and carry TLS, since
-anything but loopback must be https. [Tailscale](https://tailscale.com) Serve is
-the least work and what this was tested against; any reverse proxy on the Mac
-does as well.
+On the same Wi-Fi, open the address the installer printed —
+**https://your-mac.local:8788**, under the Mac's local hostname (System Settings →
+General → Sharing). The installer makes a certificate for it on the Mac, so
+there is nothing to set up, but it is self-signed: each device warns once that
+it is not trusted. The installer prints the certificate's fingerprint so you
+can check it is this one before going on (on an iPhone: *Show Details → visit
+this website*). If the macOS firewall is on, allow the Node binary when it asks.
+
+`--no-lan` keeps it to the Mac alone; `--lan-port` moves it off 8788.
+
+### Reaching it from anywhere
+
+Outside your network, something has to carry it, with TLS of its own.
+[Tailscale](https://tailscale.com) Serve is the least work and what this was
+tested against; any reverse proxy on the Mac does as well.
 
 ```sh
 tailscale serve --bg 8787
@@ -83,7 +95,7 @@ tailscale serve --bg 8787
 ```
 
 Install again with the address you will actually open, because the server
-answers for that origin and no other.
+answers for that origin and no other. The LAN address stays as it was.
 
 ## Using it
 

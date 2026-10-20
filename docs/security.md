@@ -3,13 +3,20 @@
 The threat this takes seriously is the obvious one: it reads every message you
 have, so it should be hard to reach and impossible to reach by accident.
 
-- **Loopback only.** The server binds `127.0.0.1`. On the Mac itself that is the
-  whole story and plain http is enough: browsers class a loopback origin as
+- **Loopback, and the LAN over TLS.** The server binds `127.0.0.1` for the Mac
+  itself, where plain http is enough: browsers class a loopback origin as
   trustworthy, so `Secure` cookies, the `__Host-` prefix and a secure context all
-  hold there exactly as they do over TLS. To reach it from anywhere else,
-  something in front has to carry the TLS — Tailscale Serve, a reverse proxy —
-  and that thing is then what decides who can connect at all. It is not built to
-  be exposed publicly.
+  hold there exactly as they do over TLS. Unless installed with `--no-lan`, it
+  also listens on every interface on a second port, over https only, with a
+  certificate the installer made on the Mac (RSA 2048, key 0600 in the state
+  directory). That port answers to the Mac's `.local` name and to the Mac's own
+  current addresses, nothing else, so the cookie and Origin rules are the same as
+  anywhere. The certificate is self-signed: a device warns once, and the
+  installer prints its fingerprint so the owner can check it is this one rather
+  than someone else's on the same network. Anyone on that network can reach the
+  sign-in page; the password is what keeps them out. Beyond the LAN, something in
+  front has to carry its own TLS — Tailscale Serve, a reverse proxy. It is not
+  built to be exposed publicly.
 - **One password**, hashed with scrypt (N=2¹⁶, about 150 ms per attempt), stored
   in a 0700 directory. Sessions are `__Host-` cookies, `Secure`, `HttpOnly`,
   `SameSite=Strict`, and lapse after a day idle or a week outright. There is no
@@ -55,6 +62,10 @@ have, so it should be hard to reach and impossible to reach by accident.
   On a device you do not control, sign in and then use `auth revoke-all`.
 - **Exposure to the public Internet.** Put it behind your own network. Tailscale
   Serve is what this was built and tested against.
+- **A network you do not trust.** On café or shared Wi-Fi, everyone there can
+  reach the sign-in page, and someone who can intercept traffic can present a
+  certificate of their own — which is what the fingerprint check is for. A Mac
+  that travels is better installed with `--no-lan` and reached over Tailscale.
 
 ## What it will not do to your Mac
 

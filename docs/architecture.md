@@ -2,7 +2,7 @@
 
 > **Scope note (2026-09-14).** This file describes the P0a milestone and is kept
 > for its RPC client contract, which still holds. Since then the product gained
-> a loopback HTTP listener, owner-key authentication and a LaunchAgent
+> a loopback HTTP listener (and an https LAN one), owner-key authentication and a LaunchAgent
 > generator; database writes and Messages mutations are still absent. The imsg
 > in use is a patched 0.15.4 (`imsg-patches/`), and the reader passes
 > `--contacts-from-address-book`. For current state read `STATUS.md`.

@@ -32,8 +32,10 @@ changes and typing are still not approved.
 - Keep UI code replaceable. Read rules and RPC/API contracts must not be derived
   from screen structure or component state.
 - Do not weaken authentication, exact Origin/Host checks, Secure cookies,
-  loopback-only binding, the read RPC method allowlist, the send method
-  restriction, CSRF, or response bounds, including for development or previews.
+  the transport rule (plain http on loopback only; the LAN port is https with the
+  installer's certificate, on by default at the owner's request), the read RPC
+  method allowlist, the send method restriction, CSRF, or response bounds,
+  including for development or previews.
 - Never log or commit message text, recipients, chat/message IDs, owner keys,
   cookies, local database paths, raw RPC responses or private machine inventory.
 - Do not change SIP/TCC, request permissions, launch or repair Messages.app,

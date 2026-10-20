@@ -22,6 +22,12 @@ to be decided.
 
 ## Open threads
 
+- **LAN by default.** A plain install now also serves
+  `https://<name>.local:8788` with a self-signed certificate it makes
+  (`--no-lan` to keep it to the Mac). Tested with synthetic data on Linux only;
+  the M1 still runs the release from before it. Not yet tried: installing it on
+  a Mac, an iPhone accepting the certificate, and recording over it.
+
 - **Sends that do not go.** The owner saw voice messages fail or come back
   "unknown". Every send that reached imsg was delivered, so the failures never
   reach it, and they leave no trace in chat.db, the system log, or Messages. The
