@@ -24,9 +24,13 @@ to be decided.
 
 - **LAN by default.** A plain install now also serves
   `https://<name>.local:8788` with a self-signed certificate it makes
-  (`--no-lan` to keep it to the Mac). Tested with synthetic data on Linux only;
-  the M1 still runs the release from before it. Not yet tried: installing it on
-  a Mac, an iPhone accepting the certificate, and recording over it.
+  (`--no-lan` to keep it to the Mac). On the M1 since 2026-10-20: the
+  certificate was made by macOS's LibreSSL, and the LAN port answered by name
+  and by address from another machine, with Tailscale Serve unchanged. Not yet
+  tried: an iPhone accepting the certificate, signing in, and recording over it.
+- **The generator's disk tests fail on macOS** (and passed on Linux): they work
+  under `/tmp`, which is a symlink there, and the generator refuses symlinked
+  ancestors. A test-fixture problem, not a product one; it predates the LAN work.
 
 - **Sends that do not go.** The owner saw voice messages fail or come back
   "unknown". Every send that reached imsg was delivered, so the failures never
