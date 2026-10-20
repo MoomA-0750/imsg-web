@@ -878,12 +878,22 @@ test('on a phone the browser’s back leaves a conversation, and the page behind
   await login(page);
   const body = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(await body()).toBe('rgb(255, 255, 255)');
-  // The page itself has nothing to scroll, so nothing can leave the app shifted up.
-  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
-  await page.evaluate(() => window.scrollTo(0, 200));
-  expect(Math.round((await page.locator('.app').boundingBox())!.y)).toBe(0);
+  // The list is the page itself, so Safari can draw it on under its toolbar; its heading stays put.
+  await expect(page.locator('.chat-area')).toHaveCSS('overflow-y', 'visible');
+  await page.evaluate(() => { const tall = document.createElement('li'); tall.style.height = '3000px'; document.querySelector('.chat-list')!.append(tall); window.scrollTo(0, 500); });
+  expect(await page.evaluate(() => scrollY)).toBe(500);
+  expect(Math.round((await page.getByRole('heading', { name: 'メッセージ' }).boundingBox())!.y)).toBeLessThan(40);
+  // Opening a conversation and coming back leaves the list where it was.
+  await page.evaluate(() => (document.querySelector('.chat-list button') as HTMLButtonElement).click());
+  await expect(page.locator('.detail-pane')).toBeVisible();
+  await page.goBack(); await expect(page.locator('.detail-pane')).toBeHidden();
+  expect(await page.evaluate(() => scrollY)).toBe(500);
+  await page.evaluate(() => { document.querySelector('.chat-list li:last-child')!.remove(); window.scrollTo(0, 0); });
   const chat = page.getByRole('button', { name: /合成テスト会話 Alpha/ });
   await chat.click(); await expect(page.locator('.detail-pane')).toBeVisible();
+  // A conversation is pinned: the page behind it has nothing to scroll, so nothing can shift it up.
+  await page.evaluate(() => window.scrollTo(0, 200));
+  expect(Math.round((await page.locator('.app').boundingBox())!.y)).toBe(0);
   await page.goBack(); await expect(chat).toBeVisible(); await expect(page.locator('.detail-pane')).toBeHidden();
   // The button and the browser walk the same history: going back by the button leaves nothing to undo.
   await chat.click(); await page.getByRole('button', { name: '会話一覧へ戻る' }).click(); await expect(chat).toBeVisible();

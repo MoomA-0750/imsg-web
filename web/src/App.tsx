@@ -625,6 +625,11 @@ export function App() {
   const from = useRef<{ x: number; y: number } | undefined>(undefined);
   const dragging = useRef(false);
   const chatViewport = useRef<HTMLDivElement | null>(null);
+  // Below the side-by-side width the list is the page itself (see `paged` below), and this is where
+  // it was scrolled to when a conversation was opened over it.
+  const [narrow, setNarrow] = useState(() => !matchMedia(SIDE_BY_SIDE).matches);
+  const listTop = useRef(0);
+  const paged = narrow && !selected;
   /** Following the newest message: keep the view at the bottom as messages arrive. True until the owner scrolls up. */
   const following = useRef(true);
   /** The scroll geometry as it was before the current render, so a page added above can be cancelled out. */
@@ -868,9 +873,27 @@ export function App() {
   // A list that does not fill its pane cannot be scrolled, and scrolling is the only way to ask
   // for the next page. Fetch it directly instead, until the pane is full or the list is complete.
   useLayoutEffect(() => {
-    const el = chatViewport.current;
-    if (el && el.scrollHeight <= el.clientHeight) loadMoreChats();
+    const el = chatViewport.current, page = document.documentElement;
+    if (paged ? page.scrollHeight <= innerHeight : el && el.scrollHeight <= el.clientHeight) loadMoreChats();
   }, [chats]);
+
+  useEffect(() => {
+    const query = matchMedia(SIDE_BY_SIDE), change = () => setNarrow(!query.matches);
+    query.addEventListener('change', change);
+    return () => query.removeEventListener('change', change);
+  }, []);
+  // The list moves between the page's scroll and its own pane as a conversation opens and closes
+  // over it; carry the position across both ways so it never jumps under the sliding panes.
+  useLayoutEffect(() => {
+    if (paged) window.scrollTo(0, listTop.current);
+    else if (narrow && chatViewport.current) chatViewport.current.scrollTop = listTop.current;
+  }, [paged]);
+  useEffect(() => {
+    if (!paged) return;
+    const onScroll = () => { if (document.documentElement.scrollHeight - scrollY - innerHeight <= NEAR_EDGE) loadMoreChats(); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  });
 
   // Two things move the newest message off the bottom after it has been put there: an image
   // settling into the height it needs, and the area itself losing height to the composer
@@ -900,7 +923,7 @@ export function App() {
     // Already here: clearing and reloading would only blank the conversation, and a second click
     // on the same row does not even change `selected`, so nothing would fetch it back.
     if (selectedId.current === chat.id) return;
-    if (!selectedId.current && !matchMedia(SIDE_BY_SIDE).matches) history.pushState({ chat: true }, '');
+    if (!selectedId.current && !matchMedia(SIDE_BY_SIDE).matches) { history.pushState({ chat: true }, ''); listTop.current = scrollY; }
     inFlight.current.history?.abort(); delete inFlight.current.history;
     selectedId.current = chat.id; setSelected(chat); setMessages([]); setHistoryError('');
     setMessageLimit(PAGE); setLoadedLimit(0); following.current = true;
@@ -1000,17 +1023,16 @@ export function App() {
   };
   const sendFeature = capability?.features.send;
   const sendMode: SendMode | null = sendFeature?.state === 'available' ? (sendFeature.reasonCode === 'SEND_DRY_RUN' ? 'dry-run' : 'live') : null;
-  // Pinned to the viewport rather than laid out in the page, so the page itself has nothing to
-  // scroll: a phone that scrolled it to keep the password field above the keyboard would otherwise
-  // leave the whole app shifted up after signing in. On a phone the list runs on under the browser's
-  // toolbar (the large viewport) with room at its end to scroll the last row clear of it; a
-  // conversation stops above the toolbar, where its composer has to be.
-  return <div className={`app fixed inset-x-0 top-0 flex flex-col overflow-hidden bg-surface h-dvh ${selected ? '' : 'max-pane:h-lvh'}`}>
+  // Safari only draws a page under its toolbar when the page itself scrolls. So on a phone, with no
+  // conversation open, the list is laid out in the page and scrolls with it. Everywhere else the app
+  // is pinned to the viewport and the page has nothing to scroll — which is also what stops a phone
+  // that scrolled to keep the password field above the keyboard from leaving it shifted up.
+  return <div className={`app flex flex-col bg-surface ${paged ? 'min-h-dvh' : 'app-fixed fixed inset-x-0 top-0 h-dvh overflow-hidden'}`}>
     {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
     {viewing && <Lightbox item={viewing} onClose={() => setViewing(null)} />}
-    <div className="relative flex-1 min-h-0 overflow-hidden pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]">
-      <aside className={`chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
-        <div className={HEADING}>
+    <div className={`relative flex-1 ${paged ? 'overflow-x-clip' : 'min-h-0 overflow-hidden'} pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]`}>
+      <aside className={paged ? 'chat-pane flex flex-col' : `chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
+        <div className={`${HEADING} ${paged ? 'sticky top-0 z-10 bg-surface' : ''}`}>
           <h1 className={`${PANE_TITLE} flex-1 min-w-0`}>メッセージ</h1>
           {notifier.status !== 'unsupported' && <button type="button" disabled={notifier.status === 'denied'}
             className={`shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-transparent ${notifier.status === 'on' ? 'text-accent' : 'text-muted'} enabled:hover:bg-accent-soft`}
@@ -1022,7 +1044,7 @@ export function App() {
           </button>}
         </div>
         {chatError && <ErrorBar text={chatError} retry={loadChats} />}
-        <div className="chat-area flex-1 min-h-0 overflow-auto flex flex-col max-pane:pb-[calc(100lvh_-_100dvh)]" ref={chatViewport} onScroll={onChatScroll}>
+        <div className={`chat-area flex flex-col ${paged ? '' : 'flex-1 min-h-0 overflow-auto'}`} ref={chatViewport} onScroll={onChatScroll}>
           {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
               <button className={`flex w-full items-center gap-3 rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
