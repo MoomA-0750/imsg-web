@@ -1,4 +1,4 @@
-import Fastify, { type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import { readFile, readdir } from 'node:fs/promises';
 import { networkInterfaces } from 'node:os';
@@ -42,41 +42,35 @@ export function byteRange(header: string | undefined, size: number): { start: nu
 }
 
 /**
- * Loopback may be plain http; everything else must be https.
- *
- * This is not a relaxation of the transport rule, it is the same rule: browsers class a loopback
- * origin as trustworthy, so `Secure` cookies, a secure context and the `__Host-` prefix all hold
- * there exactly as they do over TLS. It means the Mac itself needs nothing in front of the server,
- * and anything reaching it from another machine still has to bring its own TLS.
+ * Every address is https, loopback included: the server carries its own TLS, so there is one way
+ * to reach it and one rule for it. Something in front (Tailscale Serve) brings its own certificate
+ * and is named here by its https address too.
  */
-const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 export function checkedOrigin(value: string): URL {
   const u = new URL(value);
-  const local = u.protocol === 'http:' && LOOPBACK.has(u.hostname);
-  if ((u.protocol !== 'https:' && !local) || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
+  if (u.protocol !== 'https:' || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
   return u;
 }
 /**
- * The address on the local network: https, which this server carries itself with a certificate it
- * made, on the Mac's own `.local` name with the port spelled out. A name, so the exact Origin and
- * Host checks still have one thing to compare against.
+ * The address on the local network: the Mac's own `.local` name with the port spelled out. A name,
+ * so the exact Origin and Host checks still have one thing to compare against.
  */
 export function checkedLanOrigin(value: string): URL {
   const u = checkedOrigin(value);
-  if (u.protocol !== 'https:' || !u.port || !/^[a-z0-9-]{1,63}\.local$/.test(u.hostname)) throw new WebError('ORIGIN_INVALID');
+  if (!u.port || !/^[a-z0-9-]{1,63}\.local$/.test(u.hostname)) throw new WebError('ORIGIN_INVALID');
   return u;
 }
 /** This machine's own IPv4 addresses on its networks, as they are now. */
 export function localAddresses(): string[] {
   return Object.values(networkInterfaces()).flat().flatMap(a => a && a.family === 'IPv4' && !a.internal ? [a.address] : []);
 }
-export async function createApp(options: { origin: string; lanOrigin?: string; addresses?: () => string[]; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
-  const origin = checkedOrigin(options.origin);
+export async function createApp(options: { origins: string[]; lanOrigin?: string; addresses?: () => string[]; tls?: { cert: Buffer; key: Buffer }; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
+  const named = options.origins.map(checkedOrigin);
   const lan = options.lanOrigin === undefined ? undefined : checkedLanOrigin(options.lanOrigin);
   const addresses = options.addresses ?? localAddresses;
   // Each Host this answers to, and the one Origin that goes with it. A request is held to the
   // origin its own Host names, so the checks stay exact however many ways in there are.
-  const origins = new Map([[origin.host, origin.origin], ...(lan ? [[lan.host, lan.origin] as const] : [])]);
+  const origins = new Map([...named, ...(lan ? [lan] : [])].map(u => [u.host, u.origin] as const));
   const originFor = (host: string | undefined): string | undefined => {
     if (host === undefined) return undefined;
     const known = origins.get(host);
@@ -86,7 +80,10 @@ export async function createApp(options: { origin: string; lanOrigin?: string; a
     const match = /^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/.exec(host);
     return match && match[2] === lan.port && addresses().includes(match[1]!) ? `https://${host}` : undefined;
   };
-  const app = Fastify({ logger: false, bodyLimit: 2048, requestTimeout: 15_000, connectionTimeout: 15_000, keepAliveTimeout: 5000, return503OnClosing: true, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
+  const settings = { logger: false, bodyLimit: 2048, requestTimeout: 15_000, connectionTimeout: 15_000, keepAliveTimeout: 5000, return503OnClosing: true, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } } as const;
+  // The same app either way; only the server under it differs, which is why the https one is typed
+  // as the plain one. Tests drive it through inject() and need no certificate.
+  const app = options.tls ? Fastify({ ...settings, https: options.tls }) as unknown as FastifyInstance : Fastify(settings);
   await app.register(cookie);
   const authenticated = new WeakMap<object, Session>();
   const uploadsEnabled = Boolean(options.uploads && options.sender && options.sender.mode !== 'off');

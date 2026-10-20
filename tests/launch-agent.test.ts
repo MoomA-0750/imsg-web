@@ -27,12 +27,18 @@ describe('C01 LaunchAgent generator', () => {
     expect(() => validateConfig({ ...config, send: 'yes' })).toThrow();
     expect(renderLaunchAgent({ ...config, send: 'off' }).match(/<key>IMSG_WEB_/g)).toHaveLength(5);
   });
-  it('names a LAN address only when there is one, and only an https .local one on its own port', () => {
+  it('names a LAN address only when there is one, and only a .local one on the server\'s port', () => {
     expect(renderLaunchAgent(config)).not.toContain('IMSG_WEB_LAN_ORIGIN');
-    expect(renderLaunchAgent({ ...config, lanOrigin: 'https://synthetic-mac.local:8788' })).toContain('<key>IMSG_WEB_LAN_ORIGIN</key><string>https://synthetic-mac.local:8788</string>');
-    for (const lanOrigin of ['http://synthetic-mac.local:8788', 'https://synthetic-mac.local', 'https://synthetic-mac.local:8787', 'https://synthetic-mac.local:80', 'https://192.168.1.10:8788', 'https://host.example.ts.net:8788', 'https://synthetic-mac.local:8788/', 8788]) {
+    expect(renderLaunchAgent({ ...config, lanOrigin: 'https://synthetic-mac.local:8787' })).toContain('<key>IMSG_WEB_LAN_ORIGIN</key><string>https://synthetic-mac.local:8787</string>');
+    for (const lanOrigin of ['http://synthetic-mac.local:8787', 'https://synthetic-mac.local', 'https://synthetic-mac.local:8788', 'https://192.168.1.10:8787', 'https://host.example.ts.net:8787', 'https://synthetic-mac.local:8787/', 8787]) {
       expect(() => validateConfig({ ...config, lanOrigin })).toThrow();
     }
+  });
+  it('names something in front only when there is something, and only by https', () => {
+    const { origin: _, ...alone } = config;
+    expect(renderLaunchAgent(alone)).not.toContain('IMSG_WEB_ORIGIN');
+    expect(renderLaunchAgent(config)).toContain('<key>IMSG_WEB_ORIGIN</key><string>https://host.example.ts.net</string>');
+    expect(() => validateConfig({ ...config, origin: 'http://localhost:8787' })).toThrow();
   });
   it('escapes XML without shell interpolation', () => {
     expect(renderLaunchAgent({ ...config, imsg: '/Users/test/Library/imsg-web/A&B<"\'>/imsg' })).toContain('A&amp;B&lt;&quot;&apos;&gt;');
@@ -40,12 +46,16 @@ describe('C01 LaunchAgent generator', () => {
 });
 const temporary: string[] = [];
 afterEach(async () => { for (const path of temporary.splice(0)) await rm(path, { recursive: true, force: true }); });
-async function diskFixture() {
+async function diskFixture(withTls = true) {
   const base = await mkdtemp('/tmp/iw-gen-'); temporary.push(base);
   const c = { ...config, base, node: join(base, 'runtime/node'), release: join(base, 'releases/a'), imsg: join(base, 'imsg'), output: join(base, 'agent.plist') };
   for (const part of ['runtime', 'releases/a/dist/web', 'state', 'logs']) await mkdir(join(base, part), { recursive: true, mode: 0o700 });
   for (const path of [c.node, c.imsg, join(c.release, 'dist/main.js'), join(c.release, 'dist/web/index.html')]) await writeFile(path, 'synthetic', { mode: 0o700 });
   await writeFile(join(base, 'state/owner.json'), '{}', { mode: 0o600 });
+  if (withTls) {
+    await mkdir(join(base, 'state/tls'), { mode: 0o700 });
+    for (const name of ['cert.pem', 'key.pem']) await writeFile(join(base, 'state/tls', name), 'synthetic', { mode: 0o600 });
+  }
   return c;
 }
 describe('C01 exclusive filesystem output', () => {
@@ -66,8 +76,8 @@ describe('C01 exclusive filesystem output', () => {
     await symlink(c.release, join(c.base, 'releases/link'));
     await expect(writeLaunchAgent({ ...c, release: join(c.base, 'releases/link'), output: join(c.base, 'other.plist') })).rejects.toThrow();
   });
-  it('writes a LAN address only beside a certificate and a private key of the owner\'s alone', async () => {
-    const c = { ...(await diskFixture()), lanOrigin: 'https://synthetic-mac.local:8788' }, tls = join(c.base, 'state/tls');
+  it('writes an agent only beside a certificate and a private key of the owner\'s alone', async () => {
+    const c = { ...(await diskFixture(false)), lanOrigin: 'https://synthetic-mac.local:8787' }, tls = join(c.base, 'state/tls');
     await expect(writeLaunchAgent(c)).rejects.toThrow();
     await mkdir(tls, { mode: 0o700 });
     await writeFile(join(tls, 'cert.pem'), 'synthetic', { mode: 0o600 });

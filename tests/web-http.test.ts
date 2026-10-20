@@ -24,7 +24,7 @@ const SOUND = Buffer.from('0123456789abcdef');
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 
-async function fixture({ origin = ORIGIN, lanOrigin, addresses }: { origin?: string; lanOrigin?: string; addresses?: () => string[] } = {}) {
+async function fixture({ origins = [ORIGIN], lanOrigin, addresses }: { origins?: string[]; lanOrigin?: string; addresses?: () => string[] } = {}) {
   let now = 1_000_000;
   const auth = new Auth(hashKey(KEY), () => now);
   const source = {
@@ -42,7 +42,7 @@ async function fixture({ origin = ORIGIN, lanOrigin, addresses }: { origin?: str
       return { type: 'image/png', size: PNG.length, bytes: PNG };
     }),
   };
-  const app = await createApp({ origin, auth, source, ...(lanOrigin ? { lanOrigin } : {}), ...(addresses ? { addresses } : {}) });
+  const app = await createApp({ origins, auth, source, ...(lanOrigin ? { lanOrigin } : {}), ...(addresses ? { addresses } : {}) });
   apps.push(app);
   const login = async () => {
     const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
@@ -333,63 +333,52 @@ describe('B01/B02/B07 independent HTTP acceptance (synthetic)', () => {
 
 
 describe('the address it answers for', () => {
-  it('takes https anywhere, and plain http only on loopback', () => {
-    for (const good of ['https://imsg.synthetic.test', 'https://host.example.ts.net:8443',
-      'http://localhost:8787', 'http://127.0.0.1:8787', 'http://[::1]:8787']) {
+  it('takes https only, loopback included', () => {
+    for (const good of ['https://imsg.synthetic.test', 'https://host.example.ts.net:8443', 'https://localhost:8787']) {
       expect(checkedOrigin(good).origin).toBe(good);
     }
-    // Plain http anywhere else would mean a session cookie crossing a network in the clear.
+    // The server carries its own TLS, so plain http is never one of its addresses, not even loopback.
     for (const bad of ['http://imsg.synthetic.test', 'http://192.168.1.10:8787', 'http://mac.local:8787',
-      'http://localhost.evil.test:8787', 'ws://localhost:8787',
+      'http://localhost:8787', 'http://127.0.0.1:8787', 'ws://localhost:8787',
       'https://imsg.synthetic.test/', 'https://a:b@imsg.synthetic.test', 'https://imsg.synthetic.test?q=1']) {
       expect(() => checkedOrigin(bad)).toThrow();
     }
   });
 
-  it('serves a loopback origin over plain http, session and all', async () => {
-    const f = await fixture({ origin: 'http://localhost:8787' });
-    const response = await f.app.inject({ method: 'POST', url: '/api/session',
-      headers: { host: 'localhost:8787', origin: 'http://localhost:8787', 'content-type': 'application/json' }, payload: { key: KEY } });
-    expect(response.statusCode).toBe(200);
-    // The cookie keeps every guarantee it has over TLS: browsers class loopback as trustworthy.
-    const set = response.headers['set-cookie'] as string;
-    expect(set).toContain('__Host-imsg_session=');
-    expect(set).toContain('Secure');
-    expect(set).toContain('HttpOnly');
-    // And it is still one address only: the other spelling of loopback is a different origin.
-    expect((await f.app.inject({ url: '/api/chats', headers: { host: '127.0.0.1:8787', cookie: set.split(';')[0]! } })).statusCode).toBe(403);
-  });
-
-  it('takes a LAN address only as https on a .local name with its port', () => {
-    expect(checkedLanOrigin('https://synthetic-mac.local:8788').origin).toBe('https://synthetic-mac.local:8788');
-    for (const bad of ['http://synthetic-mac.local:8788', 'https://synthetic-mac.local', 'https://192.168.1.10:8788',
-      'https://imsg.synthetic.test:8788', 'https://a.b.local:8788', 'https://synthetic-mac.local:8788/']) {
+  it('takes a LAN address only on a .local name with its port', () => {
+    expect(checkedLanOrigin('https://synthetic-mac.local:8787').origin).toBe('https://synthetic-mac.local:8787');
+    for (const bad of ['http://synthetic-mac.local:8787', 'https://synthetic-mac.local', 'https://192.168.1.10:8787',
+      'https://imsg.synthetic.test:8787', 'https://a.b.local:8787', 'https://synthetic-mac.local:8787/']) {
       expect(() => checkedLanOrigin(bad)).toThrow();
     }
   });
 
-  it('answers on the LAN by name and by its own address, each held to its own origin', async () => {
-    const LAN = 'https://synthetic-mac.local:8788';
-    const f = await fixture({ origin: 'http://localhost:8787', lanOrigin: LAN, addresses: () => ['192.0.2.7'] });
+  it('answers by each name and by its own address, each Host held to its own origin', async () => {
+    const LAN = 'https://synthetic-mac.local:8787', LOCAL = 'https://localhost:8787';
+    const f = await fixture({ origins: [LOCAL, ORIGIN], lanOrigin: LAN, addresses: () => ['192.0.2.7'] });
     const login = (host: string, origin: string) => f.app.inject({ method: 'POST', url: '/api/session',
       headers: { host, origin, 'content-type': 'application/json' }, payload: { key: KEY } });
-    expect((await login('synthetic-mac.local:8788', LAN)).statusCode).toBe(200);
-    expect((await login('192.0.2.7:8788', 'https://192.0.2.7:8788')).statusCode).toBe(200);
-    expect((await login('localhost:8787', 'http://localhost:8787')).statusCode).toBe(200);
+    expect((await login('synthetic-mac.local:8787', LAN)).statusCode).toBe(200);
+    expect((await login('192.0.2.7:8787', 'https://192.0.2.7:8787')).statusCode).toBe(200);
+    expect((await login('localhost:8787', LOCAL)).statusCode).toBe(200);
+    expect((await login(HOST, ORIGIN)).statusCode).toBe(200);
     // A Host and an Origin that each exist but do not belong together.
-    expect((await login('synthetic-mac.local:8788', 'http://localhost:8787')).statusCode).toBe(403);
+    expect((await login('synthetic-mac.local:8787', LOCAL)).statusCode).toBe(403);
     expect((await login('localhost:8787', LAN)).statusCode).toBe(403);
-    // An address this Mac does not have, its address on another port, and plain http to it.
-    expect((await login('192.0.2.8:8788', 'https://192.0.2.8:8788')).statusCode).toBe(403);
-    expect((await login('192.0.2.7:8787', 'https://192.0.2.7:8787')).statusCode).toBe(403);
-    expect((await login('192.0.2.7:8788', 'http://192.0.2.7:8788')).statusCode).toBe(403);
-    expect((await login('evil.synthetic.test:8788', 'https://evil.synthetic.test:8788')).statusCode).toBe(403);
+    expect((await login(HOST, LAN)).statusCode).toBe(403);
+    // Another spelling of loopback, an address this Mac does not have, its address on another port,
+    // plain http to it, and a name pointed here from outside.
+    expect((await login('127.0.0.1:8787', 'https://127.0.0.1:8787')).statusCode).toBe(403);
+    expect((await login('192.0.2.8:8787', 'https://192.0.2.8:8787')).statusCode).toBe(403);
+    expect((await login('192.0.2.7:8788', 'https://192.0.2.7:8788')).statusCode).toBe(403);
+    expect((await login('192.0.2.7:8787', 'http://192.0.2.7:8787')).statusCode).toBe(403);
+    expect((await login('evil.synthetic.test:8787', 'https://evil.synthetic.test:8787')).statusCode).toBe(403);
   });
 
   it('answers by address only when there is a LAN address at all', async () => {
-    const f = await fixture({ origin: 'http://localhost:8787', addresses: () => ['192.0.2.7'] });
+    const f = await fixture({ origins: ['https://localhost:8787'], addresses: () => ['192.0.2.7'] });
     const response = await f.app.inject({ method: 'POST', url: '/api/session',
-      headers: { host: '192.0.2.7:8788', origin: 'https://192.0.2.7:8788', 'content-type': 'application/json' }, payload: { key: KEY } });
+      headers: { host: '192.0.2.7:8787', origin: 'https://192.0.2.7:8787', 'content-type': 'application/json' }, payload: { key: KEY } });
     expect(response.statusCode).toBe(403);
   });
 });
@@ -457,7 +446,7 @@ describe('B08 send endpoint (synthetic, off/dry-run/live gating)', () => {
     };
     const send = vi.fn<Sender['send']>(async () => (mode === 'dry-run' ? { state: 'dry_run' } : { state: 'sent' }));
     const sender: Sender = { mode, send };
-    const app = await createApp({ origin: ORIGIN, auth, source, sender });
+    const app = await createApp({ origins: [ORIGIN], auth, source, sender });
     apps.push(app);
     const login = async () => {
       const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
@@ -545,7 +534,7 @@ describe('B09 attachment upload (synthetic, binary route)', () => {
       }),
     };
     const sender: Sender = { mode, send: vi.fn<Sender['send']>(async () => ({ state: 'dry_run' })) };
-    const app = await createApp({ origin: ORIGIN, auth, source, sender, uploads });
+    const app = await createApp({ origins: [ORIGIN], auth, source, sender, uploads });
     apps.push(app);
     const login = async () => {
       const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });

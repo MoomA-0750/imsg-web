@@ -17,8 +17,8 @@ function within(base, value) {
   if (!part || part === '..' || part.startsWith('../') || isAbsolute(part)) fail();
 }
 export function validateConfig(c) {
-  const keys = Object.keys(c ?? {}).filter(key => key !== 'send' && key !== 'lanOrigin').sort().join(',');
-  if (!c || keys !== 'base,imsg,label,node,origin,output,port,release,stateName') fail();
+  const keys = Object.keys(c ?? {}).filter(key => !['send', 'lanOrigin', 'origin'].includes(key)).sort().join(',');
+  if (!c || keys !== 'base,imsg,label,node,output,port,release,stateName') fail();
   // Sending is off unless explicitly requested. 'dry-run' validates but dispatches nothing; 'live' really sends.
   if (c.send !== undefined && !['off', 'dry-run', 'live'].includes(c.send)) fail();
   absolute(c.base); absolute(c.output); absolute(c.imsg);
@@ -29,19 +29,18 @@ export function validateConfig(c) {
   within(c.base, c.imsg);
   if (!/^local\.imsg-web(\.[a-z][a-z0-9-]{0,40})?$/.test(c.label) || !/^[a-z][a-z0-9-]{0,31}$/.test(c.stateName)) fail();
   if (!Number.isInteger(c.port) || c.port < 1024 || c.port > 65535) fail();
-  if (typeof c.origin !== 'string') fail();
-  const url = new URL(c.origin);
-  // Loopback may be plain http — browsers treat it as a trustworthy origin, so nothing the cookies
-  // or the page rely on is given up. Anything else has to be https.
-  const local = url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
-  if ((url.protocol !== 'https:' && !local) || url.origin !== c.origin || url.username || url.password || url.search || url.hash) fail();
-  // The LAN address is https on the Mac's `.local` name, on a port of its own: the server carries
-  // that TLS itself, with the certificate the installer left in the state directory.
+  // Whatever stands in front of the server (Tailscale Serve), if anything: an https address.
+  if (c.origin !== undefined) {
+    if (typeof c.origin !== 'string') fail();
+    const url = new URL(c.origin);
+    if (url.protocol !== 'https:' || url.origin !== c.origin || url.username || url.password || url.search || url.hash) fail();
+  }
+  // The LAN address is the Mac's `.local` name on the server's one port, which it then opens to the
+  // network. The server carries that TLS itself, with the certificate in the state directory.
   if (c.lanOrigin !== undefined) {
     if (typeof c.lanOrigin !== 'string') fail();
     const lan = new URL(c.lanOrigin);
-    const port = Number(lan.port);
-    if (lan.protocol !== 'https:' || lan.origin !== c.lanOrigin || !/^[a-z0-9-]{1,63}\.local$/.test(lan.hostname) || !(port >= 1024) || port === c.port) fail();
+    if (lan.protocol !== 'https:' || lan.origin !== c.lanOrigin || !/^[a-z0-9-]{1,63}\.local$/.test(lan.hostname) || Number(lan.port) !== c.port) fail();
   }
   if (Buffer.byteLength(join(c.base, c.stateName, 'admin.sock')) > 100) fail();
   return c;
@@ -51,7 +50,7 @@ export function renderLaunchAgent(input) {
   const str = value => `<string>${xml(value)}</string>`;
   // Sending is on unless the agent says otherwise, so the variable is written whenever it is not
   // the default — including 'off', which is the one that has to be said out loud.
-  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, IMSG_WEB_ORIGIN: c.origin, IMSG_WEB_PORT: String(c.port), ...(c.lanOrigin ? { IMSG_WEB_LAN_ORIGIN: c.lanOrigin } : {}), ...(c.send && c.send !== 'live' ? { IMSG_WEB_SEND: c.send } : {}) };
+  const env = { IMSG_WEB_STATE_DIR: join(c.base, c.stateName), IMSG_WEB_IMSG_PATH: c.imsg, ...(c.origin ? { IMSG_WEB_ORIGIN: c.origin } : {}), IMSG_WEB_PORT: String(c.port), ...(c.lanOrigin ? { IMSG_WEB_LAN_ORIGIN: c.lanOrigin } : {}), ...(c.send && c.send !== 'live' ? { IMSG_WEB_SEND: c.send } : {}) };
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -94,8 +93,8 @@ export async function writeLaunchAgent(c, uid = process.getuid?.()) {
   }
   const owner = await lstat(join(c.base, c.stateName, 'owner.json'));
   if (owner.uid !== uid || (owner.mode & 0o777) !== 0o600) fail();
-  // A LAN address is only written beside a certificate and a private key the server can load.
-  if (c.lanOrigin) for (const name of ['cert.pem', 'key.pem']) {
+  // The server is https only, so an agent is only written beside a certificate and a key it can load.
+  for (const name of ['cert.pem', 'key.pem']) {
     const path = join(c.base, c.stateName, 'tls', name);
     await safeTree(path, uid);
     const s = await lstat(path);
@@ -136,7 +135,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try {
     if (process.platform !== 'darwin' || !['arm64', 'x64'].includes(process.arch) || process.versions.node !== '24.20.0') fail();
     const args = process.argv.slice(2), values = {};
-    if (![16, 18, 20].includes(args.length)) fail();
+    if (args.length < 14 || args.length > 20 || args.length % 2) fail();
     for (let i = 0; i < args.length; i += 2) {
       const key = args[i];
       if (!['--base', '--release', '--imsg', '--origin', '--port', '--label', '--stateName', '--output', '--send', '--lanOrigin'].includes(key) || key.slice(2) in values) fail();

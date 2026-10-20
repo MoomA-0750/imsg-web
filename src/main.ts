@@ -53,7 +53,7 @@ async function main() {
   if (command !== 'serve') throw new Error();
   const executable = process.env.IMSG_WEB_IMSG_PATH, origin = process.env.IMSG_WEB_ORIGIN;
   const rawPort = process.env.IMSG_WEB_PORT ?? '8787';
-  if (!executable || !isAbsolute(executable) || executable.includes('\0') || !origin || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
+  if (!executable || !isAbsolute(executable) || executable.includes('\0') || !/^\d{1,5}$/.test(rawPort) || Number(rawPort) < 1024 || Number(rawPort) > 65535) throw new Error();
   const tmpDir = await ensureChildTmpDir(directory);
   const context = buildChildEnv({ tmpDir, cwd: tmpDir });
   // The address book sits beside Messages under the same verified home; a contact's picture is read
@@ -71,11 +71,13 @@ async function main() {
   const sendMode: SendMode = sendSetting === 'off' ? 'off' : sendSetting === 'dry-run' ? 'dry-run' : 'live';
   const uploads = new UploadStore({ dir: join(tmpDir, 'uploads'), ...(audio ? { audio } : {}) });
   const sender = new SendService({ mode: sendMode, resolveChatGuid: id => source.resolveChatGuid(id), clientFactory: () => new SendClient({ executable, context }), uploads });
-  // The LAN address, when the agent names one: served over TLS with the certificate the installer made
-  // in the state directory, which is the owner's alone.
-  const lanOrigin = process.env.IMSG_WEB_LAN_ORIGIN;
-  const lan = lanOrigin ? { origin: lanOrigin, cert: await readFile(join(directory, 'tls', 'cert.pem')), key: await readFile(join(directory, 'tls', 'key.pem')) } : undefined;
-  const runtime = await startRuntime({ store, source, sender, uploads, origin, port: Number(rawPort), ...(lan ? { lan } : {}), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  // Always https, with the certificate the installer made in the state directory, which is the
+  // owner's alone. The Mac itself is `https://localhost`; the LAN address, when the agent names one,
+  // opens the same port to the network; IMSG_WEB_ORIGIN is whatever stands in front (Tailscale Serve).
+  const port = Number(rawPort), lanOrigin = process.env.IMSG_WEB_LAN_ORIGIN;
+  const origins = [`https://localhost:${port}`, ...(origin ? [origin] : [])];
+  const tls = { cert: await readFile(join(directory, 'tls', 'cert.pem')), key: await readFile(join(directory, 'tls', 'key.pem')) };
+  const runtime = await startRuntime({ store, source, sender, uploads, origins, tls, port, ...(lanOrigin ? { lanOrigin } : {}), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;
@@ -83,6 +85,6 @@ async function main() {
     void runtime.close().then(() => { process.exitCode = 0; }, () => { process.stderr.write('Shutdown incomplete; instance lock retained.\n'); process.exitCode = 1; });
   };
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  process.stdout.write(lan ? 'Server ready on loopback and the local network.\n' : 'Server ready on loopback.\n');
+  process.stdout.write(lanOrigin ? 'Server ready on the local network.\n' : 'Server ready on loopback.\n');
 }
 void main().catch(() => { process.stderr.write('Startup or administration failed. Check configuration, permissions and instance lock locally.\n'); process.exitCode = 1; });

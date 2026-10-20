@@ -1,5 +1,5 @@
 // Manual, explicit deployment probe. No keys, cookies, IDs or bodies leave memory.
-import { request } from 'node:http';
+import { request } from 'node:https';
 import { OwnerStore } from '../dist/server/owner-store.js';
 import { adminCommand } from '../dist/server/admin.js';
 const check = value => { if (!value) throw new Error(); };
@@ -13,7 +13,8 @@ async function main() {
   const origin = process.env.IMSG_WEB_ORIGIN, port = Number(process.env.IMSG_WEB_PORT);
   check(new URL(origin).origin === origin && origin.startsWith('https://') && Number.isInteger(port));
   const call = (path, cookie, method = 'GET', data, extra = {}) => new Promise((resolve, reject) => {
-    const req = request({ host: '127.0.0.1', port, path, method, headers: { host: new URL(origin).host, origin, ...(cookie ? { cookie } : {}), ...(data ? { 'content-type': 'application/json' } : {}), ...extra } }, res => {
+    const req = request({ host: '127.0.0.1', port, path, method, rejectUnauthorized: false, // its own certificate, over loopback
+       headers: { host: new URL(origin).host, origin, ...(cookie ? { cookie } : {}), ...(data ? { 'content-type': 'application/json' } : {}), ...extra } }, res => {
       const chunks = []; let bytes = 0;
       res.on('data', b => { bytes += b.length; if (bytes > 4 * 1024 * 1024) req.destroy(new Error()); else chunks.push(b); });
       res.on('error', reject); res.on('end', () => { try { resolve({ status: res.statusCode, cookie: res.headers['set-cookie']?.[0]?.split(';')[0], data: JSON.parse(Buffer.concat(chunks).toString()) }); } catch { reject(new Error()); } });

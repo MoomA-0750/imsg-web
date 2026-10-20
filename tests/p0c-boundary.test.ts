@@ -39,7 +39,7 @@ async function fixture(sip: 'enabled' | 'disabled' = 'enabled', timeoutMs?: numb
   const isPreview = (row: Audit) => row.method === 'messages.history' && row.params?.limit === 1;
   const historyCalls = async () => (await audit()).filter(row => row.kind === 'request' && row.method === 'messages.history' && !isPreview(row));
   const auth = new Auth(hashKey(KEY));
-  const app = await createApp({ origin: ORIGIN, auth, source });
+  const app = await createApp({ origins: [ORIGIN], auth, source });
   cleanups.push(() => app.close());
   const login = async () => {
     const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN }, payload: { key: KEY } });
