@@ -1,10 +1,14 @@
 #!/bin/bash
 # Installs a built checkout as a running LaunchAgent, from one command.
 #
-#   ./scripts/install.sh --imsg <path> --node <dir> [--origin https://<host>] [--port 8787] [--send live]
+#   ./scripts/install.sh --imsg <path> --node <dir> [--origin https://<host>] [--port 8787]
+#                        [--lan-port 8788 | --no-lan] [--send live]
 #
-# Without --origin it serves http://localhost:<port>, which is all the Mac itself needs. Give an
-# https address when something in front of it — Tailscale Serve, a reverse proxy — carries the TLS.
+# It serves http://localhost:<port> for the Mac itself, and https://<this Mac>.local:<lan-port> for
+# phones and computers on the same network, with a certificate it makes here. That certificate is
+# self-signed, so each device shows a warning the first time; --no-lan keeps it to the Mac alone.
+# Give --origin https://<address> when something in front of the loopback port — Tailscale Serve, a
+# reverse proxy — carries TLS of its own.
 #
 # --no-start writes everything and stops short of loading the agent, for looking before starting.
 #
@@ -28,6 +32,7 @@ start="yes"
 imsg=""
 node=""
 origin=""
+lanport=8788
 while [ $# -gt 0 ]; do
   case "$1" in
     --base) base="$2"; shift 2 ;;
@@ -36,9 +41,11 @@ while [ $# -gt 0 ]; do
     --origin) origin="$2"; shift 2 ;;
     --port) port="$2"; shift 2 ;;
     --send) send="$2"; shift 2 ;;
+    --lan-port) lanport="$2"; shift 2 ;;
+    --no-lan) lanport=""; shift ;;
     --label) label="$2"; shift 2 ;;
     --no-start) start="no"; shift ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's|^# \{0,1\}||'; exit 0 ;;
+    -h|--help) sed -n '2,18p' "$0" | sed 's|^# \{0,1\}||'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -47,8 +54,17 @@ project="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 [ -f "$project/dist/main.js" ] || { echo "No build found. Run: npm ci --ignore-scripts && npm run build" >&2; exit 1; }
 [ -n "$imsg" ] && [ -x "$imsg" ] || { echo "--imsg must point at a patched imsg binary (see imsg-patches/README.md)." >&2; exit 1; }
 [ -n "$node" ] || { echo "--node must point at an unpacked Node 24 distribution, or its bin/node." >&2; exit 1; }
-# Loopback by default: nothing to configure, nothing to install, and reachable from the Mac itself.
+# Loopback for the Mac itself: nothing to configure, nothing to install.
 [ -n "$origin" ] || origin="http://localhost:$port"
+# The local network under the Mac's Bonjour name, which is what phones on the same Wi-Fi resolve.
+lanorigin=""
+if [ -n "$lanport" ]; then
+  lanhost="$(scutil --get LocalHostName 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$lanhost" in
+    ""|*[!a-z0-9-]*) echo "This Mac has no usable local hostname (System Settings → General → Sharing → Local hostname). Set one, or install with --no-lan." >&2; exit 1 ;;
+  esac
+  lanorigin="https://$lanhost.local:$lanport"
+fi
 
 # --node may name the binary or the distribution it lives in; a whole distribution is what gets copied.
 case "$node" in */bin/node) node="$(cd -- "$(dirname -- "$node")/.." && pwd)" ;; esac
@@ -91,6 +107,24 @@ for bundle in "$(dirname "$imsg")"/*.bundle; do [ -e "$bundle" ] && cp -R "$bund
 chmod -R go-rwx "$target"
 install -m 700 "$project/scripts/imsg-web.sh" "$base/imsg-web"
 
+# A certificate for the LAN address, made here and kept in the state directory beside the password
+# hash. Made again when the Mac's name is not in it — a renamed Mac — and otherwise kept, so a phone
+# that has already accepted it is not asked again after every install.
+if [ -n "$lanorigin" ]; then
+  tls="$base/state/tls"
+  mkdir -p "$tls"; chmod 700 "$tls"
+  if ! openssl x509 -in "$tls/cert.pem" -noout -text 2>/dev/null | grep -q "DNS:$lanhost.local"; then
+    echo "making a certificate for $lanhost.local…"
+    san="DNS:$lanhost.local"
+    for ip in $(ifconfig | awk '$1 == "inet" && $2 != "127.0.0.1" { print $2 }'); do san="$san,IP:$ip"; done
+    openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 825 \
+      -keyout "$tls/key.pem.new" -out "$tls/cert.pem.new" \
+      -config <(printf '[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n[dn]\nCN=%s.local\n[ext]\nsubjectAltName=%s\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\nextendedKeyUsage=serverAuth\n' "$lanhost" "$san") 2>/dev/null
+    chmod 600 "$tls/key.pem.new" "$tls/cert.pem.new"
+    mv "$tls/key.pem.new" "$tls/key.pem"; mv "$tls/cert.pem.new" "$tls/cert.pem"
+  fi
+fi
+
 # The agent cannot be written before there is a password to let anyone in: the generator checks that
 # the credential file exists and is the owner's alone. So this is asked for here, once, and the
 # install continues into a server that is already closed to everyone else.
@@ -118,7 +152,7 @@ fi
 env -i HOME="$HOME" PATH=/usr/bin:/bin "$runtime/bin/node" "$target/scripts/generate-launch-agent.mjs" \
   --base "$base" --release "$target" --imsg "$target/imsg" \
   --origin "$origin" --port "$port" --label "$label" --stateName state --output "$plist" \
-  --send "$send"
+  --send "$send" ${lanorigin:+--lanOrigin "$lanorigin"}
 if [ "$start" = yes ]; then
   launchctl bootstrap "gui/$(id -u)" "$plist"
   "$base/imsg-web" prune >/dev/null 2>&1 || true
@@ -128,17 +162,28 @@ fi
 
 echo
 echo "installed:  $release"
-echo "reachable:  $origin (once the port is served there)"
+case "$origin" in
+  http://localhost*|http://127.0.0.1*|http://\[::1\]*) echo "on the Mac: $origin" ;;
+  *) echo "reachable:  $origin (once the port is served there)" ;;
+esac
+if [ -n "$lanorigin" ]; then
+  echo "on the LAN: $lanorigin"
+  echo "            the first visit from each device warns that the certificate is not trusted;"
+  echo "            it is this one, made on this Mac — check it matches, then go on:"
+  echo "            $(openssl x509 -in "$tls/cert.pem" -noout -fingerprint -sha256 | sed 's/^.*=//')"
+fi
 echo "sending:    $send"
 echo "logs:       $base/logs/$label.{out,err}.log"
 echo
 echo "Still yours to do, if you have not already:"
 echo "  • Full Disk Access for $runtime/bin/node (System Settings → Privacy & Security)"
+if [ -n "$lanorigin" ] && /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -q enabled; then
+  echo "  • The macOS firewall is on: allow incoming connections for $runtime/bin/node when asked"
+fi
 case "$origin" in
   http://localhost*|http://127.0.0.1*|http://\[::1\]*)
     echo
-    echo "This is reachable from the Mac itself. To open it from a phone or another computer,"
-    echo "put something in front of it that carries TLS — Tailscale Serve is the easy one —"
-    echo "and install again with --origin https://<that address>." ;;
+    echo "To open it from outside your network as well, put something in front of port $port that"
+    echo "carries TLS — Tailscale Serve is the easy one — and install again with --origin https://<that address>." ;;
   *) echo "  • Make $origin reach port $port on this Mac (e.g. tailscale serve --bg $port)" ;;
 esac

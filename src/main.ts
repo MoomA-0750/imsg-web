@@ -3,6 +3,7 @@
 // import below had already been evaluated.
 import { refuseTaintedLaunch } from './server/launch-guard.js';
 import { buildChildEnv, ensureChildTmpDir } from './server/child-env.js';
+import { readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OwnerStore } from './server/owner-store.js';
@@ -70,7 +71,11 @@ async function main() {
   const sendMode: SendMode = sendSetting === 'off' ? 'off' : sendSetting === 'dry-run' ? 'dry-run' : 'live';
   const uploads = new UploadStore({ dir: join(tmpDir, 'uploads'), ...(audio ? { audio } : {}) });
   const sender = new SendService({ mode: sendMode, resolveChatGuid: id => source.resolveChatGuid(id), clientFactory: () => new SendClient({ executable, context }), uploads });
-  const runtime = await startRuntime({ store, source, sender, uploads, origin, port: Number(rawPort), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
+  // The LAN address, when the agent names one: served over TLS with the certificate the installer made
+  // in the state directory, which is the owner's alone.
+  const lanOrigin = process.env.IMSG_WEB_LAN_ORIGIN;
+  const lan = lanOrigin ? { origin: lanOrigin, cert: await readFile(join(directory, 'tls', 'cert.pem')), key: await readFile(join(directory, 'tls', 'key.pem')) } : undefined;
+  const runtime = await startRuntime({ store, source, sender, uploads, origin, port: Number(rawPort), ...(lan ? { lan } : {}), webDir: fileURLToPath(new URL('./web', import.meta.url)) });
   let stopping = false;
   const stop = () => {
     if (stopping) return;
@@ -78,6 +83,6 @@ async function main() {
     void runtime.close().then(() => { process.exitCode = 0; }, () => { process.stderr.write('Shutdown incomplete; instance lock retained.\n'); process.exitCode = 1; });
   };
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  process.stdout.write('Read-only server ready on loopback.\n');
+  process.stdout.write(lan ? 'Server ready on loopback and the local network.\n' : 'Server ready on loopback.\n');
 }
 void main().catch(() => { process.stderr.write('Startup or administration failed. Check configuration, permissions and instance lock locally.\n'); process.exitCode = 1; });

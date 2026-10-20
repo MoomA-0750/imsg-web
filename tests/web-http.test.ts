@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { request as httpRequest } from 'node:http';
 import type { FastifyInstance } from 'fastify';
 import { Auth, hashKey } from '../src/server/auth.js';
-import { byteRange, checkedOrigin, createApp } from '../src/server/http.js';
+import { byteRange, checkedLanOrigin, checkedOrigin, createApp } from '../src/server/http.js';
 import { Readable } from 'node:stream';
 import type { ChatSnapshot, HistorySnapshot, ReadSource } from '../src/shared/web-types.js';
 import type { AttachmentSource } from '../src/server/attachments.js';
@@ -24,7 +24,7 @@ const SOUND = Buffer.from('0123456789abcdef');
 const apps: FastifyInstance[] = [];
 afterEach(async () => { await Promise.all(apps.splice(0).map(app => app.close())); });
 
-async function fixture({ origin = ORIGIN }: { origin?: string } = {}) {
+async function fixture({ origin = ORIGIN, lanOrigin, addresses }: { origin?: string; lanOrigin?: string; addresses?: () => string[] } = {}) {
   let now = 1_000_000;
   const auth = new Auth(hashKey(KEY), () => now);
   const source = {
@@ -42,7 +42,7 @@ async function fixture({ origin = ORIGIN }: { origin?: string } = {}) {
       return { type: 'image/png', size: PNG.length, bytes: PNG };
     }),
   };
-  const app = await createApp({ origin, auth, source });
+  const app = await createApp({ origin, auth, source, ...(lanOrigin ? { lanOrigin } : {}), ...(addresses ? { addresses } : {}) });
   apps.push(app);
   const login = async () => {
     const response = await app.inject({ method: 'POST', url: '/api/session', headers: { host: HOST, origin: ORIGIN, 'content-type': 'application/json' }, payload: { key: KEY } });
@@ -358,6 +358,39 @@ describe('the address it answers for', () => {
     expect(set).toContain('HttpOnly');
     // And it is still one address only: the other spelling of loopback is a different origin.
     expect((await f.app.inject({ url: '/api/chats', headers: { host: '127.0.0.1:8787', cookie: set.split(';')[0]! } })).statusCode).toBe(403);
+  });
+
+  it('takes a LAN address only as https on a .local name with its port', () => {
+    expect(checkedLanOrigin('https://synthetic-mac.local:8788').origin).toBe('https://synthetic-mac.local:8788');
+    for (const bad of ['http://synthetic-mac.local:8788', 'https://synthetic-mac.local', 'https://192.168.1.10:8788',
+      'https://imsg.synthetic.test:8788', 'https://a.b.local:8788', 'https://synthetic-mac.local:8788/']) {
+      expect(() => checkedLanOrigin(bad)).toThrow();
+    }
+  });
+
+  it('answers on the LAN by name and by its own address, each held to its own origin', async () => {
+    const LAN = 'https://synthetic-mac.local:8788';
+    const f = await fixture({ origin: 'http://localhost:8787', lanOrigin: LAN, addresses: () => ['192.0.2.7'] });
+    const login = (host: string, origin: string) => f.app.inject({ method: 'POST', url: '/api/session',
+      headers: { host, origin, 'content-type': 'application/json' }, payload: { key: KEY } });
+    expect((await login('synthetic-mac.local:8788', LAN)).statusCode).toBe(200);
+    expect((await login('192.0.2.7:8788', 'https://192.0.2.7:8788')).statusCode).toBe(200);
+    expect((await login('localhost:8787', 'http://localhost:8787')).statusCode).toBe(200);
+    // A Host and an Origin that each exist but do not belong together.
+    expect((await login('synthetic-mac.local:8788', 'http://localhost:8787')).statusCode).toBe(403);
+    expect((await login('localhost:8787', LAN)).statusCode).toBe(403);
+    // An address this Mac does not have, its address on another port, and plain http to it.
+    expect((await login('192.0.2.8:8788', 'https://192.0.2.8:8788')).statusCode).toBe(403);
+    expect((await login('192.0.2.7:8787', 'https://192.0.2.7:8787')).statusCode).toBe(403);
+    expect((await login('192.0.2.7:8788', 'http://192.0.2.7:8788')).statusCode).toBe(403);
+    expect((await login('evil.synthetic.test:8788', 'https://evil.synthetic.test:8788')).statusCode).toBe(403);
+  });
+
+  it('answers by address only when there is a LAN address at all', async () => {
+    const f = await fixture({ origin: 'http://localhost:8787', addresses: () => ['192.0.2.7'] });
+    const response = await f.app.inject({ method: 'POST', url: '/api/session',
+      headers: { host: '192.0.2.7:8788', origin: 'https://192.0.2.7:8788', 'content-type': 'application/json' }, payload: { key: KEY } });
+    expect(response.statusCode).toBe(403);
   });
 });
 

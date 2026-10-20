@@ -27,6 +27,13 @@ describe('C01 LaunchAgent generator', () => {
     expect(() => validateConfig({ ...config, send: 'yes' })).toThrow();
     expect(renderLaunchAgent({ ...config, send: 'off' }).match(/<key>IMSG_WEB_/g)).toHaveLength(5);
   });
+  it('names a LAN address only when there is one, and only an https .local one on its own port', () => {
+    expect(renderLaunchAgent(config)).not.toContain('IMSG_WEB_LAN_ORIGIN');
+    expect(renderLaunchAgent({ ...config, lanOrigin: 'https://synthetic-mac.local:8788' })).toContain('<key>IMSG_WEB_LAN_ORIGIN</key><string>https://synthetic-mac.local:8788</string>');
+    for (const lanOrigin of ['http://synthetic-mac.local:8788', 'https://synthetic-mac.local', 'https://synthetic-mac.local:8787', 'https://synthetic-mac.local:80', 'https://192.168.1.10:8788', 'https://host.example.ts.net:8788', 'https://synthetic-mac.local:8788/', 8788]) {
+      expect(() => validateConfig({ ...config, lanOrigin })).toThrow();
+    }
+  });
   it('escapes XML without shell interpolation', () => {
     expect(renderLaunchAgent({ ...config, imsg: '/Users/test/Library/imsg-web/A&B<"\'>/imsg' })).toContain('A&amp;B&lt;&quot;&apos;&gt;');
   });
@@ -58,6 +65,16 @@ describe('C01 exclusive filesystem output', () => {
     expect(await readFile(c.imsg, 'utf8')).toBe('synthetic');
     await symlink(c.release, join(c.base, 'releases/link'));
     await expect(writeLaunchAgent({ ...c, release: join(c.base, 'releases/link'), output: join(c.base, 'other.plist') })).rejects.toThrow();
+  });
+  it('writes a LAN address only beside a certificate and a private key of the owner\'s alone', async () => {
+    const c = { ...(await diskFixture()), lanOrigin: 'https://synthetic-mac.local:8788' }, tls = join(c.base, 'state/tls');
+    await expect(writeLaunchAgent(c)).rejects.toThrow();
+    await mkdir(tls, { mode: 0o700 });
+    await writeFile(join(tls, 'cert.pem'), 'synthetic', { mode: 0o600 });
+    await writeFile(join(tls, 'key.pem'), 'synthetic', { mode: 0o644 });
+    await expect(writeLaunchAgent(c)).rejects.toThrow();
+    await chmod(join(tls, 'key.pem'), 0o600); await writeLaunchAgent(c);
+    expect(await readFile(c.output, 'utf8')).toContain('IMSG_WEB_LAN_ORIGIN');
   });
   it('rejects unsafe existing log and does not truncate private existing logs', async () => {
     const c = await diskFixture(), path = join(c.base, 'logs', `${c.label}.out.log`);

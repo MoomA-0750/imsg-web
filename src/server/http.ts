@@ -1,6 +1,7 @@
 import Fastify, { type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import { readFile, readdir } from 'node:fs/promises';
+import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Auth, PASSWORD_MAX, equal, tokenValid, type Session } from './auth.js';
@@ -55,8 +56,36 @@ export function checkedOrigin(value: string): URL {
   if ((u.protocol !== 'https:' && !local) || value !== u.origin || u.username || u.password) throw new WebError('ORIGIN_INVALID');
   return u;
 }
-export async function createApp(options: { origin: string; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
+/**
+ * The address on the local network: https, which this server carries itself with a certificate it
+ * made, on the Mac's own `.local` name with the port spelled out. A name, so the exact Origin and
+ * Host checks still have one thing to compare against.
+ */
+export function checkedLanOrigin(value: string): URL {
+  const u = checkedOrigin(value);
+  if (u.protocol !== 'https:' || !u.port || !/^[a-z0-9-]{1,63}\.local$/.test(u.hostname)) throw new WebError('ORIGIN_INVALID');
+  return u;
+}
+/** This machine's own IPv4 addresses on its networks, as they are now. */
+export function localAddresses(): string[] {
+  return Object.values(networkInterfaces()).flat().flatMap(a => a && a.family === 'IPv4' && !a.internal ? [a.address] : []);
+}
+export async function createApp(options: { origin: string; lanOrigin?: string; addresses?: () => string[]; auth: Auth; source: ReadSource & AttachmentSource; sender?: Sender; uploads?: UploadSink; webDir?: string }) {
   const origin = checkedOrigin(options.origin);
+  const lan = options.lanOrigin === undefined ? undefined : checkedLanOrigin(options.lanOrigin);
+  const addresses = options.addresses ?? localAddresses;
+  // Each Host this answers to, and the one Origin that goes with it. A request is held to the
+  // origin its own Host names, so the checks stay exact however many ways in there are.
+  const origins = new Map([[origin.host, origin.origin], ...(lan ? [[lan.host, lan.origin] as const] : [])]);
+  const originFor = (host: string | undefined): string | undefined => {
+    if (host === undefined) return undefined;
+    const known = origins.get(host);
+    if (known || !lan) return known;
+    // The LAN port by the Mac's own address, too: not every phone resolves `.local` names. Only
+    // addresses this machine has right now, so a name pointed here by someone else's DNS is not one.
+    const match = /^(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})$/.exec(host);
+    return match && match[2] === lan.port && addresses().includes(match[1]!) ? `https://${host}` : undefined;
+  };
   const app = Fastify({ logger: false, bodyLimit: 2048, requestTimeout: 15_000, connectionTimeout: 15_000, keepAliveTimeout: 5000, return503OnClosing: true, ajv: { customOptions: { removeAdditional: false, coerceTypes: false } } });
   await app.register(cookie);
   const authenticated = new WeakMap<object, Session>();
@@ -73,12 +102,13 @@ export async function createApp(options: { origin: string; auth: Auth; source: R
     let released = false;
     const release = () => { if (!released) { released = true; active--; } };
     reply.raw.once('finish', release); reply.raw.once('close', release);
-    if (request.headers.host !== origin.host || (request.headers.origin !== undefined && request.headers.origin !== origin.origin)
+    const expected = originFor(request.headers.host);
+    if (!expected || (request.headers.origin !== undefined && request.headers.origin !== expected)
       || (request.url.startsWith('/api/') && request.headers['sec-fetch-site'] === 'cross-site')) {
       reply.code(403).send({ code: 'ORIGIN_REJECTED' }); return;
     }
     if (request.method === 'POST' || request.method === 'DELETE') {
-      if (request.headers.origin !== origin.origin) { reply.code(403).send({ code: 'ORIGIN_REJECTED' }); return; }
+      if (request.headers.origin !== expected) { reply.code(403).send({ code: 'ORIGIN_REJECTED' }); return; }
       // Attachment upload is the one binary route. `application/octet-stream` cannot come from an
       // HTML form (unlike multipart or urlencoded), so the exact Origin and the CSRF header below
       // still carry the whole CSRF defence; every other POST stays JSON-only.
