@@ -45,8 +45,10 @@ to be decided.
   **If it does: read that log.**
 - **Publishing.** The repository is public as of 2026-09-16: MIT, full history,
   with the real-data record kept but the author's own message counts taken out of
-  it. `scripts/install.sh` is the setup path an outsider follows; it has been
-  exercised against a scratch base, but nobody has yet installed from a clean
+  it. `scripts/setup.sh` is the setup path an outsider follows: it fetches Node,
+  builds the app and the patched imsg, and calls `install.sh`. On the M1 it ran
+  from a fresh copy against a scratch base up to the password step (2.5 minutes
+  the first time, 28 seconds again), but nobody has yet installed from a clean
   machine, and that is the thing most likely to have a gap in it.
 
 ## Settled, and not to be re-opened without new grounds

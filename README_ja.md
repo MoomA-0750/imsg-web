@@ -38,58 +38,43 @@ Mac の中にあり、ローカルのサーバーがそれを読みます。ど�
 最初の2つは imsg のブリッジが必要で、SIP の無効化と Messages へのコード注入を要求するため、
 このプロジェクトでは扱いません。
 
-## 必要なもの
-
-- **Mac**。Messages にサインイン済みで、スリープしないこと。すべてそこで動きます
-- **[`imsg-patches/`](imsg-patches/) を当ててビルドした `imsg`**。本家にない小さな変更が4つあります。
-  内容とビルド方法はそのディレクトリに
-- **Node 24** を専用の場所に展開したもの。システムのものは使いません（この複製に
-  Full Disk Access を与えるため）
-
 ## セットアップ
+
+Messages にサインイン済みでスリープしない Mac と、Xcode Command Line Tools
+（`xcode-select --install`）が必要です。
 
 ```sh
 git clone https://github.com/MoomA-0750/imsg-web && cd imsg-web
-npm ci --ignore-scripts
-npm run build
-
-./scripts/install.sh \
-  --imsg /path/to/patched/imsg \
-  --node /path/to/node-v24.20.0-darwin-arm64
+./scripts/setup.sh
 ```
 
-`~/Library/Application Support/imsg-web` の下に専用ディレクトリを作り、ビルドを配置し、
-**パスワードを尋ね**、LaunchAgent を起動します。`npm run build` のあと同じコマンドを実行すれば
-新しいリリースへの入れ替えになります。直前のリリースは戻り先として残ります。
+Node 24 の取得、アプリとパッチ済み `imsg`（[`imsg-patches/`](imsg-patches/)）のビルドを行い、
+パスワードを尋ねてサーバーを起動します。最後に開くアドレスを表示します。
 
-**自分でやる必要があるのは1つ**で、最後に案内されます。インストールされた Node バイナリへの
-**Full Disk Access**（システム設定 → プライバシーとセキュリティ）です。macOS が `chat.db` の
-読み取りの責任を問うのは、ターミナルではなく**その Node バイナリ**だからです。
+そのあと一度だけ：
 
-あとはインストーラが最後に表示するアドレス、**https://your-mac.local:8787** を開いて
-サインインします（Mac のローカルホスト名。システム設定 → 一般 → 共有で確認できます）。
-Mac 本体でも、同じ Wi-Fi のスマートフォンや別のパソコンでも、同じアドレスです。
+1. **表示された Node バイナリに Full Disk Access を与え**（システム設定 → プライバシーと
+   セキュリティ → フルディスクアクセス）、表示されたコマンドでサーバーを再起動します。
+   これがないとメッセージを読めません。
+2. **表示されたアドレスを開きます**。`https://your-mac.local:8787` か Mac の IP アドレスで、
+   Mac 本体でも同じ Wi-Fi の端末でも使えます。端末ごとに一度だけ「安全ではない」警告が出ます
+   （Mac の中で作った自己署名の証明書のため）。指紋がインストーラの表示と同じなら先へ進みます。
 
-証明書はインストーラが Mac の中で作るので設定は要りませんが、自己署名なので
-**端末ごとに最初の一度だけ「安全ではない」警告**が出ます。インストーラが証明書の指紋を表示するので、
-同じものか確かめてから先へ進んでください（iPhone なら「詳細を表示 → このWebサイトを閲覧」）。
-macOS のファイアウォールが有効なら、Node バイナリの受信接続を許可するか尋ねられるので許可します。
+更新は `git pull && ./scripts/setup.sh`。直前の版は戻り先として残ります。
 
-Mac 本体だけに留めるなら `--no-lan` を付けます。そのときのアドレスは **https://localhost:8787** です。
+オプションはそのままインストーラに渡ります。`--no-lan` で Mac 本体だけ
+（`https://localhost:8787`）、`--send off` で送信を無効にします。
 
 ### 外出先から開くには
 
-家の外からは、TLS を担う何かが前に立って中継する必要があります。[Tailscale](https://tailscale.com)
-の Serve が一番手間がかからず、動作確認もそれで行っています。Mac 上のリバースプロキシでも構いません。
+[Tailscale](https://tailscale.com) を使います。両方の端末で動いていれば、Mac の Tailscale の
+IP アドレスでそのまま開けます。正式な証明書の付いた名前で開くなら、Serve に載せてそのアドレスで
+入れ直します：
 
 ```sh
 tailscale serve --bg https+insecure://127.0.0.1:8787
-./scripts/install.sh --imsg … --node … --origin https://your-mac.your-tailnet.ts.net
+./scripts/setup.sh --origin https://your-mac.your-tailnet.ts.net
 ```
-
-`https+insecure` なのは、サーバー自身の証明書が自己署名だからです。ブラウザには Tailscale の正式な
-証明書が見えます。**実際に開くアドレスを指定して入れ直してください。** サーバーはそのオリジンにしか
-答えません。LAN のアドレスはそのまま残ります。
 
 ## 使い方
 
@@ -102,7 +87,7 @@ tailscale serve --bg https+insecure://127.0.0.1:8787
 - **各メッセージの時刻**は、会話を左へドラッグしているあいだ表示されます
 - **通知**は「メッセージ」の横のベルで有効になります
 
-送信は**標準でオン**です。`./scripts/install.sh --send off` で無効、
+送信は**標準でオン**です。`./scripts/setup.sh --send off` で無効、
 `--send dry-run` は検証だけして何も送りません。
 
 ## 開発

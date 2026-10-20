@@ -47,17 +47,12 @@ the Node.
 
 ## LaunchAgent
 
-Generate the plist; it never installs or starts anything:
-
-```sh
-<node> scripts/generate-launch-agent.mjs --base <base> --release <release> \
-  --imsg <release>/imsg --origin https://<host-fqdn> --port 8787 \
-  --label local.imsg-web --stateName state --output <new-plist>
-```
-
-The owner places it at `~/Library/LaunchAgents/local.imsg-web.plist`
-and loads it with `launchctl bootstrap gui/$(id -u) <plist>`. It starts at login
-and is not restarted automatically after a crash.
+`scripts/setup.sh` (or `scripts/install.sh`, which it calls) writes it to
+`~/Library/LaunchAgents/local.imsg-web.plist` through
+`scripts/generate-launch-agent.mjs`, which validates every path and the
+certificate first, and loads it with `launchctl bootstrap`. It starts at login
+and is not restarted automatically after a crash. After granting Full Disk
+Access, restart it with `launchctl kickstart -k gui/$(id -u)/local.imsg-web`.
 
 ## Signing in
 

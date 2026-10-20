@@ -55,18 +55,19 @@ rebuild. Without the flag, behaviour is unchanged.
 
 ## Build (on the Mac)
 
-The Mac that builds imsg does not need a checkout of this repository — a release
-carries `dist` and `scripts`, not the source. Copy the four patch files across and
-point at them. `$PATCHES` is wherever they landed; the order matters.
+`scripts/setup.sh` does all of this: it clones upstream at `e2f5046` into
+`.setup/imsg`, applies the four patches in order, builds, and hands the binary to
+the installer, which copies it with its bundles. It builds again only when a
+patch changes. By hand, from this directory (`$PATCHES`), the order matters:
 
 ```sh
 git clone https://github.com/openclaw/imsg.git && cd imsg
 git checkout e2f5046
-git apply --check "$PATCHES/contact-batch.patch"
-git apply "$PATCHES/contact-batch.patch"
-git apply "$PATCHES/contact-source.patch"
-git apply "$PATCHES/link-preview.patch"
-git apply "$PATCHES/unread-mark.patch"
+git apply --check "$PATCHES/contact-batch/imsg-0.15.1.patch"
+git apply "$PATCHES/contact-batch/imsg-0.15.1.patch"
+git apply "$PATCHES/contact-source/imsg-0.15.4.patch"
+git apply "$PATCHES/link-preview/imsg-0.15.4.patch"
+git apply "$PATCHES/unread-mark/imsg-0.15.4.patch"
 swift build -c release --product imsg --force-resolved-versions
 swift test --filter LinkPreview   # optional
 ```

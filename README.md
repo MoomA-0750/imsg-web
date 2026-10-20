@@ -40,62 +40,45 @@ Not supported: sending a reply or a tapback, read receipts, typing indicators,
 search. The first two need imsg's bridge, which wants SIP disabled and code
 injected into Messages; this project does not go there.
 
-## What you need
-
-- **A Mac** that is signed into Messages and stays awake. Everything runs there.
-- **`imsg`, built with the patches in [`imsg-patches/`](imsg-patches/)** — four
-  small changes upstream does not carry. That directory says what and how.
-- **Node 24**, unpacked somewhere of its own. Not the system one: this copy gets
-  Full Disk Access.
-
 ## Setting it up
+
+You need a Mac that is signed into Messages and stays awake, with the Xcode
+Command Line Tools (`xcode-select --install`).
 
 ```sh
 git clone https://github.com/MoomA-0750/imsg-web && cd imsg-web
-npm ci --ignore-scripts
-npm run build
-
-./scripts/install.sh \
-  --imsg /path/to/patched/imsg \
-  --node /path/to/node-v24.20.0-darwin-arm64
+./scripts/setup.sh
 ```
 
-It lays out a private directory under `~/Library/Application Support/imsg-web`,
-installs the build, asks you for a password, and starts a LaunchAgent. Run the
-same command again after `npm run build` to install a new release; the previous
-one stays as the way back.
+This fetches Node 24, builds the app and a patched `imsg`
+([`imsg-patches/`](imsg-patches/)), asks you for a password, and starts the
+server. It ends by printing the addresses to open.
 
-One thing it will tell you to do yourself: **Full Disk Access** for the Node
-binary it installed (System Settings → Privacy & Security). macOS holds *that*
-binary responsible for reading `chat.db`, not your terminal.
+Then, once:
 
-Then open the address it printed — **https://your-mac.local:8787**, under the
-Mac's local hostname (System Settings → General → Sharing) — and sign in. It is
-the same address on the Mac and on any phone or computer on the same Wi-Fi.
+1. **Give Full Disk Access to the Node binary it names** (System Settings →
+   Privacy & Security → Full Disk Access), and restart the server with the
+   command it prints. Without this it cannot read your messages.
+2. **Open one of the addresses** — `https://your-mac.local:8787`, or the Mac's
+   IP address — on the Mac or on anything on the same Wi-Fi. Each device warns
+   once that the certificate is not trusted: it is self-signed, made on your
+   Mac. If the fingerprint matches what the installer printed, go on.
 
-The installer makes a certificate for it on the Mac, so there is nothing to set
-up, but it is self-signed: each device warns once that it is not trusted. The
-installer prints the certificate's fingerprint so you can check it is this one
-before going on (on an iPhone: *Show Details → visit this website*). If the
-macOS firewall is on, allow the Node binary when it asks.
+To update: `git pull && ./scripts/setup.sh`. The previous version is kept.
 
-`--no-lan` keeps it to the Mac alone, as **https://localhost:8787**.
+Options, all passed on to the installer: `--no-lan` serves only the Mac itself
+(`https://localhost:8787`); `--send off` turns sending off.
 
-### Reaching it from anywhere
+### From outside your network
 
-Outside your network, something has to carry it, with TLS of its own.
-[Tailscale](https://tailscale.com) Serve is the least work and what this was
-tested against; any reverse proxy on the Mac does as well.
+Use [Tailscale](https://tailscale.com). With it on both ends, the Mac's
+Tailscale IP address works as it is. For a name with a trusted certificate,
+serve it and install with that address:
 
 ```sh
 tailscale serve --bg https+insecure://127.0.0.1:8787
-./scripts/install.sh --imsg … --node … --origin https://your-mac.your-tailnet.ts.net
+./scripts/setup.sh --origin https://your-mac.your-tailnet.ts.net
 ```
-
-`https+insecure` because the server's own certificate is self-signed; Tailscale
-presents its real one to the browser. Install again with the address you will
-actually open, because the server answers for that origin and no other. The LAN
-address stays as it was.
 
 ## Using it
 
@@ -111,7 +94,7 @@ address stays as it was.
 - **See the time of every message** by dragging the conversation to the left.
 - **Turn on notifications** with the bell beside メッセージ.
 
-Sending is on by default. `./scripts/install.sh --send off` turns it off, and
+Sending is on by default. `./scripts/setup.sh --send off` turns it off, and
 `--send dry-run` validates everything without dispatching.
 
 ## Development

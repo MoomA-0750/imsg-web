@@ -1,24 +1,15 @@
 #!/bin/bash
-# Installs a built checkout as a running LaunchAgent, from one command.
+# Installs a built checkout as a running LaunchAgent. scripts/setup.sh builds everything and calls
+# this; run it directly only with an imsg and a Node of your own:
 #
 #   ./scripts/install.sh --imsg <path> --node <dir> [--port 8787] [--no-lan]
-#                        [--origin https://<host>] [--send live]
+#                        [--origin https://<host>] [--send live|dry-run|off] [--no-start]
 #
-# It serves one address, https://<this Mac>.local:<port>, to the Mac itself and to phones and
-# computers on the same network, with a certificate it makes here. That certificate is self-signed,
-# so each device shows a warning the first time. --no-lan keeps it to the Mac, as https://localhost.
-# Give --origin https://<address> when something in front of it — Tailscale Serve, a reverse proxy —
-# carries TLS of its own.
-#
-# --no-start writes everything and stops short of loading the agent, for looking before starting.
-#
-# What it does, and nothing else: lays out the private directory this app owns, copies the build
-# into a release named after the commit, writes the LaunchAgent, starts it, and asks for a password.
-# Run it again after `npm run build` to install a new release; the old one stays as the way back.
-#
-# What it does not do, because none of it can be done for you: build `imsg` with the patches (see
-# imsg-patches/README.md), grant Full Disk Access to the Node binary it installs, or put the port on
-# your tailnet (see docs/operations.md). It will tell you which of those are still outstanding.
+# It copies the build into a release of its own under ~/Library/Application Support/imsg-web, makes
+# a self-signed certificate the first time, asks for a password the first time, and starts the
+# server on https://<this Mac>.local:<port> (https://localhost with --no-lan). --origin names an
+# address that something in front of it — Tailscale Serve — serves. The previous release stays as
+# the way back. --no-start writes everything but does not start it.
 set -eu
 
 [ "$(uname)" = Darwin ] || { echo "This installs a macOS LaunchAgent, so it only runs on a Mac." >&2; exit 1; }
@@ -44,13 +35,13 @@ while [ $# -gt 0 ]; do
     --no-lan) lan="no"; shift ;;
     --label) label="$2"; shift 2 ;;
     --no-start) start="no"; shift ;;
-    -h|--help) sed -n '2,18p' "$0" | sed 's|^# \{0,1\}||'; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0" | sed 's|^# \{0,1\}||'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
 done
 
 project="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-[ -f "$project/dist/main.js" ] || { echo "No build found. Run: npm ci --ignore-scripts && npm run build" >&2; exit 1; }
+[ -f "$project/dist/main.js" ] || { echo "No build found. Run ./scripts/setup.sh, which builds everything and then installs." >&2; exit 1; }
 [ -n "$imsg" ] && [ -x "$imsg" ] || { echo "--imsg must point at a patched imsg binary (see imsg-patches/README.md)." >&2; exit 1; }
 [ -n "$node" ] || { echo "--node must point at an unpacked Node 24 distribution, or its bin/node." >&2; exit 1; }
 # The Mac's Bonjour name, which is what phones on the same Wi-Fi resolve, and the address it serves.
@@ -156,25 +147,27 @@ else
   echo "not started: the agent is written but not loaded (--no-start)."
 fi
 
+# The addresses to open: the Mac's name, and its addresses for devices that do not resolve `.local`.
 echo
-echo "installed:  $release"
-echo "open:       ${lanorigin:-https://localhost:$port}"
-echo "            the first visit from each device warns that the certificate is not trusted;"
-echo "            it is this one, made on this Mac — check it matches, then go on:"
-echo "            $(openssl x509 -in "$tls/cert.pem" -noout -fingerprint -sha256 | sed 's/^.*=//')"
-[ -z "$origin" ] || echo "also:       $origin (once it is served there)"
-echo "sending:    $send"
-echo "logs:       $base/logs/$label.{out,err}.log"
+echo "installed: $release (sending: $send)"
 echo
-echo "Still yours to do, if you have not already:"
-echo "  • Full Disk Access for $runtime/bin/node (System Settings → Privacy & Security)"
+echo "Open:"
+echo "  ${lanorigin:-https://localhost:$port}"
+if [ -n "$lanorigin" ]; then
+  for ip in $(ifconfig | awk '$1 == "inet" && $2 != "127.0.0.1" { print $2 }'); do
+    case "$ip" in 100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) where=" (Tailscale)" ;; *) where="" ;; esac
+    echo "  https://$ip:$port$where"
+  done
+fi
+[ -z "$origin" ] || echo "  $origin (once it is served there)"
+echo "Each device warns once that the certificate is not trusted. It is this one if it shows"
+echo "  $(openssl x509 -in "$tls/cert.pem" -noout -fingerprint -sha256 | sed 's/^.*=//')"
+echo
+echo "If you have not yet:"
+echo "  • Give Full Disk Access to $runtime/bin/node"
+echo "    (System Settings → Privacy & Security → Full Disk Access → +; ⌘⇧G pastes the path),"
+echo "    then restart it:  launchctl kickstart -k gui/$(id -u)/$label"
 if [ -n "$lanorigin" ] && /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null | grep -q enabled; then
-  echo "  • The macOS firewall is on: allow incoming connections for $runtime/bin/node when asked"
+  echo "  • Allow incoming connections for that node when the firewall asks"
 fi
-if [ -n "$origin" ]; then
-  echo "  • Make $origin reach https://127.0.0.1:$port (e.g. tailscale serve --bg https+insecure://127.0.0.1:$port)"
-else
-  echo
-  echo "To open it from outside your network as well, put something in front of it that carries TLS —"
-  echo "Tailscale Serve is the easy one — and install again with --origin https://<that address>."
-fi
+[ -z "$origin" ] || echo "  • Point $origin at it:  tailscale serve --bg https+insecure://127.0.0.1:$port"
