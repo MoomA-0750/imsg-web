@@ -1,4 +1,4 @@
-# Status — 2026-09-16
+# Status — 2026-10-20
 
 ## Where things are
 
@@ -46,10 +46,14 @@ to be decided.
 - **Publishing.** The repository is public as of 2026-09-16: MIT, full history,
   with the real-data record kept but the author's own message counts taken out of
   it. `scripts/setup.sh` is the setup path an outsider follows: it fetches Node,
-  builds the app and the patched imsg, and calls `install.sh`. On the M1 it ran
-  from a fresh copy against a scratch base up to the password step (2.5 minutes
-  the first time, 28 seconds again), but nobody has yet installed from a clean
-  machine, and that is the thing most likely to have a gap in it.
+  builds the app and the patched imsg, and calls `install.sh`, which issues a
+  temporary password; the first sign-in asks for the owner's own. On 2026-10-20
+  the M1's install was set aside and replaced by one `setup.sh` run from a fresh
+  copy: it went through unattended, and the owner's iPhone signed in with the
+  temporary password, chose a password and reached a conversation. Full Disk
+  Access carried over because the Node path was unchanged; a machine that has
+  never had it still needs the one manual grant, and nobody has yet installed
+  on such a machine.
 
 ## Settled, and not to be re-opened without new grounds
 

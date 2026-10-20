@@ -4,8 +4,8 @@
 #   ./scripts/setup.sh [--no-lan] [--origin https://<host>] [--port 8787] [--send live|dry-run|off]
 #
 # It fetches Node 24 (checked against nodejs.org's checksums), builds this app, builds imsg with the
-# patches in imsg-patches/, and hands all of it to install.sh, which asks for a password and starts
-# the server. The options are install.sh's. What it downloads and builds stays in .setup/ in this
+# patches in imsg-patches/, and hands all of it to install.sh, which issues a temporary password and
+# starts the server. The options are install.sh's. What it downloads and builds stays in .setup/ in this
 # checkout, so running it again after `git pull` reuses that and installs only what changed.
 set -eu
 
