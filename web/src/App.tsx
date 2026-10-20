@@ -152,8 +152,8 @@ function clock(seconds: number): string {
 
 /**
  * A voice message, played where it sits. The bar is the length of the recording and fills as it
- * plays; pressing anywhere along it moves to that point, which is the whole reason to draw a bar
- * rather than a spinner. Only one plays at a time — the browser is told to pause the others.
+ * plays, with a knob at the play position that says it can be moved: press anywhere along it to go
+ * there, or hold and slide. The arrow keys step it too. Only one plays at a time — the browser is told to pause the others.
  *
  * The file itself is fetched only when it is played, so a conversation full of voice messages costs
  * nothing to scroll past. Audio the Mac cannot convert never arrives, and the bubble says so.
@@ -173,13 +173,17 @@ function AudioPlayer({ src, onFail, compact, label = '録音' }: { src: string; 
       void el.play().catch(() => onFail());
     } else el.pause();
   };
-  /** Where along the bar it was pressed, as a share of the whole. */
-  const seek = (event: PointerEvent<HTMLDivElement>) => {
+  const sliding = useRef(false);
+  const moveTo = (seconds: number) => {
     const el = sound.current;
     if (!el || !Number.isFinite(length) || length <= 0) return;
-    const box = event.currentTarget.getBoundingClientRect();
-    el.currentTime = Math.min(length, Math.max(0, (event.clientX - box.left) / box.width * length));
+    el.currentTime = Math.min(length, Math.max(0, seconds));
     setAt(el.currentTime);
+  };
+  /** Where along the bar the finger or pointer is, as a share of the whole. */
+  const seek = (event: PointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    moveTo((event.clientX - box.left) / box.width * length);
   };
 
   const time = <span className="voice-time text-muted text-[.75rem] tabular-nums">{clock(playing || at > 0 ? at : length)}</span>;
@@ -187,15 +191,28 @@ function AudioPlayer({ src, onFail, compact, label = '録音' }: { src: string; 
     <button type="button" className="shrink-0 grid place-items-center w-9 h-9 p-0 rounded-full border-0 bg-accent text-white"
       onClick={toggle} aria-label={`${label}を${playing ? '一時停止' : '再生'}`}>{playing ? <Pause24Filled /> : <Play24Filled />}</button>
     {compact ? time : <div className="grow min-w-0">
-      <div className="voice-bar h-1.5 rounded-full bg-accent-soft cursor-pointer" onPointerDown={seek}>
-        <div className="h-full rounded-full bg-accent" style={{ width: `${done * 100}%` }} />
+      {/* The hit area is taller than the bar it draws, and claims the drag (touch-none, and kept from
+          the conversation's own drag-to-reveal-times) so sliding along it seeks rather than scrolls. */}
+      <div className="voice-bar relative py-2 cursor-pointer touch-none" role="slider" tabIndex={0} aria-label={`${label}の再生位置`}
+        aria-valuemin={0} aria-valuemax={Number.isFinite(length) ? Math.round(length) : 0} aria-valuenow={Math.round(at)} aria-valuetext={clock(at)}
+        onPointerDown={event => { event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); sliding.current = true; seek(event); }}
+        onPointerMove={event => { if (sliding.current) seek(event); }}
+        onPointerUp={() => { sliding.current = false; }} onPointerCancel={() => { sliding.current = false; }}
+        onKeyDown={event => {
+          const step = event.key === 'ArrowRight' ? 5 : event.key === 'ArrowLeft' ? -5 : 0;
+          if (step) { event.preventDefault(); moveTo(at + step); }
+        }}>
+        <div className="h-1.5 rounded-full bg-accent-soft">
+          <div className="h-full rounded-full bg-accent" style={{ width: `${done * 100}%` }} />
+        </div>
+        <div className="voice-knob absolute top-1/2 w-3.5 h-3.5 -ml-[7px] -mt-[7px] rounded-full bg-accent shadow-[0_1px_3px_#0004]" style={{ left: `${done * 100}%` }} />
       </div>
-      <span className="block mt-1">{time}</span>
+      <span className="block">{time}</span>
     </div>}
     {/* preload="metadata" so the bar has a length before anyone presses play, but no audio is fetched. */}
     <audio ref={sound} src={src} preload="metadata"
       onLoadedMetadata={event => setLength(event.currentTarget.duration)}
-      onTimeUpdate={event => setAt(event.currentTarget.currentTime)}
+      onTimeUpdate={event => { if (!sliding.current) setAt(event.currentTarget.currentTime); }}
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
       onEnded={() => { setPlaying(false); setAt(0); }} onError={onFail} />
   </div>;

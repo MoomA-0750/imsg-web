@@ -796,6 +796,19 @@ test('plays a voice message where it sits, and says so when there is nothing to 
   await page.mouse.down();
   await page.mouse.up();
   await expect.poll(() => sound.evaluate(el => (el as HTMLAudioElement).currentTime)).toBeGreaterThan(1);
+  // Holding and sliding moves it too, and the knob follows.
+  const position = () => sound.evaluate(el => (el as HTMLAudioElement).currentTime);
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.1, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  expect(await position()).toBeLessThan(0.5);
+  const knob = (await voice.locator('.voice-knob').boundingBox())!;
+  expect(knob.x + knob.width / 2).toBeLessThan(box.x + box.width * 0.2);
+  // And it is a slider to a keyboard and a screen reader.
+  await bar.focus(); await page.keyboard.press('ArrowRight');
+  expect(await position()).toBeGreaterThan(1);
+  await expect(bar).toHaveAttribute('role', 'slider');
 
   // The recording that is not on this Mac has no player, and says what it is instead.
   await expect(page.locator('.messages .attachment', { hasText: '音声' })).toHaveCount(1);
