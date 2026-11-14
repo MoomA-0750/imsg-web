@@ -28,7 +28,7 @@ const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
 const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-caption';
 const CENTRED = 'min-h-screen grid place-items-center p-5';
-const FIELD = 'w-full rounded-field border border-line-strong p-3 bg-surface text-inherit';
+const FIELD = 'w-full rounded-field border border-line-strong p-3 bg-input text-inherit';
 /** Below `pane:` the two panes stack, one sliding over the other; from there on they sit side by side. */
 const HEADING = 'flex items-center gap-3 min-h-[64px] px-4 py-3 border-b border-line';
 const PANE_TITLE = 'my-1 text-heading leading-tight [overflow-wrap:anywhere]';
@@ -368,7 +368,7 @@ function LinkBubble({ link, host, shape, tone, quote, tail }: { link: LinkView; 
  */
 function ReplyQuote({ reply, onGo }: { reply: ReplyView; onGo: (messageId: string) => void }) {
   return <button type="button" onClick={() => onGo(reply.messageId)}
-    className="reply-quote block w-full m-0 mb-1 last:mb-0 px-2 py-1 border-0 border-l-3 border-line rounded-none rounded-r-lg bg-surface-2 text-muted text-[.85em] text-left whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-accent-soft"
+    className="reply-quote block w-full m-0 mb-1 last:mb-0 px-2 py-1 border-0 rounded-md bg-surface-2 text-muted text-[.85em] text-left whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-accent-soft"
     aria-label={`返信元へ移動: ${reply.sender ?? '自分'}`}>
     <span className="block font-strong text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}
   </button>;
@@ -450,7 +450,7 @@ function RecordingStrip({ since, level }: { since: number; level: number }) {
     return () => clearInterval(timer);
   }, []);
   const seconds = Math.max(0, (now - since) / 1000);
-  return <div className="recording grow min-w-0 h-11 flex items-center gap-3 px-4 rounded-composer border border-line-strong bg-surface" role="status" aria-label="録音中">
+  return <div className="recording grow min-w-0 h-11 flex items-center gap-3 px-4 rounded-composer border border-line-strong bg-input" role="status" aria-label="録音中">
     <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-danger animate-pulse" aria-hidden="true" />
     <span className="recording-time shrink-0 text-small tabular-nums">{clock(seconds)}</span>
     <span className="grow min-w-0 h-1.5 rounded-full bg-accent-soft overflow-hidden" aria-hidden="true">
@@ -578,7 +578,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
         aria-label={listening ? '録音をやめる' : '添付ファイルを追加'}>{listening ? <Dismiss12Regular /> : <Add24Regular />}</button>
       {listening
         ? <RecordingStrip since={recording.since} level={recording.level} />
-        : <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-composer border border-line-strong px-4 py-2 leading-normal bg-surface text-inherit"
+        : <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-composer border border-line-strong px-4 py-2 leading-normal bg-input text-inherit"
             value={text} onChange={event => setText(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
             placeholder={chat.service === 'iMessage' ? 'iMessage' : 'SMS'} rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />}

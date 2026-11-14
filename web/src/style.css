@@ -79,6 +79,8 @@
  * markup, where it can be changed one element at a time.
  */
 @layer components {
+  /* @apply では class 名が付かないので、kasane の角の形（corner-shape）をここで付ける */
+  .btn, .btn-secondary { corner-shape: var(--corner-shape); }
   .btn { @apply rounded-control border-0 px-4 py-3 font-strong text-on-fill bg-fill enabled:hover:bg-accent-strong; }
   .btn-secondary { @apply rounded-control border border-line-strong px-4 py-3 font-strong text-fg bg-surface enabled:hover:bg-hover; }
   .btn-compact { @apply px-3 py-2 text-note; }
