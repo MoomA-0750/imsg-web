@@ -11,6 +11,8 @@
 
 /* imsg-web にしかない意味の色と形。kasane の名前から作る */
 :root {
+  /* 種の色。kasane の personal はこの色から地・面・字・線・影の色みと主の色を導く（元の imsg-web の青） */
+  --seed: #1f5fa8;
   /* 送った吹き出しは、iMessage なら青、ほかなら緑（メッセージ App と同じ） */
   /* 不透明に混ぜる（淡い地の色は暗い表示で灰色に寄り、受け取った吹き出しと見分けにくい） */
   --imsg-sent-imessage: color-mix(in srgb, var(--accent) 22%, var(--surface));

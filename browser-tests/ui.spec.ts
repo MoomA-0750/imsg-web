@@ -924,7 +924,9 @@ test('on a phone the browser’s back leaves a conversation, and the page behind
   await page.setViewportSize({ width: 390, height: 800 });
   await login(page);
   const body = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
-  expect(await body()).toBe('rgb(255, 255, 255)');
+  // The white is the theme's surface (kasane tints it from the seed colour), not a fixed #fff.
+  const surface = await page.evaluate(() => { const p = document.createElement('i'); p.style.background = 'var(--surface)'; document.body.append(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; });
+  expect(await body()).toBe(surface);
   // The list is the page itself, so Safari can draw it on under its toolbar; its heading stays put.
   await expect(page.locator('.chat-area')).toHaveCSS('overflow-y', 'visible');
   await page.evaluate(() => { const tall = document.createElement('li'); tall.style.height = '3000px'; document.querySelector('.chat-list')!.append(tall); window.scrollTo(0, 500); });
