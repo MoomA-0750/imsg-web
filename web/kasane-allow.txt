@@ -1,0 +1,6 @@
+# kasane の検査（kasane/scripts/lint.mjs）で許すもの。理由を書く
+color-literal  src/style.css  --imsg-media-scrim   # 写真の上の幕は、明るい・暗いの表示に関わらず黒。kasane に名前が無い（kasane の docs/proposals.md）
+color-literal  src/style.css  --imsg-on-media   # 写真の上の字・ボタンは白。同上
+motion-literal  src/style.css  missing-note   # 「縮小版しか無い」の知らせが、ぼやけて出て、読めるだけ留まり、消えるまでの一続きの時間。出入りの時間（--motion-*）ではない
+motion-literal  src/style.css  marked   # 返信の元へ移ったときの印を、スクロールが止まってから見えるだけ残す時間
+shadow-literal  src/style.css  0 0 0 3px   # 返信の元の吹き出しを囲む輪（影ではなく印）。色は --accent
