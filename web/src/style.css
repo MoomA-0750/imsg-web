@@ -12,8 +12,9 @@
 /* imsg-web にしかない意味の色と形。kasane の名前から作る */
 :root {
   /* 送った吹き出しは、iMessage なら青、ほかなら緑（メッセージ App と同じ） */
-  --imsg-sent-imessage: var(--accent-soft);
-  --imsg-sent-other: var(--success-soft);
+  /* 不透明に混ぜる（淡い地の色は暗い表示で灰色に寄り、受け取った吹き出しと見分けにくい） */
+  --imsg-sent-imessage: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  --imsg-sent-other: color-mix(in srgb, var(--success) 22%, var(--surface));
   /* 会話の後ろの、ごく淡い地の流れ */
   --imsg-thread-from: var(--surface);
   --imsg-thread-to: var(--surface-2);
@@ -44,11 +45,12 @@
   --breakpoint-pane: 600px;
 }
 
-/* 吹き出しの角（上左・上右・下右・下左の順）。自分の吹き出しは右下がしっぽ、続く吹き出しは右側が小さな角 */
-@utility rounded-bubble-me { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble); corner-shape: var(--corner-shape); }
-@utility rounded-bubble-me-joined { border-radius: var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble-tail) var(--imsg-bubble); corner-shape: var(--corner-shape); }
-@utility rounded-bubble-them { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); corner-shape: var(--corner-shape); }
-@utility rounded-bubble-them-joined { border-radius: var(--imsg-bubble-tail) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); corner-shape: var(--corner-shape); }
+/* 吹き出しの角（上左・上右・下右・下左の順）。自分の吹き出しは右下がしっぽ、続く吹き出しは右側が小さな角。
+   1行ならピルになる形なので、ピルと同じく corner-shape は付けない（squircle だと角が浅く見える） */
+@utility rounded-bubble-me { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble); }
+@utility rounded-bubble-me-joined { border-radius: var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble-tail) var(--imsg-bubble); }
+@utility rounded-bubble-them { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); }
+@utility rounded-bubble-them-joined { border-radius: var(--imsg-bubble-tail) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); }
 /* 入力欄の高さの半分の角（入力欄・録音中の帯は、1行のときピルになる） */
 @utility rounded-composer { border-radius: calc(var(--tap) / 2); }
 
