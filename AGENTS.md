@@ -88,4 +88,4 @@ asks after seeing what will be published.
 
 ## UI
 
-The web UI (`web/`) follows kasane's rules: `~/Documents/git-cloned/kasane/DESIGN.md` (on the tailnet: https://general-console.zonkey-musical.ts.net:10455/DESIGN.md). Write colours, type, spacing and radii with kasane's names (`bg-surface`, `text-muted`, `text-caption`, `rounded-card`); a colour only this app has is an `--imsg-*` name made from kasane's. Check with `node scripts/lint.mjs ~/Documents/git-cloned/imsg-web/web` in the kasane folder.
+The web UI (`web/`) follows kasane's rules: `~/Documents/git-cloned/kasane/DESIGN.md` (on the tailnet: https://general-console.zonkey-musical.ts.net:10455/DESIGN.md). Write colours, type, spacing and radii with kasane's names (`bg-surface`, `text-muted`, `text-caption`, `rounded-card`); a colour only this app has is an `--imsg-*` name made from kasane's. Use kasane's components (`k-btn`, `k-field`, `k-icon-btn`, `k-card`, `k-note`, `k-empty`, `k-spinner`, `k-snackbar`, …, listed in DESIGN.md) before writing one of your own. Check with `node scripts/lint.mjs ~/Documents/git-cloned/imsg-web/web` in the kasane folder.
