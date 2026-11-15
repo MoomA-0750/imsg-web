@@ -126,7 +126,7 @@ function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: Attachm
         aria-label={item.preview ? '元の画像があるか確かめる' : '画像を大きく表示'}
         onClick={() => (item.preview ? setAsked(n => n + 1) : onOpen(item))}>
         {image}
-        {asked > 0 && <span key={asked} className="missing-note absolute inset-0 grid place-items-center p-4 bg-imsg-scrim text-imsg-on-media font-bold text-center text-small [overflow-wrap:anywhere]"
+        {asked > 0 && <span key={asked} className="missing-note absolute inset-0 grid place-items-center p-4 bg-scrim text-on-media font-bold text-center text-small [overflow-wrap:anywhere]"
           onAnimationEnd={() => setAsked(0)}>元の画像はこのMacにありません</span>}
       </button>
       {tail && <div className={`${PAD} pt-2`}>{tail}</div>}
@@ -325,7 +325,7 @@ function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void
 
   const zoomed = view.scale > 1;
   return <div ref={frame} className="lightbox fixed inset-0 z-50 flex items-center justify-center p-4 touch-none overflow-hidden"
-    style={{ backgroundColor: `rgb(from var(--imsg-media-scrim) r g b / ${Math.max(0.35, 0.85 - pulled / 500)})` }}
+    style={{ backgroundColor: `rgb(from var(--scrim) r g b / ${Math.max(0.35, 0.85 - pulled / 500)})` }}
     role="dialog" aria-modal="true" aria-label="画像"
     onClick={() => { if (!gesture.current.moved && !gesture.current.onPicture) onClose(); }}
     onDoubleClick={event => zoom(current => (current > 1 ? 1 : 2.5), event.clientX, event.clientY)}
@@ -337,7 +337,7 @@ function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void
         opacity: Math.max(0, 1 - pulled / 400),
         transition: from.current === undefined && pinch.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
       src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} />
-    <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-imsg-media-control text-imsg-on-media" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
+    <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-media-control text-on-media" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
   </div>;
 }
 

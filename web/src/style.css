@@ -24,9 +24,6 @@
   --imsg-notice: var(--warn-soft);
   --imsg-notice-ink: var(--warn);
   --imsg-notice-line: color-mix(in srgb, var(--warn) 35%, transparent);
-  /* 写真の上に重ねる幕と字。写真は明るい・暗いの表示に関わらず暗い幕に置く（kasane に名前が無い。docs/proposals.md） */
-  --imsg-media-scrim: rgb(0 0 0);
-  --imsg-on-media: rgb(255 255 255);
   /* 吹き出しの角: 1行の高さの半分（1行の吹き出しがピルになる）と、話し手の側の小さな角（しっぽ） */
   --imsg-bubble: calc(var(--radius-lg) + var(--space-2));
   --imsg-bubble-tail: calc(var(--radius-min) * 2);
@@ -40,9 +37,6 @@
   --color-imsg-notice: var(--imsg-notice);
   --color-imsg-notice-ink: var(--imsg-notice-ink);
   --color-imsg-notice-line: var(--imsg-notice-line);
-  --color-imsg-scrim: color-mix(in srgb, var(--imsg-media-scrim) 60%, transparent);
-  --color-imsg-on-media: var(--imsg-on-media);
-  --color-imsg-media-control: color-mix(in srgb, var(--imsg-on-media) 15%, transparent);
   /* Below this the two panes stack and slide over one another instead of sitting side by side. */
   --breakpoint-pane: 600px;
 }
@@ -101,7 +95,7 @@
   100% { opacity: 0; filter: blur(0); }
 }
 @layer components {
-  .missing-note { animation: missing-note 2.35s ease-out forwards; }
+  .missing-note { animation: missing-note var(--motion-linger) ease-out forwards; }
 }
 @media (prefers-reduced-motion: reduce) {
   @keyframes missing-note {
@@ -120,5 +114,5 @@
   100%    { box-shadow: 0 0 0 3px transparent; }
 }
 @layer components {
-  .msg.marked .bubble { animation: marked 2s ease-out; }
+  .msg.marked .bubble { animation: marked var(--motion-linger) ease-out; }
 }
