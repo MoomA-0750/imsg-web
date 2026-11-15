@@ -35,7 +35,7 @@ const PANE_TITLE = 'my-1 text-heading leading-tight [overflow-wrap:anywhere]';
 const TRIM = 'text-muted text-[.75em]';
 const STAMP = 'shrink-0 text-muted text-caption';
 /** The width at which the two panes sit side by side: `--breakpoint-pane` in style.css. */
-const SIDE_BY_SIDE = '(width >= 600px)';
+const SIDE_BY_SIDE = '(width >= 620px)';
 const PANE = 'flex flex-col min-w-0 min-h-0 overflow-hidden absolute inset-0 transition-transform duration-(--motion-base) motion-reduce:transition-none pane:static pane:visible pane:translate-x-0';
 
 /** `mustSetPassword`: signed in with a password the owner did not choose, so one is asked for first. */

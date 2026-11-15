@@ -38,7 +38,7 @@
   --color-imsg-notice-ink: var(--imsg-notice-ink);
   --color-imsg-notice-line: var(--imsg-notice-line);
   /* Below this the two panes stack and slide over one another instead of sitting side by side. */
-  --breakpoint-pane: 600px;
+  --breakpoint-pane: 620px;
 }
 
 /* 吹き出しの角（上左・上右・下右・下左の順）。自分の吹き出しは右下がしっぽ、続く吹き出しは右側が小さな角。
@@ -85,7 +85,7 @@
   100% { opacity: 0; filter: blur(0); }
 }
 @layer components {
-  .missing-note { animation: missing-note var(--motion-linger) ease-out forwards; }
+  .missing-note { animation: missing-note var(--motion-linger) var(--ease-out) forwards; }
 }
 @media (prefers-reduced-motion: reduce) {
   @keyframes missing-note {
@@ -104,5 +104,5 @@
   100%    { box-shadow: 0 0 0 3px transparent; }
 }
 @layer components {
-  .msg.marked .bubble { animation: marked var(--motion-linger) ease-out; }
+  .msg.marked .bubble { animation: marked var(--motion-linger) var(--ease-out); }
 }
