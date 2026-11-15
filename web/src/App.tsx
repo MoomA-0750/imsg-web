@@ -589,7 +589,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
       {listening
         ? <button key="stop" type="button" className={`${ROUND} border-0 bg-danger-fill text-on-danger`} onClick={() => void finishRecording(true)} aria-label="録音を終える"><Stop24Filled /></button>
         : ready
-          ? <button key="send" type="submit" className={`${ROUND} border-0 bg-fill text-on-fill enabled:hover:bg-accent-strong`} disabled={busy} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
+          ? <button key="send" type="submit" className={`${ROUND} border-0 bg-fill text-on-fill enabled:hover:bg-fill-hover`} disabled={busy} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
           : <button key="record" type="button" className={`${ROUND} border border-line bg-surface-2 text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => void startRecording()} disabled={busy} aria-label="音声を録音"><Mic24Filled /></button>}
     </div>
   </form>;
