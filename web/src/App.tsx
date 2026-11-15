@@ -28,7 +28,7 @@ const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
 const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-caption';
 const CENTRED = 'min-h-screen grid place-items-center p-5';
-const FIELD = 'w-full rounded-field border border-line-strong p-3 bg-input text-inherit';
+const FIELD = 'k-field';
 /** Below `pane:` the two panes stack, one sliding over the other; from there on they sit side by side. */
 const HEADING = 'flex items-center gap-3 min-h-[64px] px-4 py-3 border-b border-line';
 const PANE_TITLE = 'my-1 text-heading leading-tight [overflow-wrap:anywhere]';
@@ -1023,20 +1023,20 @@ export function App() {
   }
 
   if (checking) return <main className={CENTRED}><p role="status">セッションを確認しています…</p></main>;
-  if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-4 border border-line rounded-card bg-surface shadow-lg" aria-labelledby="login-title">
+  if (!session) return <main className={CENTRED}><section className="login-card k-card w-[min(100%,430px)]" aria-labelledby="login-title">
     {recovering ? <Recovery onBack={() => setRecovering(false)} /> : <>
     <div className="text-accent font-bold tracking-[.04em]">imsg Web</div>
     <h1 id="login-title" className="mt-3 mb-1 text-display leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
     <form className="grid gap-3 mt-6" onSubmit={login}>
-      <label className="font-bold" htmlFor="owner-key">パスワード</label>
-      <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus />
-      <button className="btn" disabled={loginBusy}>{loginBusy ? '確認中…' : 'ログイン'}</button>
-      {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}
+      <label className="k-label m-0" htmlFor="owner-key">パスワード</label>
+      <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus aria-invalid={loginError !== '' || undefined} />
+      <button className="k-btn k-btn--primary" disabled={loginBusy} aria-busy={loginBusy}>{loginBusy ? '確認中…' : 'ログイン'}</button>
+      {loginError && <p className="k-help k-help--error m-0" role="alert">{loginError}</p>}
     </form>
     <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-label underline underline-offset-2 hover:text-accent" onClick={() => setRecovering(true)}>パスワードを忘れた場合</button>
     </>}
   </section></main>;
-  if (session.mustSetPassword) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-4 border border-line rounded-card bg-surface shadow-lg" aria-labelledby="choose-title">
+  if (session.mustSetPassword) return <main className={CENTRED}><section className="login-card k-card w-[min(100%,430px)]" aria-labelledby="choose-title">
     <ChoosePassword csrf={session.csrfToken} onDone={setSession} onLost={loseSession} />
   </section></main>;
 
@@ -1236,13 +1236,13 @@ function ChoosePassword({ csrf, onDone, onLost }: { csrf: string; onDone: (sessi
     <h1 id="choose-title" className="mt-3 mb-1 text-display leading-tight [overflow-wrap:anywhere]">パスワードを決める</h1>
     <p className="m-0 mt-2 text-muted text-small">仮のパスワードでログインしました。これから使うパスワードを決めてください。仮のパスワードは使えなくなります。</p>
     <form className="grid gap-3 mt-6" onSubmit={submit}>
-      <label className="font-bold" htmlFor="new-password">新しいパスワード</label>
-      <input id="new-password" className={FIELD} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} required autoFocus />
-      <label className="font-bold" htmlFor="new-password-again">もう一度</label>
-      <input id="new-password-again" className={FIELD} type="password" autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} required />
-      <p className="m-0 text-muted text-note">{PASSWORD_RULE}</p>
-      <button className="btn" disabled={busy}>{busy ? '設定中…' : '決定'}</button>
-      {error && <p className="m-0 mt-1 text-danger" role="alert">{error}</p>}
+      <label className="k-label m-0" htmlFor="new-password">新しいパスワード</label>
+      <input id="new-password" className={FIELD} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} required autoFocus aria-invalid={error !== '' || undefined} />
+      <label className="k-label m-0" htmlFor="new-password-again">もう一度</label>
+      <input id="new-password-again" className={FIELD} type="password" autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} required aria-invalid={error !== '' || undefined} />
+      <p className="k-help m-0">{PASSWORD_RULE}</p>
+      <button className="k-btn k-btn--primary" disabled={busy} aria-busy={busy}>{busy ? '設定中…' : '決定'}</button>
+      {error && <p className="k-help k-help--error m-0" role="alert">{error}</p>}
     </form>
   </>;
 }
@@ -1326,7 +1326,7 @@ function DayBreak({ at, day }: { at: Date; day: boolean }) {
 }
 
 function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }
-function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-3 bg-danger-soft text-danger text-label" role="alert"><span>{text}</span><button className="btn-secondary btn-compact" onClick={() => void retry()}>再試行</button></div>; }
+function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-3 bg-danger-soft text-danger text-label" role="alert"><span>{text}</span><button className="k-btn shrink-0 whitespace-nowrap" onClick={() => void retry()}>再試行</button></div>; }
 /**
  * Sits above the oldest message, so it is out of sight until the owner scrolls up to it —
  * by which point scrolling has usually already asked for the next page. The button is the
@@ -1336,6 +1336,6 @@ function Older({ pending, more, ceiling, onMore }: { pending: boolean; more: boo
   return <div className={LIST_NOTE}>{
     pending ? <span role="status">以前のメッセージを読み込んでいます…</span>
     : ceiling ? <span>表示上限の{MAX}件です</span>
-    : more ? <button className="btn-secondary btn-compact" onClick={onMore}>以前のメッセージを読み込む</button>
+    : more ? <button className="k-btn" onClick={onMore}>以前のメッセージを読み込む</button>
     : <span>これより前のメッセージはありません</span>}</div>;
 }
