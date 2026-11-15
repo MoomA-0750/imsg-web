@@ -1,5 +1,5 @@
 import { CSSProperties, FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Add24Regular, Alert24Filled, Alert24Regular, AlertOff24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
+import { Add24Regular, Alert24Filled, Alert24Regular, AlertOff24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Dismiss24Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 import { RECORD_MAX_MS, RecorderError, VoiceRecorder } from './recorder';
 import { useNotifier } from './notifications';
@@ -189,7 +189,7 @@ function AudioPlayer({ src, onFail, compact, label = '録音' }: { src: string; 
 
   const time = <span className="voice-time text-muted text-caption tabular-nums">{clock(playing || at > 0 ? at : length)}</span>;
   return <div className={`voice flex items-center gap-3 ${compact ? '' : 'min-w-[12rem] max-w-[16rem]'}`}>
-    <button type="button" className="shrink-0 grid place-items-center w-9 h-9 p-0 rounded-full border-0 bg-fill text-on-fill"
+    <button type="button" className="k-icon-btn w-(--tap-sm) h-(--tap-sm) bg-fill text-on-fill hover:bg-fill-hover"
       onClick={toggle} aria-label={`${label}を${playing ? '一時停止' : '再生'}`}>{playing ? <Pause24Filled /> : <Play24Filled />}</button>
     {compact ? time : <div className="grow min-w-0">
       {/* The hit area is taller than the bar it draws, and claims the drag (touch-none, and kept from
@@ -337,7 +337,7 @@ function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void
         opacity: Math.max(0, 1 - pulled / 400),
         transition: from.current === undefined && pinch.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
       src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} />
-    <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-media-control text-on-media" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
+    <button type="button" className="k-icon-btn absolute top-4 right-4 bg-media-control text-on-media" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss24Regular /></button>
   </div>;
 }
 
@@ -394,7 +394,7 @@ const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)}
 const FILES_MAX = 10;
 const NOTICE_COLOUR = { ok: 'text-accent-strong', warn: 'text-warn', error: 'text-danger' } as const;
 /** The composer's two circular buttons, sized to sit level with the field beside them. */
-const ROUND = 'shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full';
+const ROUND = 'k-icon-btn';
 
 /** Something waiting to be sent: a file the owner picked, or a recording they just made here. */
 type Chosen = { file: File; voice?: true; seconds?: number };
@@ -575,7 +575,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
           things one could mean there are keep it and drop it, and both are within reach. */}
       <button type="button" className={`${ROUND} border border-line bg-surface-2 ${listening ? 'text-danger' : 'text-accent-strong'} enabled:hover:bg-accent-soft`}
         onClick={() => (listening ? void finishRecording(false) : picker.current?.click())} disabled={busy}
-        aria-label={listening ? '録音をやめる' : '添付ファイルを追加'}>{listening ? <Dismiss12Regular /> : <Add24Regular />}</button>
+        aria-label={listening ? '録音をやめる' : '添付ファイルを追加'}>{listening ? <Dismiss24Regular /> : <Add24Regular />}</button>
       {listening
         ? <RecordingStrip since={recording.since} level={recording.level} />
         : <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-composer border border-line-strong px-4 py-2 leading-normal bg-input text-inherit"
@@ -1070,7 +1070,7 @@ export function App() {
         <div className={`${HEADING} ${paged ? 'sticky top-0 z-10 bg-surface' : ''}`}>
           <h1 className={`${PANE_TITLE} flex-1 min-w-0`}>メッセージ</h1>
           {notifier.status !== 'unsupported' && <button type="button" disabled={notifier.status === 'denied'}
-            className={`shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-transparent ${notifier.status === 'on' ? 'text-accent' : 'text-muted'} enabled:hover:bg-accent-soft`}
+            className="k-icon-btn"
             onClick={() => notifier.toggle(chatsNow.current)}
             title={notifier.status === 'denied' ? 'ブラウザーの設定で通知がブロックされています' : undefined}
             aria-label={notifier.status === 'on' ? '通知オン' : notifier.status === 'denied' ? '通知はブロックされています' : '通知オフ'}
@@ -1098,7 +1098,7 @@ export function App() {
       </aside>
       <main ref={detail} className={`detail-pane ${PANE} max-pane:fixed max-pane:bottom-auto max-pane:h-dvh max-pane:z-20 bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
-          <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
+          <button className="back k-icon-btn text-accent-strong pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
@@ -1188,7 +1188,7 @@ function Command({ title, command, effect }: { title: string; command: string; e
     <div className="relative">
       <pre className="m-0 p-3 pr-12 rounded-lg bg-surface-2 border border-line text-[.78em] whitespace-pre-wrap [overflow-wrap:anywhere] text-fg">{command}</pre>
       <button type="button" onClick={() => void copy()} aria-label={`${title}のコマンドをコピー`}
-        className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-8 h-8 p-0 rounded-lg border-0 bg-transparent text-muted hover:text-accent-strong hover:bg-surface">
+        className="k-icon-btn absolute right-1 top-1/2 -translate-y-1/2">
         {state === 'copied' ? <Checkmark24Regular /> : <Copy24Regular />}
       </button>
       <span className="sr-only" role="status">{state === 'copied' ? 'コピーしました' : ''}</span>
@@ -1251,7 +1251,7 @@ function Recovery({ onBack }: { onBack: () => void }) {
   return <div className="grid gap-4 text-label text-muted">
     <div className="flex items-center gap-3">
       <button type="button" onClick={onBack} aria-label="ログイン画面へ戻る"
-        className="shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full text-accent-strong bg-accent-soft"><ArrowLeft24Regular /></button>
+        className="k-icon-btn text-accent-strong"><ArrowLeft24Regular /></button>
       <h1 className="m-0 text-heading leading-tight text-fg">パスワードを忘れた場合</h1>
     </div>
     <p className="m-0">下のコマンドを、Mac本体のターミナルで実行してください（SSH経由では拒否されます）。実行すると全端末でログアウトされます。</p>
