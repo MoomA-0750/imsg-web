@@ -335,7 +335,7 @@ function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void
     <img ref={picture} className={`max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] object-contain ${zoomed ? 'cursor-grab' : ''}`}
       style={{ transform: `translate(${view.x}px, ${view.y + pulled}px) scale(${view.scale})`,
         opacity: Math.max(0, 1 - pulled / 400),
-        transition: from.current === undefined && pinch.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
+        transition: from.current === undefined && pinch.current === undefined ? 'transform var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard)' : 'none' }}
       src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} />
     <button type="button" className="k-icon-btn absolute top-4 right-4 bg-media-control text-on-media" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss24Regular /></button>
   </div>;
@@ -392,7 +392,7 @@ const MiB = 1024 * 1024;
 const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const FILES_MAX = 10;
-const NOTICE_COLOUR = { ok: 'text-accent-strong', warn: 'text-warn', error: 'text-danger' } as const;
+const NOTICE_KIND = { ok: '', warn: 'k-note--warn', error: 'k-note--danger' } as const;
 /** The composer's two circular buttons, sized to sit level with the field beside them. */
 const ROUND = 'k-icon-btn';
 
@@ -451,7 +451,7 @@ function RecordingStrip({ since, level }: { since: number; level: number }) {
   }, []);
   const seconds = Math.max(0, (now - since) / 1000);
   return <div className="recording grow min-w-0 h-11 flex items-center gap-3 px-4 rounded-composer border border-line-strong bg-input" role="status" aria-label="録音中">
-    <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-danger animate-pulse" aria-hidden="true" />
+    <span className="k-dot k-dot--danger imsg-live" aria-hidden="true" />
     <span className="recording-time shrink-0 text-small tabular-nums">{clock(seconds)}</span>
     <span className="grow min-w-0 h-1.5 rounded-full bg-accent-soft overflow-hidden" aria-hidden="true">
       <span className="block h-full rounded-full bg-accent transition-[width] duration-(--motion-fast)" style={{ width: `${Math.min(100, Math.round(level * 140))}%` }} />
@@ -569,7 +569,7 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
     {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-wrap gap-2">{files.map((chosen, index) =>
       <li key={`${chosen.file.name}:${index}`}><Thumbnail chosen={chosen} disabled={busy} onRemove={() => setFiles(rest => rest.filter((_, at) => at !== index))} /></li>)}</ul>}
-    {notice && <p className={`m-0 text-label ${NOTICE_COLOUR[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
+    {notice && <p className={`k-note m-0 ${NOTICE_KIND[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     <div className="flex items-end gap-2">
       {/* While recording the left button abandons it instead of opening the file picker: the two
           things one could mean there are keep it and drop it, and both are within reach. */}
@@ -637,6 +637,9 @@ export function App() {
   /** A message asked for that had not been read yet; looked for again once more of them arrive. */
   const wanted = useRef<string | null>(null);
   const [jumpNote, setJumpNote] = useState('');
+  /** The last word said about a jump, kept for the snackbar to fade out with. */
+  const jumpWas = useRef('');
+  if (jumpNote) jumpWas.current = jumpNote;
   /** How far the conversation is dragged aside, and where the drag that is doing it began. */
   const [reveal, setReveal] = useState(0);
   /** The picture being looked at on its own, if any. */
@@ -1022,7 +1025,7 @@ export function App() {
     if (el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_EDGE) loadMoreChats();
   }
 
-  if (checking) return <main className={CENTRED}><p role="status">セッションを確認しています…</p></main>;
+  if (checking) return <main className={CENTRED}><p className="m-0 text-muted"><Busy text="セッションを確認しています…" /></p></main>;
   if (!session) return <main className={CENTRED}><section className="login-card k-card w-[min(100%,430px)]" aria-labelledby="login-title">
     {recovering ? <Recovery onBack={() => setRecovering(false)} /> : <>
     <div className="text-accent font-bold tracking-[.04em]">imsg Web</div>
@@ -1080,9 +1083,9 @@ export function App() {
         </div>
         {chatError && <ErrorBar text={chatError} retry={loadChats} />}
         <div className={`chat-area flex flex-col ${paged ? '' : 'flex-1 min-h-0 overflow-auto'}`} ref={chatViewport} onScroll={onChatScroll}>
-          {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
+          {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" busy /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
-              <button className={`flex w-full items-center gap-3 rounded-none px-4 py-4 text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
+              <button className={`flex w-full items-center gap-3 rounded-none px-4 py-4 text-inherit text-left ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent hover:bg-hover'}`} onClick={() => choose(chat)}>
                 <Avatar name={chat.name} faces={chat.faces} />
                 <span className="min-w-0 grow">
                   <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
@@ -1093,7 +1096,7 @@ export function App() {
                 </span>
               </button>
             </li>)}</ul>}
-          {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE} role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
+          {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE}><Busy text="読み込んでいます…" /></p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
         </div>
       </aside>
       <main ref={detail} className={`detail-pane ${PANE} max-pane:fixed max-pane:bottom-auto max-pane:h-dvh max-pane:z-20 bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
@@ -1102,11 +1105,15 @@ export function App() {
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
-        {jumpNote && <p className="jump-note shrink-0 m-0 px-4 py-2 bg-imsg-notice text-imsg-notice-ink text-label text-center border-b border-imsg-notice-line" role="status">{jumpNote}</p>}
+        {/* A word about a jump is kasane's snackbar, over the foot of the conversation. It stays in the page
+            (empty and hidden) so that it can fade out with the words it had, and so the live region is there
+            before anything is said in it. */}
+        <div className="relative flex-1 min-h-0 flex flex-col">
+        <p className={`k-snackbar absolute m-0 ${jumpNote ? 'jump-note' : ''}`} data-open={jumpNote ? '' : undefined} role="status">{jumpNote || jumpWas.current}</p>
         <div className="message-area flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-linear-145 from-imsg-thread-from to-imsg-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
-          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
-            style={{ transform: `translateX(${-reveal}px)`, transition: dragging.current ? 'none' : 'transform .18s ease' }}
+          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" busy /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
+            style={{ transform: `translateX(${-reveal}px)`, transition: dragging.current ? 'none' : 'transform var(--motion-base) var(--ease-standard)' }}
             onPointerDown={onRevealDown} onPointerMove={onRevealMove} onPointerUp={endReveal} onPointerCancel={endReveal}>{messages.flatMap((message, index) => {
             // A run is one person still talking without a break in between: pulled close together,
             // named once at its start, and with a face at its foot. A line drawn across the
@@ -1159,6 +1166,7 @@ export function App() {
             </li>];
           })}</ol>}
         </div>
+        </div>
         {sendMode ? <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />
           : capability === null && capabilityError !== '' ? <ErrorBar text="送信できるか確認できていません。" retry={loadCapabilities} /> : null}
       </>}</main>
@@ -1186,7 +1194,7 @@ function Command({ title, command, effect }: { title: string; command: string; e
   return <div className="grid gap-1.5">
     <strong className="text-fg">{title}</strong>
     <div className="relative">
-      <pre className="m-0 p-3 pr-12 rounded-lg bg-surface-2 border border-line text-[.78em] whitespace-pre-wrap [overflow-wrap:anywhere] text-fg">{command}</pre>
+      <pre className="m-0 p-3 pr-12 rounded-lg bg-code-bg border border-line font-mono text-[.78em] whitespace-pre-wrap [overflow-wrap:anywhere] text-code-fg">{command}</pre>
       <button type="button" onClick={() => void copy()} aria-label={`${title}のコマンドをコピー`}
         className="k-icon-btn absolute right-1 top-1/2 -translate-y-1/2">
         {state === 'copied' ? <Checkmark24Regular /> : <Copy24Regular />}
@@ -1325,7 +1333,14 @@ function DayBreak({ at, day }: { at: Date; day: boolean }) {
   </li>;
 }
 
-function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }
+/** Nothing to show here, or nothing yet: kasane's empty state, with the loading ring while it is still coming. */
+function Empty({ text, busy }: { text: string; busy?: boolean }) {
+  return <div className="empty k-empty flex-1 content-center min-h-[140px]" role="status">{busy && <span className="k-spinner" aria-hidden="true" />}<span>{text}</span></div>;
+}
+/** A line that says something is on its way, with the loading ring in front of it. */
+function Busy({ text }: { text: string }) {
+  return <span className="inline-flex items-center gap-2" role="status"><span className="k-spinner" aria-hidden="true" />{text}</span>;
+}
 function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-3 bg-danger-soft text-danger text-label" role="alert"><span>{text}</span><button className="k-btn shrink-0 whitespace-nowrap" onClick={() => void retry()}>再試行</button></div>; }
 /**
  * Sits above the oldest message, so it is out of sight until the owner scrolls up to it —
@@ -1334,7 +1349,7 @@ function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> })
  */
 function Older({ pending, more, ceiling, onMore }: { pending: boolean; more: boolean; ceiling: boolean; onMore: () => void }) {
   return <div className={LIST_NOTE}>{
-    pending ? <span role="status">以前のメッセージを読み込んでいます…</span>
+    pending ? <Busy text="以前のメッセージを読み込んでいます…" />
     : ceiling ? <span>表示上限の{MAX}件です</span>
     : more ? <button className="k-btn" onClick={onMore}>以前のメッセージを読み込む</button>
     : <span>これより前のメッセージはありません</span>}</div>;

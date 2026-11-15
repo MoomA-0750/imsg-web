@@ -47,6 +47,9 @@
 @utility rounded-bubble-me-joined { border-radius: var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble-tail) var(--imsg-bubble); }
 @utility rounded-bubble-them { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); }
 @utility rounded-bubble-them-joined { border-radius: var(--imsg-bubble-tail) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); }
+/* 録音中の丸の明滅（ずっと続く動き。動きを減らす設定では --motion-loop が 0 で止まる） */
+@keyframes imsg-live { 50% { opacity: .35; } }
+@utility imsg-live { animation: imsg-live var(--motion-loop) var(--ease-standard) infinite; }
 /* 入力欄の高さの半分の角（入力欄・録音中の帯は、1行のときピルになる） */
 @utility rounded-composer { border-radius: calc(var(--tap) / 2); }
 
