@@ -97,7 +97,7 @@
   body {
     margin: 0;
     min-width: 320px;
-    min-height: 100vh;
+    min-height: 100dvh;
     font-family: var(--font-sans);
     /* A family with no bold of its own gets one drawn: better a thickened weight than none at all.
        Slant is still never faked; a fake italic is worse than an upright one. */
