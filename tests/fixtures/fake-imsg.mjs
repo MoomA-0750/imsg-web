@@ -91,5 +91,5 @@ if (mode === 'late-subscribe') {
       clearInterval(keepAlive);
       process.exit(0);
     });
-  }, 80);
+  }, 800);
 }

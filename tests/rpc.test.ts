@@ -8,6 +8,8 @@ import { RpcError } from '../src/server/rpc/errors.js';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { testContext } from './helpers/child-context.js';
 
+// Timeouts below must outlast the fixture child's own startup (about 0.1 s for
+// Node on a slow machine), or a timeout fires before the child reads anything.
 const fixture = resolve(fileURLToPath(new URL('./fixtures/fake-imsg.mjs', import.meta.url)));
 const code = (error: unknown) => error instanceof RpcError ? error.code : undefined;
 const make = (mode: string, options: { timeoutMs?: number; shutdownGraceMs?: number; maxFrameBytes?: number; marker?: string } = {}) => {
@@ -66,7 +68,7 @@ describe('ReadonlyRpcClient subprocess acceptance', () => {
   it('detaches inherited pipes on failed shutdown without signalling grandchildren', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'rpc-inherited-'));
     const marker = join(dir, 'requests');
-    const client = make('inherited-pipe', { marker, timeoutMs: 100, shutdownGraceMs: 40 });
+    const client = make('inherited-pipe', { marker, timeoutMs: 400, shutdownGraceMs: 40 });
     await expect(client.request('status')).rejects.toMatchObject({ code: 'RPC_TIMEOUT' });
     const started = performance.now();
     await expect(client.close()).rejects.toMatchObject({ code: 'SHUTDOWN_FAILED' });
@@ -173,7 +175,7 @@ describe('ReadonlyRpcClient subprocess acceptance', () => {
   it('an active timeout closes the child, fails every pending request, and never dispatches queued work', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'rpc-timeout-'));
     const marker = join(dir, 'requests');
-    const client = make('hold', { timeoutMs: 80, marker });
+    const client = make('hold', { timeoutMs: 800, marker });
     await using(client, async () => {
       const pending = Array.from({ length: 12 }, () => client.request('status'));
       const settled = await Promise.allSettled(pending);
@@ -216,10 +218,10 @@ describe('ReadonlyRpcClient subprocess acceptance', () => {
   it('does not redispatch after a late subscribe response', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'rpc-late-'));
     const marker = join(dir, 'requests');
-    const client = make('late-subscribe', { timeoutMs: 50, shutdownGraceMs: 250, marker });
+    const client = make('late-subscribe', { timeoutMs: 500, shutdownGraceMs: 2500, marker });
     await using(client, async () => {
       await expect(client.request('watch.subscribe')).rejects.toMatchObject({ code: 'RPC_TIMEOUT' });
-      await new Promise(resolve => setTimeout(resolve, 120));
+      await new Promise(resolve => setTimeout(resolve, 1200));
       await expect(client.request('watch.subscribe')).rejects.toMatchObject({ code: 'RPC_CLOSED' });
       expect((await readFile(marker, 'utf8')).trim().split('\n')).toEqual(['watch.subscribe', 'LATE_RESPONSE_SENT']);
     });
