@@ -1,0 +1,164 @@
+/* kasane 1.1.0  source 73755083381ca666  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
+/*
+ * kasane — テーマに依らない段（字の大きさ・余白・角丸・動き・重なり）と、表示の切り替え。
+ * 色はここに置かない。色は themes/*.css が [data-theme="名前"] に入れる。
+ * 名前の意味は docs/naming.md。
+ */
+:root {
+  color-scheme: light dark;
+
+  --family-sans: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  --family-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --font-micro: 0.7rem;
+  --font-caption: 0.75rem;
+  --font-note: 0.8rem;
+  --font-label: 0.85rem;
+  --font-small: 0.9rem;
+  --font-body: 0.95rem;
+  --font-title: 1.1rem;
+  --font-heading: 1.25rem;
+  --font-display: 1.75rem;
+
+  --leading-tight: 1.3;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.7;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+  --radius-min: 2px;
+  /*
+   * 角の形。round（円弧）か squircle（滑らかに曲がる角。iOS の角と同じ考え方）。
+   * 対応していないブラウザ（2026-11 時点で Safari・Firefox）は corner-shape を無視して、普通の円弧の角丸になる
+   */
+  --corner-shape: round;
+
+  /* 太さは4段。400 本文、500 小さく薄い文字（caption・note）、600 見出し・ボタン・ラベル、700 大きな見出しだけ */
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --weight-bold: 700;
+
+  /* アイコンの大きさ（線のアイコンの外枠）。小さい印・本文の横 / ボタン・一覧の行 / 押すだけのアイコンのボタン */
+  --icon-sm: 1rem;
+  --icon: 1.25rem;
+  --icon-lg: 1.5rem;
+  /* 使えない（disabled）ものの薄さ。押せないことは見た目と disabled 属性の両方で示す */
+  --disabled-opacity: 0.5;
+  --border-width: 1px;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 280ms;
+  /* 出入りより長いもの。linger は知らせ・印が読める・見えるだけ留まる一続きの時間（動きを減らす設定でも 0 にしない）、
+     loop はずっと続く動き（明滅など）の1周（動きを減らす設定では 0 にして止める） */
+  --motion-linger: 2s;
+  --motion-loop: 2s;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* home-dashboard と同じ順と値（メニュー < 操作帯 < 知らせ < 小窓） */
+  --z-popover: 10;
+  --z-bar: 15;
+  --z-snackbar: 20;
+  --z-modal: 30;
+
+  --tap-sm: 40px;
+  --tap: 44px;
+  --tap-lg: 52px;
+  --measure: 42rem;
+}
+
+/* 明るい・暗いを固定したいとき。テーマの色は light-dark() なので、これだけで全部が付いてくる */
+[data-scheme="light"] { color-scheme: light; }
+[data-scheme="dark"] { color-scheme: dark; }
+
+/* テーマが --motion-* を決めていても負けないよう、詳細度を上げてある（[data-theme][data-theme] は 0,2,0） */
+@media (prefers-reduced-motion: reduce) {
+  :root, [data-theme][data-theme] {
+    --motion-fast: 0ms;
+    --motion-base: 0ms;
+    --motion-slow: 0ms;
+    --motion-loop: 0ms;
+  }
+}
+
+/*
+ * 別の名前から作る既定値。テーマを付けた要素ごとに計算し直すよう、:root ではなく [data-theme] に置く
+ * （:root に置くと、テーマが --family-sans や --radius を変えても付いてこない）。テーマのファイルはこれより後に読む
+ */
+[data-theme] {
+  --family-headline: var(--family-sans);
+  --radius-control: var(--radius);
+  --radius-field: var(--radius);
+  /* カードの角丸は「中の角丸 ＋ 内側の余白」。中に .k-inner を置くと、中は --radius になって同心に揃う */
+  --radius-card: calc(var(--radius) + var(--space-4));
+  /* 一覧の行（カードの形で、中に縁へ沿うものが無い）。既定はカードと同じ。行が 2 × この値より低いとピルになる */
+  --radius-row: var(--radius-card);
+
+  /* いちばん押すボタンの地と、危ない操作のボタンの地。分けないテーマでは主の色・危険の色と同じ */
+  /* 写真・動画の上の幕・字・押せるものの地。写真の上は明るい・暗いの表示に関わらず暗い幕と白い字 */
+  --scrim: rgb(0 0 0 / 0.6);
+  --on-media: rgb(255 255 255);
+  --media-control: rgb(255 255 255 / 0.15);
+
+  /* 影の役割。カード・一覧は --shadow-card、メニュー・小窓・知らせのような浮かせる面は --shadow-raised */
+  --shadow-card: var(--shadow);
+  --shadow-raised: var(--shadow-lg);
+
+  /* グラフの系列の色（6つ、順に使う）。既定は意味の色を借りる。personal は種の色相を回して作る */
+  --chart-1: var(--accent);
+  --chart-2: var(--success);
+  --chart-3: var(--warn);
+  --chart-4: var(--danger);
+  --chart-5: var(--link);
+  --chart-6: var(--muted);
+
+  --fill: var(--accent);
+  --on-fill: var(--on-accent);
+  --danger-fill: var(--danger);
+  /* 塗ったボタンを指したとき。字の色の方へ 12% 寄せる（押したときは同じ色で、部品が少し縮める） */
+  --fill-hover: color-mix(in srgb, var(--fill), var(--fg) 12%);
+  --danger-fill-hover: color-mix(in srgb, var(--danger-fill), var(--fg) 12%);
+
+  /* 面の飾り（グラデーション・ぼかし）。色の名前には色だけを入れ、飾りはここに分ける。既定は飾りなし */
+  --bg-image: none;
+  --surface-image: none;
+  --surface-filter: none;
+}
+
+/*
+ * テーマを付けた要素の地と字。層（base）に入れ、Tailwind のユーティリティやアプリの CSS がいつも勝つようにする。
+ * 字の大きさと行間は <html> には当てない（当てると rem の基準が変わり、全部の寸法が縮む）
+ */
+@layer base {
+  :where([data-theme]) {
+    background-color: var(--bg);
+    background-image: var(--bg-image);
+    color: var(--fg);
+    font-family: var(--family-sans);
+    accent-color: var(--accent);
+  }
+  /* 画面全体の地の飾り（壁紙のグラデーションなど）は、スクロールしても動かさない */
+  :where(html[data-theme]) { background-attachment: fixed; min-height: 100%; }
+  :where(html[data-theme]) body,
+  :where(body[data-theme]),
+  :where([data-theme]:not(html, body)) {
+    font-size: var(--font-body);
+    line-height: var(--leading-relaxed);
+  }
+}

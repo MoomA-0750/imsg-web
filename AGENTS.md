@@ -85,3 +85,9 @@ machinery unless the owner asks for it.
 
 Work in scoped commits. Preserve unrelated changes. Never push unless the owner
 asks after seeing what will be published.
+
+## UI
+
+The web UI (`web/`) follows kasane's rules (kasane's `DESIGN.md`). Write colours, type, spacing and radii with kasane's names (`bg-surface`, `text-muted`, `text-caption`, `rounded-card`); a colour only this app has is an `--imsg-*` name made from kasane's. Use kasane's components (`k-btn`, `k-field`, `k-icon-btn`, `k-card`, `k-note`, `k-empty`, `k-spinner`, `k-snackbar`, …, listed in DESIGN.md) before writing one of your own.
+
+kasane's CSS is copied into `web/vendor/kasane/` and `web/src/style.css` imports it by relative path, so the app builds on a Mac without kasane next to it. Do not edit those files: re-copy them from the kasane folder with `node scripts/kasane-sync.mjs <imsg-web folder>` (what to copy is in `kasane-native.json` at the root; `--check` tells whether they are stale). Check the UI with `node scripts/lint.mjs <imsg-web folder>/web --app imsg` in the kasane folder (it skips `vendor/`; allowed exceptions are in `web/kasane-allow.txt`).

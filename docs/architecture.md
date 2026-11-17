@@ -103,7 +103,7 @@ holds the whole styling layer:
   hands those names to Tailwind, so `bg-surface` compiles to
   `background: var(--surface)` and the dark theme follows from the palette alone
   — no element carries a `dark:` twin. Change a colour in one place.
-- `--breakpoint-pane: 600px` is where the two panes stop stacking. Below it they
+- `--breakpoint-pane: 620px` is where the two panes stop stacking. Below it they
   slide over one another; the `pane:` prefix carries the side-by-side layout.
 - `.btn`, `.btn-secondary` and `.btn-compact` are the only component classes,
   because those shapes recur and would otherwise drift apart.

@@ -1,0 +1,254 @@
+/* kasane 1.1.0  source 9f065293710e6e5e  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
+/*
+ * kasane の部品（class で使う。React でも Svelte でも素の HTML でも同じ）。
+ * 値は全部トークンから取る。ここに色や数値を直書きしない。
+ * @layer kasane に入れてあるので、層に入れていないアプリの CSS がいつも勝つ。
+ * Tailwind と使うときは `@import "kasane/components.css" layer(components);` と読む（utilities の層が勝つ順になる）。
+ */
+@layer kasane {
+  [class^="k-"], [class*=" k-"] { box-sizing: border-box; corner-shape: var(--corner-shape); }
+
+  /*
+   * 角丸を同心にする決まり: 中の角丸 ＝ 外の角丸 − 外の内側の余白。
+   * 入れ物は自分の角丸と内側の余白を --nest-radius / --nest-pad に書き、中で縁に沿うものは .k-inner を付ける。
+   * 入れ子にした入れ物は、自分の分を書き直すので、何段でも外から順に揃う。
+   * 中の角丸が小さくなりすぎないよう --radius-min（2px）で止める。ピル（--radius-full）は同心の対象にしない。
+   */
+  :where(.k-base) :is(button, input, select, textarea):not([class]) { box-sizing: border-box; corner-shape: var(--corner-shape); }
+  .k-inner { border-radius: max(var(--radius-min), calc(var(--nest-radius) - var(--nest-pad))); }
+
+  /*
+   * 素の要素に部品の形を当てる版: 入れ物に .k-base を付けると、中の class の無い button・入力欄・select・textarea が
+   * k-btn・k-field と同じ形になる（画面の中で class を付けないアプリ用）。詳細度は .k-btn より低い
+   */
+  .k-btn, :where(.k-base) button:not([class]) {
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+    min-height: var(--tap-sm); padding: 0 var(--space-4);
+    border: var(--border-width) solid var(--line-strong); border-radius: var(--radius-control);
+    background: var(--surface); color: var(--fg);
+    font: inherit; font-size: var(--font-label); font-weight: var(--weight-strong); line-height: 1;
+    cursor: pointer;
+    transition: background-color var(--motion-fast) var(--ease-standard), transform var(--motion-fast) var(--ease-standard);
+  }
+  :is(.k-btn, :where(.k-base) button:not([class])):not(:disabled, [aria-disabled="true"]):hover { background: color-mix(in srgb, var(--surface), var(--fg) 6%); }
+  :is(.k-btn, :where(.k-base) button:not([class])):not(:disabled, [aria-disabled="true"]):active { transform: scale(0.97); }
+  :is(.k-btn, :where(.k-base) button:not([class])):focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  :is(.k-btn, :where(.k-base) button:not([class])):is(:disabled, [aria-disabled="true"]) { opacity: var(--disabled-opacity); cursor: not-allowed; }
+  :is(.k-btn, :where(.k-base) button:not([class]))[aria-busy="true"] { cursor: progress; opacity: 0.75; }
+
+  .k-btn--primary { background: var(--fill); border-color: transparent; color: var(--on-fill); }
+  .k-btn--primary:not(:disabled, [aria-disabled="true"]):hover { background: var(--fill-hover); }
+  .k-btn--danger { background: var(--danger-fill); border-color: transparent; color: var(--on-danger); }
+  .k-btn--danger:not(:disabled, [aria-disabled="true"]):hover { background: var(--danger-fill-hover); }
+  .k-btn--quiet { background: transparent; border-color: transparent; }
+  .k-btn--quiet:not(:disabled, [aria-disabled="true"]):hover { background: var(--hover); }
+
+  .k-field, :where(.k-base) :is(input:not([class], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select:not([class]), textarea:not([class])) {
+    display: block; width: 100%;
+    min-height: var(--tap-sm); padding: var(--space-2) var(--space-3);
+    border: var(--border-width) solid var(--line-strong); border-radius: var(--radius-field);
+    background: var(--input); color: var(--fg);
+    font: inherit; font-size: var(--font-small); line-height: var(--leading-normal);
+  }
+  :is(.k-field, :where(.k-base) :is(input:not([class], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select:not([class]), textarea:not([class])))::placeholder { color: var(--faint); }
+  :is(.k-field, :where(.k-base) :is(input:not([class], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select:not([class]), textarea:not([class]))):focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: 1px; border-color: var(--accent); }
+  :is(.k-field, :where(.k-base) :is(input:not([class], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select:not([class]), textarea:not([class])))[aria-invalid="true"] { border-color: var(--danger); }
+  :is(.k-field, :where(.k-base) :is(input:not([class], [type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select:not([class]), textarea:not([class]))):disabled { background: var(--surface-2); color: var(--muted); }
+
+  .k-label { display: block; margin-bottom: var(--space-1); font-size: var(--font-label); font-weight: var(--weight-strong); }
+  .k-help { margin-top: var(--space-1); font-size: var(--font-caption); color: var(--muted); }
+  .k-help--error { color: var(--danger); }
+
+  .k-card {
+    --nest-radius: var(--radius-card); --nest-pad: var(--space-4);
+    padding: var(--nest-pad);
+    border: var(--border-width) solid var(--line); border-radius: var(--radius-card);
+    background-color: var(--surface); background-image: var(--surface-image); backdrop-filter: var(--surface-filter);
+    box-shadow: var(--shadow-card);
+  }
+
+  .k-list { margin: 0; padding: 0; list-style: none; border: var(--border-width) solid var(--line); border-radius: var(--radius-card); background-color: var(--surface); background-image: var(--surface-image); backdrop-filter: var(--surface-filter); overflow: hidden; }
+  .k-list > li { display: flex; align-items: center; gap: var(--space-3); min-height: var(--tap); padding: var(--space-2) var(--space-4); }
+  .k-list > li + li { border-top: var(--border-width) solid var(--line); }
+  .k-list > li[aria-selected="true"] { background: var(--accent-soft); }
+  .k-list__sub { font-size: var(--font-caption); color: var(--muted); }
+
+  .k-badge {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    padding: 0.15em 0.6em; border-radius: var(--radius-full); corner-shape: round;
+    background: var(--surface-2); color: var(--muted);
+    font-size: var(--font-caption); font-weight: var(--weight-strong); line-height: 1.4;
+  }
+  .k-badge--accent { background: var(--accent-soft); color: var(--accent-strong); }
+  .k-badge--success { background: var(--success-soft); color: var(--success); }
+  .k-badge--warn { background: var(--warn-soft); color: var(--warn); }
+  .k-badge--danger { background: var(--danger-soft); color: var(--danger); }
+
+  /*
+   * 注記。カードの外では四辺を薄い線で囲み（種類は線と地の色で分ける）、カードの中では線を消して淡い地だけにする
+   * （カードの縁と二重に囲まないため）。片側だけ太い線（side-tab）は使わない
+   */
+  .k-note {
+    padding: var(--space-3) var(--space-4);
+    border: var(--border-width) solid color-mix(in srgb, var(--line-strong) 45%, transparent); border-radius: var(--radius);
+    background: transparent; font-size: var(--font-note);
+  }
+  .k-note--warn { border-color: color-mix(in srgb, var(--warn) 30%, transparent); background: var(--warn-soft); }
+  .k-note--danger { border-color: color-mix(in srgb, var(--danger) 30%, transparent); background: var(--danger-soft); }
+  /* カードの中のカード: 角丸は外のカードと同心（外 − 外の余白）、地は一段沈める。3段目から先は .k-inner と --nest-* で */
+  .k-card .k-card {
+    --nest-radius: max(var(--radius-min), calc(var(--radius-card) - var(--space-4)));
+    border-radius: var(--nest-radius); background-color: var(--surface-2); background-image: none; box-shadow: none;
+  }
+  .k-card .k-note { border-color: transparent; background: var(--surface-2); }
+  .k-card .k-note--warn { background: var(--warn-soft); }
+  .k-card .k-note--danger { background: var(--danger-soft); }
+
+  .k-code { padding: 0.1em 0.35em; border-radius: var(--radius-sm); background: var(--code-bg); color: var(--code-fg); font-family: var(--family-mono); font-size: 0.9em; }
+
+  .k-menu {
+    --nest-radius: var(--radius); --nest-pad: var(--space-1);
+    min-width: 12rem; padding: var(--nest-pad);
+    border-radius: var(--nest-radius); background: var(--raised); box-shadow: var(--shadow-raised);
+  }
+  .k-menu > button {
+    display: flex; width: 100%; align-items: center; min-height: var(--tap-sm); padding: 0 var(--space-3);
+    border: 0; border-radius: max(var(--radius-min), calc(var(--nest-radius) - var(--nest-pad))); background: transparent; color: var(--fg);
+    font: inherit; font-size: var(--font-small); text-align: left; cursor: pointer;
+  }
+  .k-menu > button:not(:disabled, [aria-disabled="true"]):hover { background: var(--hover); }
+  .k-menu > button:disabled, .k-menu > button[aria-disabled="true"] { color: var(--faint); cursor: not-allowed; }
+  .k-menu > button:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: calc(var(--focus-width) * -1); }
+
+  /* ---- 4.5 で足した部品 ---- */
+
+  /* 入／切。<input type="checkbox" role="switch" class="k-switch">。入は --accent（状態を示す塗り） */
+  .k-switch {
+    appearance: none; flex: none; position: relative; margin: 0;
+    width: calc(var(--icon-lg) * 2 - var(--space-1)); height: var(--icon-lg);
+    border-radius: var(--radius-full); corner-shape: round;
+    background: var(--line-strong); cursor: pointer;
+    transition: background-color var(--motion-base) var(--ease-standard);
+  }
+  .k-switch::before {
+    content: ""; position: absolute; top: var(--space-1); left: var(--space-1);
+    width: calc(var(--icon-lg) - var(--space-2)); height: calc(var(--icon-lg) - var(--space-2));
+    border-radius: var(--radius-full); background: var(--surface); box-shadow: var(--shadow-sm);
+    transition: translate var(--motion-base) var(--ease-standard);
+  }
+  .k-switch:checked { background: var(--accent); }
+  .k-switch:checked::before { background: var(--on-accent); translate: calc(var(--icon-lg) - var(--space-1)) 0; }
+  .k-switch:focus-visible, .k-check:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  .k-switch:disabled, .k-check:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+
+  /* チェック・ラジオ。ブラウザの形のまま、色と大きさだけ揃える（選ぶものが多い一覧に。入／切は k-switch） */
+  .k-check { flex: none; margin: 0; width: var(--icon-sm); height: var(--icon-sm); accent-color: var(--accent); cursor: pointer; }
+  /* チェック・トグルと文字を並べる行。行ごと押せる高さにする */
+  .k-option { display: flex; align-items: center; gap: var(--space-3); min-height: var(--tap-sm); font-size: var(--font-small); cursor: pointer; }
+
+  /* 選ぶ欄は k-field を select に付ける（矢印はブラウザのもの） */
+  select.k-field { padding-block: 0; }
+
+  /*
+   * 分かれたボタン（タブ・表示の切り替え）。role="tablist" の中の button に aria-selected。選んだものは一段浮いた面
+   * （浮かせる面 --raised と小さい影。選んでいる行の --accent-soft とは分ける）
+   */
+  .k-tabs {
+    --nest-radius: var(--radius); --nest-pad: var(--space-1);
+    display: inline-flex; gap: var(--space-1); padding: var(--nest-pad); max-width: 100%; overflow-x: auto; scrollbar-width: none;
+    border-radius: var(--nest-radius); background: var(--surface-2);
+  }
+  .k-tabs > button {
+    flex: none; min-height: calc(var(--tap-sm) - var(--space-2)); padding: 0 var(--space-3);
+    border: 0; border-radius: max(var(--radius-min), calc(var(--nest-radius) - var(--nest-pad)));
+    background: transparent; color: var(--muted);
+    font: inherit; font-size: var(--font-label); font-weight: var(--weight-strong); white-space: nowrap; cursor: pointer;
+    transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+  }
+  .k-tabs > button:not([aria-selected="true"], :disabled):hover { color: var(--fg); background: var(--hover); }
+  .k-tabs > button[aria-selected="true"] { background: var(--raised); color: var(--fg); box-shadow: var(--shadow-sm), inset 0 0 0 var(--border-width) var(--line-strong); }
+  .k-tabs > button:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: calc(var(--focus-width) * -1); }
+  .k-tabs > button:disabled { opacity: var(--disabled-opacity); cursor: not-allowed; }
+
+  /* アイコンだけのボタン（閉じる・その他）。aria-label は必須。中の svg は --icon の大きさ */
+  .k-icon-btn {
+    display: inline-grid; place-items: center; flex: none;
+    width: var(--tap); height: var(--tap); padding: 0;
+    border: 0; border-radius: var(--radius-full); corner-shape: round;
+    background: transparent; color: var(--muted); cursor: pointer;
+    transition: background-color var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard);
+  }
+  .k-icon-btn > svg { width: var(--icon); height: var(--icon); }
+  .k-icon-btn:not(:disabled, [aria-disabled="true"]):hover { background: var(--hover); color: var(--fg); }
+  .k-icon-btn:not(:disabled, [aria-disabled="true"]):active { background: var(--active); }
+  .k-icon-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+  .k-icon-btn:focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
+  .k-icon-btn:is(:disabled, [aria-disabled="true"]) { opacity: var(--disabled-opacity); cursor: not-allowed; }
+
+  /* 状態の丸（つながり・動いているか）。字と並べ、丸だけで意味を伝えない */
+  .k-dot { display: inline-block; flex: none; width: var(--space-2); height: var(--space-2); border-radius: var(--radius-full); corner-shape: round; background: var(--faint); }
+  .k-dot--ok { background: var(--success); }
+  .k-dot--warn { background: var(--warn); }
+  .k-dot--danger { background: var(--danger); }
+
+  /* 進み具合。<progress class="k-progress" value="0.4">。値の無い progress は読み込み中の帯 */
+  .k-progress {
+    appearance: none; display: block; width: 100%; height: var(--space-2); border: 0;
+    border-radius: var(--radius-full); corner-shape: round; overflow: hidden; background: var(--surface-2); color: var(--accent);
+  }
+  .k-progress::-webkit-progress-bar { background: var(--surface-2); }
+  .k-progress::-webkit-progress-value { background: var(--accent); border-radius: var(--radius-full); transition: inline-size var(--motion-base) var(--ease-standard); }
+  .k-progress::-moz-progress-bar { background: var(--accent); border-radius: var(--radius-full); }
+
+  /* 読み込み中の輪。動きを減らす設定では --motion-loop が 0 になり、止まった輪になる */
+  .k-spinner {
+    display: inline-block; flex: none; width: var(--icon); height: var(--icon);
+    border: calc(var(--border-width) * 2) solid var(--line-strong); border-top-color: var(--accent);
+    border-radius: var(--radius-full); corner-shape: round;
+    animation: k-spin calc(var(--motion-loop) / 2) linear infinite;
+  }
+  @keyframes k-spin { to { rotate: 1turn; } }
+
+  /* 空の状態（まだ何も無い一覧・検索で見つからない）。何が無いかと、次にすることを1つ */
+  .k-empty { display: grid; justify-items: center; gap: var(--space-2); padding: var(--space-8) var(--space-4); text-align: center; color: var(--muted); font-size: var(--font-small); }
+  .k-empty > svg { width: var(--icon-lg); height: var(--icon-lg); color: var(--faint); }
+  .k-empty > strong { color: var(--fg); font-size: var(--font-body); font-weight: var(--weight-strong); }
+
+  /*
+   * 小窓。<dialog class="k-dialog"> を showModal() で開く。後ろの幕は --backdrop（中身が写真なら --scrim）。
+   * 出るときは少し縮んだ所から、消えるときはそのまま薄く（動きを減らす設定では --motion-* が 0 で、すぐ出る）
+   */
+  .k-dialog {
+    --nest-radius: var(--radius-card); --nest-pad: var(--space-4);
+    width: min(28rem, calc(100vw - var(--space-8))); max-height: calc(100dvh - var(--space-8)); padding: var(--nest-pad);
+    border: 0; border-radius: var(--nest-radius); background: var(--raised); color: var(--fg); box-shadow: var(--shadow-raised);
+    opacity: 0; scale: 0.96;
+    transition: opacity var(--motion-fast) var(--ease-in), scale var(--motion-fast) var(--ease-in), overlay var(--motion-fast) allow-discrete, display var(--motion-fast) allow-discrete;
+  }
+  .k-dialog[open] { opacity: 1; scale: 1; transition-duration: var(--motion-slow); transition-timing-function: var(--ease-out); }
+  @starting-style { .k-dialog[open] { opacity: 0; scale: 0.96; } }
+  .k-dialog::backdrop { background: var(--backdrop); opacity: 0; transition: opacity var(--motion-base) var(--ease-standard), overlay var(--motion-base) allow-discrete, display var(--motion-base) allow-discrete; }
+  .k-dialog[open]::backdrop { opacity: 1; }
+  @starting-style { .k-dialog[open]::backdrop { opacity: 0; } }
+  .k-dialog__title { margin: 0 0 var(--space-2); font-family: var(--family-headline); font-size: var(--font-title); font-weight: var(--weight-strong); }
+  .k-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-5); }
+
+  /*
+   * 操作の結果を少しのあいだ知らせる（「1通をゴミ箱へ移しました」）。画面の下に1つだけ。role="status"。
+   * data-open を付けると出て、外すと消える。続けて出すときは文を入れ替える（積まない）。字と地は面を反転した色
+   */
+  .k-snackbar {
+    position: fixed; z-index: var(--z-snackbar); left: 50%; bottom: var(--space-6);
+    display: flex; align-items: center; gap: var(--space-3);
+    width: max-content; max-width: min(32rem, calc(100vw - var(--space-8))); min-height: var(--tap-sm); padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-lg); background: var(--fg); color: var(--bg); box-shadow: var(--shadow-raised);
+    font-size: var(--font-note);
+    translate: -50% var(--space-4); opacity: 0; pointer-events: none;
+    transition: opacity var(--motion-fast) var(--ease-in), translate var(--motion-fast) var(--ease-in);
+  }
+  .k-snackbar[data-open] { translate: -50% 0; opacity: 1; pointer-events: auto; transition-duration: var(--motion-base); transition-timing-function: var(--ease-out); }
+  .k-snackbar--error { background: var(--danger-fill); color: var(--on-danger); }
+  .k-snackbar > button { margin-left: auto; padding: 0 var(--space-2); min-height: calc(var(--tap-sm) - var(--space-2)); border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; font: inherit; font-weight: var(--weight-strong); cursor: pointer; }
+  .k-snackbar > button:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+}
+

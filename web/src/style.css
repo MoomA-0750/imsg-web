@@ -1,129 +1,76 @@
 @import "tailwindcss";
-
 /*
- * The palette lives once, here, as plain custom properties, and the dark block below
- * redefines the same names. `@theme inline` hands those names to Tailwind without
- * baking in their values, so `bg-surface` compiles to `background: var(--surface)`
- * and the whole UI follows the palette instead of every element carrying a `dark:`
- * twin. Change a colour here and it changes everywhere it is used.
+ * 色・字・余白・角丸は kasane の personal テーマ（DESIGN.md）から取る。ここに色や数値を書かない。
+ * kasane の CSS は ../vendor/kasane/ に写してある（根の kasane-native.json。手で直さず、kasane の scripts/kasane-sync.mjs で写し直す）。
+ * kasane の tailwind.css が Tailwind の既定の色・字の大きさ・角丸・影を消し、bg-surface・text-muted・text-caption・
+ * rounded-md のように kasane の名前で書けるようにしている。明るい・暗いは kasane の light-dark() が持つ。
  */
+@import "../vendor/kasane/tokens.css";
+@import "../vendor/kasane/themes/personal.css";
+@import "../vendor/kasane/tailwind.css";
+@import "../vendor/kasane/components.css" layer(components);
+
+/* imsg-web にしかない意味の色と形。kasane の名前から作る */
 :root {
-  --ink: #17202b;
-  --page: #eef1f6;
-  --surface: #fff;
-  --soft: #f4f7fb;
-  --line: #d5dee9;
-  --field: #a9b5c4;
-  --muted: #5f6b7a;
-  --accent: #1f5fa8;
-  --accent-strong: #17497f;
-  --accent-soft: #dde9f7;
-  --danger: #a63737;
-  --danger-soft: #fff0f0;
-  --warn: #8a6d1f;
-  --notice: #fff2c9;
-  --notice-ink: #694d00;
-  --notice-line: #ead58c;
-  /* A sent message is blue over iMessage and green over anything else, as Messages shows it. */
-  --sent-imessage: #dbe9fb;
-  --sent-other: #dff1e7;
-  /* The two stops of the wash behind a conversation. */
-  --thread-from: #f9fbfe;
-  --thread-to: #eef2f8;
+  /* 種の色。kasane の personal はこの色から地・面・字・線・影の色みと主の色を導く（元の imsg-web の青） */
+  --seed: #1f5fa8;
+  /* 送った吹き出しは、iMessage なら青、ほかなら緑（メッセージ App と同じ） */
+  /* 不透明に混ぜる（淡い地の色は暗い表示で灰色に寄り、受け取った吹き出しと見分けにくい） */
+  --imsg-sent-imessage: color-mix(in srgb, var(--accent) 22%, var(--surface));
+  --imsg-sent-other: color-mix(in srgb, var(--success) 22%, var(--surface));
+  /* 会話の後ろの、ごく淡い地の流れ */
+  --imsg-thread-from: var(--surface);
+  --imsg-thread-to: var(--surface-2);
+  /* 知らせの帯 */
+  --imsg-notice: var(--warn-soft);
+  --imsg-notice-ink: var(--warn);
+  --imsg-notice-line: color-mix(in srgb, var(--warn) 35%, transparent);
+  /* 吹き出しの角: 1行の高さの半分（1行の吹き出しがピルになる）と、話し手の側の小さな角（しっぽ） */
+  --imsg-bubble: calc(var(--radius-lg) + var(--space-2));
+  --imsg-bubble-tail: calc(var(--radius-min) * 2);
 }
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #e5eaf1;
-    --page: #0f141b;
-    --surface: #18202b;
-    --soft: #121922;
-    --line: #2f3d4d;
-    --field: #4a5a6b;
-    --muted: #a3b0bf;
-    --accent: #5b9df0;
-    --accent-strong: #93c2f7;
-    --accent-soft: #1f3350;
-    --danger: #ffabab;
-    --danger-soft: #3c2020;
-    --warn: #d8b45f;
-    --notice: #463a14;
-    --notice-ink: #ffe39a;
-    --notice-line: #6c5922;
-    --sent-imessage: #1e3a5c;
-    --sent-other: #203d2d;
-    --thread-from: #151d27;
-    --thread-to: #0f141b;
-  }
-}
-
 
 @theme inline {
-  --color-ink: var(--ink);
-  --color-page: var(--page);
-  --color-surface: var(--surface);
-  --color-soft: var(--soft);
-  --color-line: var(--line);
-  --color-field: var(--field);
-  --color-muted: var(--muted);
-  --color-accent: var(--accent);
-  --color-accent-strong: var(--accent-strong);
-  --color-accent-soft: var(--accent-soft);
-  --color-sent-imessage: var(--sent-imessage);
-  --color-sent-other: var(--sent-other);
-  --color-danger: var(--danger);
-  --color-danger-soft: var(--danger-soft);
-  --color-warn: var(--warn);
-  --color-notice: var(--notice);
-  --color-notice-ink: var(--notice-ink);
-  --color-notice-line: var(--notice-line);
-  --color-thread-from: var(--thread-from);
-  --color-thread-to: var(--thread-to);
-
-  /*
-   * Inter carries no Japanese, so Japanese falls through to whatever the platform offers. Naming
-   * the families outright means a real bold exists to be found on Android as well as on Apple,
-   * where the stack used to run out at `sans-serif` and the weight was quietly dropped.
-   */
-  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Hiragino Sans",
-    "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic Medium", "Yu Gothic",
-    Meiryo, sans-serif;
+  --color-imsg-sent-imessage: var(--imsg-sent-imessage);
+  --color-imsg-sent-other: var(--imsg-sent-other);
+  --color-imsg-thread-from: var(--imsg-thread-from);
+  --color-imsg-thread-to: var(--imsg-thread-to);
+  --color-imsg-notice: var(--imsg-notice);
+  --color-imsg-notice-ink: var(--imsg-notice-ink);
+  --color-imsg-notice-line: var(--imsg-notice-line);
   /* Below this the two panes stack and slide over one another instead of sitting side by side. */
-  --breakpoint-pane: 600px;
+  --breakpoint-pane: 620px;
 }
 
+/* 吹き出しの角（上左・上右・下右・下左の順）。自分の吹き出しは右下がしっぽ、続く吹き出しは右側が小さな角。
+   1行ならピルになる形なので、ピルと同じく corner-shape は付けない（squircle だと角が浅く見える） */
+@utility rounded-bubble-me { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble); }
+@utility rounded-bubble-me-joined { border-radius: var(--imsg-bubble) var(--imsg-bubble-tail) var(--imsg-bubble-tail) var(--imsg-bubble); }
+@utility rounded-bubble-them { border-radius: var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); }
+@utility rounded-bubble-them-joined { border-radius: var(--imsg-bubble-tail) var(--imsg-bubble) var(--imsg-bubble) var(--imsg-bubble-tail); }
+/* 録音中の丸の明滅（ずっと続く動き。動きを減らす設定では --motion-loop が 0 で止まる） */
+@keyframes imsg-live { 50% { opacity: .35; } }
+@utility imsg-live { animation: imsg-live var(--motion-loop) var(--ease-standard) infinite; }
+/* 入力欄の高さの半分の角（入力欄・録音中の帯は、1行のときピルになる） */
+@utility rounded-composer { border-radius: calc(var(--tap) / 2); }
+
 @layer base {
-  html { color-scheme: light dark; }
   body {
     margin: 0;
     min-width: 320px;
     min-height: 100dvh;
-    font-family: var(--font-sans);
     /* A family with no bold of its own gets one drawn: better a thickened weight than none at all.
        Slant is still never faked; a fake italic is worse than an upright one. */
     font-synthesis: weight;
-    color: var(--ink);
-    background: var(--page);
   }
-  /* Behind the app itself the page is the app's own white, because a phone's browser tints its
-     status bar and toolbar with it. The sign-in screen keeps the grey its card sits on. */
+  /* Behind the app itself the page is the app's own surface, because a phone's browser tints its
+     status bar and toolbar with it. The sign-in screen keeps the page colour its card sits on. */
   body:has(.app) { background: var(--surface); }
   body:has(.app-fixed) { min-height: 0; overflow: hidden; }
   button, input, textarea { font: inherit; }
   button { cursor: pointer; }
-  button:disabled { cursor: default; opacity: .55; }
-  :focus-visible { outline: 3px solid #6aa6e8; outline-offset: 2px; }
-}
-
-/*
- * Two button shapes, because they appear in half a dozen places and copying a dozen
- * utilities into each would make them drift apart. Everything else is styled in the
- * markup, where it can be changed one element at a time.
- */
-@layer components {
-  .btn { @apply rounded-[10px] border-0 px-4 py-3 font-bold text-white bg-accent enabled:hover:bg-accent-strong; }
-  .btn-secondary { @apply rounded-[10px] border border-line px-4 py-3 font-bold text-accent-strong bg-soft enabled:hover:bg-accent-soft; }
-  .btn-compact { @apply px-[.7rem] py-2 text-[.82rem]; }
+  button:disabled { cursor: not-allowed; opacity: var(--disabled-opacity); }
+  :focus-visible { outline: var(--focus-width) solid var(--focus); outline-offset: var(--focus-offset); }
 }
 
 /*
@@ -139,7 +86,7 @@
   100% { opacity: 0; filter: blur(0); }
 }
 @layer components {
-  .missing-note { animation: missing-note 2.35s ease-out forwards; }
+  .missing-note { animation: missing-note var(--motion-linger) var(--ease-out) forwards; }
 }
 @media (prefers-reduced-motion: reduce) {
   @keyframes missing-note {
@@ -158,5 +105,5 @@
   100%    { box-shadow: 0 0 0 3px transparent; }
 }
 @layer components {
-  .msg.marked .bubble { animation: marked 2s ease-out; }
+  .msg.marked .bubble { animation: marked var(--motion-linger) var(--ease-out); }
 }

@@ -1,0 +1,5 @@
+# kasane の検査（kasane/scripts/lint.mjs）で許すもの。理由を書く
+shadow-literal  src/style.css  0 0 0 3px   # 返信の元の吹き出しを囲む輪（影ではなく印）。色は --accent
+# 録音中の丸の明滅の途中（keyframes の 50%）の薄さ。kasane に明滅の途中の値の名前が無い。
+# 使えないものの薄さ（--disabled-opacity）とは意味が違うので借りない
+opacity-literal  src/style.css  opacity: .35

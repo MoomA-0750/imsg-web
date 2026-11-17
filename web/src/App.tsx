@@ -1,5 +1,5 @@
 import { CSSProperties, FormEvent, PointerEvent, ReactNode, UIEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Add24Regular, Alert24Filled, Alert24Regular, AlertOff24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
+import { Add24Regular, Alert24Filled, Alert24Regular, AlertOff24Regular, ArrowLeft24Regular, Checkmark24Regular, Copy24Regular, Dismiss12Regular, Dismiss24Regular, Mic24Filled, Pause24Filled, Person24Filled, Play24Filled, Send24Filled, Stop24Filled } from '@fluentui/react-icons';
 import type { AttachmentView, CapabilitySnapshot, ChatSnapshot, ChatView, HistorySnapshot, LinkView, MessageView, ReactionView, ReplyView } from '../../src/shared/web-types';
 import { RECORD_MAX_MS, RecorderError, VoiceRecorder } from './recorder';
 import { useNotifier } from './notifications';
@@ -26,17 +26,17 @@ const NOTE_MS = 4000;
 /** A pause this long earns a line of its own, the way Messages breaks up a quiet afternoon. */
 const BREAK_GAP_MS = 3_600_000;
 /** The quiet line at the end of a list: what is loading, or why nothing more is coming. */
-const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-xs';
+const LIST_NOTE = 'list-note m-0 px-4 py-3 text-center text-muted text-caption';
 const CENTRED = 'min-h-screen grid place-items-center p-5';
-const FIELD = 'w-full rounded-[10px] border border-field p-[.8rem] bg-surface text-inherit';
+const FIELD = 'k-field';
 /** Below `pane:` the two panes stack, one sliding over the other; from there on they sit side by side. */
-const HEADING = 'flex items-center gap-3 min-h-[64px] px-4 py-[.85rem] border-b border-line';
-const PANE_TITLE = 'my-1 text-[1.25rem] leading-tight [overflow-wrap:anywhere]';
+const HEADING = 'flex items-center gap-3 min-h-[64px] px-4 py-3 border-b border-line';
+const PANE_TITLE = 'my-1 text-heading leading-tight [overflow-wrap:anywhere]';
 const TRIM = 'text-muted text-[.75em]';
-const STAMP = 'shrink-0 text-muted text-[.72rem]';
+const STAMP = 'shrink-0 text-muted text-caption';
 /** The width at which the two panes sit side by side: `--breakpoint-pane` in style.css. */
-const SIDE_BY_SIDE = '(width >= 600px)';
-const PANE = 'flex flex-col min-w-0 min-h-0 overflow-hidden absolute inset-0 transition-transform duration-200 motion-reduce:transition-none pane:static pane:visible pane:translate-x-0';
+const SIDE_BY_SIDE = '(width >= 620px)';
+const PANE = 'flex flex-col min-w-0 min-h-0 overflow-hidden absolute inset-0 transition-transform duration-(--motion-base) motion-reduce:transition-none pane:static pane:visible pane:translate-x-0';
 
 /** `mustSetPassword`: signed in with a password the owner did not choose, so one is asked for first. */
 type Session = { csrfToken: string; mode: 'readonly'; mustSetPassword?: boolean };
@@ -80,16 +80,16 @@ function dateLabel(value: string | null): string {
 const ATTACHMENT_LABEL = { image: '画像', audio: '音声', video: '動画', file: '添付ファイル' } as const;
 /** One bubble's worth of a message: a picture, the words, or a link's card. */
 type Part = { key: string; media: AttachmentView } | { key: string; text: true } | { key: string; link: LinkView; host: string };
-const SHELL = 'bubble border border-line shadow-[0_2px_8px_#0f1f3a0f] overflow-hidden';
-const PAD = 'px-[.85rem] py-[.7rem]';
+const SHELL = 'bubble border border-line shadow-sm overflow-hidden';
+const PAD = 'px-3 py-3';
 /**
  * The corner nearest the speaker is square: it is the tail, and it is also what joins one bubble to
  * the next, whether that is the same person talking again or the same message continuing in a
  * second bubble. Half a line's height on the others, so a one-line bubble comes out a pill.
  */
 const corners = (fromMe: boolean, joined: boolean) => fromMe
-  ? (joined ? 'rounded-[24px_4px_4px_24px]' : 'rounded-[24px_24px_4px_24px]')
-  : (joined ? 'rounded-[4px_24px_24px_4px]' : 'rounded-[24px_24px_24px_4px]');
+  ? (joined ? 'rounded-bubble-me-joined' : 'rounded-bubble-me')
+  : (joined ? 'rounded-bubble-them-joined' : 'rounded-bubble-them');
 /** Only an absolute http(s) link is worth a card; anything else is left as the text it came in. */
 function webHost(url: string): string | null {
   try { const parsed = new URL(url); return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.hostname : null; }
@@ -126,10 +126,10 @@ function MediaBubble({ item, shape, tone, quote, tail, onOpen }: { item: Attachm
         aria-label={item.preview ? '元の画像があるか確かめる' : '画像を大きく表示'}
         onClick={() => (item.preview ? setAsked(n => n + 1) : onOpen(item))}>
         {image}
-        {asked > 0 && <span key={asked} className="missing-note absolute inset-0 grid place-items-center p-4 bg-black/60 text-white font-bold text-center text-[.9rem] [overflow-wrap:anywhere]"
+        {asked > 0 && <span key={asked} className="missing-note absolute inset-0 grid place-items-center p-4 bg-scrim text-on-media font-bold text-center text-small [overflow-wrap:anywhere]"
           onAnimationEnd={() => setAsked(0)}>元の画像はこのMacにありません</span>}
       </button>
-      {tail && <div className={`${PAD} pt-[.4rem]`}>{tail}</div>}
+      {tail && <div className={`${PAD} pt-2`}>{tail}</div>}
     </div>;
   }
   const reason = item.preview || !item.id
@@ -187,9 +187,9 @@ function AudioPlayer({ src, onFail, compact, label = '録音' }: { src: string; 
     moveTo((event.clientX - box.left) / box.width * length);
   };
 
-  const time = <span className="voice-time text-muted text-[.75rem] tabular-nums">{clock(playing || at > 0 ? at : length)}</span>;
+  const time = <span className="voice-time text-muted text-caption tabular-nums">{clock(playing || at > 0 ? at : length)}</span>;
   return <div className={`voice flex items-center gap-3 ${compact ? '' : 'min-w-[12rem] max-w-[16rem]'}`}>
-    <button type="button" className="shrink-0 grid place-items-center w-9 h-9 p-0 rounded-full border-0 bg-accent text-white"
+    <button type="button" className="k-icon-btn w-(--tap-sm) h-(--tap-sm) bg-fill text-on-fill hover:bg-fill-hover"
       onClick={toggle} aria-label={`${label}を${playing ? '一時停止' : '再生'}`}>{playing ? <Pause24Filled /> : <Play24Filled />}</button>
     {compact ? time : <div className="grow min-w-0">
       {/* The hit area is taller than the bar it draws, and claims the drag (touch-none, and kept from
@@ -206,7 +206,7 @@ function AudioPlayer({ src, onFail, compact, label = '録音' }: { src: string; 
         <div className="h-1.5 rounded-full bg-accent-soft">
           <div className="h-full rounded-full bg-accent" style={{ width: `${done * 100}%` }} />
         </div>
-        <div className="voice-knob absolute top-1/2 w-3.5 h-3.5 -ml-[7px] -mt-[7px] rounded-full bg-accent shadow-[0_1px_3px_#0004]" style={{ left: `${done * 100}%` }} />
+        <div className="voice-knob absolute top-1/2 w-3.5 h-3.5 -ml-2 -mt-2 rounded-full bg-accent shadow-sm" style={{ left: `${done * 100}%` }} />
       </div>
       <span className="block">{time}</span>
     </div>}
@@ -325,7 +325,7 @@ function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void
 
   const zoomed = view.scale > 1;
   return <div ref={frame} className="lightbox fixed inset-0 z-50 flex items-center justify-center p-4 touch-none overflow-hidden"
-    style={{ backgroundColor: `rgb(0 0 0 / ${Math.max(0.35, 0.85 - pulled / 500)})` }}
+    style={{ backgroundColor: `rgb(from var(--scrim) r g b / ${Math.max(0.35, 0.85 - pulled / 500)})` }}
     role="dialog" aria-modal="true" aria-label="画像"
     onClick={() => { if (!gesture.current.moved && !gesture.current.onPicture) onClose(); }}
     onDoubleClick={event => zoom(current => (current > 1 ? 1 : 2.5), event.clientX, event.clientY)}
@@ -335,9 +335,9 @@ function Lightbox({ item, onClose }: { item: AttachmentView; onClose: () => void
     <img ref={picture} className={`max-w-[calc(100vw-2rem)] max-h-[calc(100dvh-2rem)] object-contain ${zoomed ? 'cursor-grab' : ''}`}
       style={{ transform: `translate(${view.x}px, ${view.y + pulled}px) scale(${view.scale})`,
         opacity: Math.max(0, 1 - pulled / 400),
-        transition: from.current === undefined && pinch.current === undefined ? 'transform .18s ease, opacity .18s ease' : 'none' }}
+        transition: from.current === undefined && pinch.current === undefined ? 'transform var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard)' : 'none' }}
       src={`/api/attachments/${encodeURIComponent(item.id!)}`} alt="添付画像" draggable={false} />
-    <button type="button" className="absolute top-4 right-4 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-white/15 text-white" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss12Regular /></button>
+    <button type="button" className="k-icon-btn absolute top-4 right-4 bg-media-control text-on-media" onClick={onClose} aria-label="閉じる" autoFocus><Dismiss24Regular /></button>
   </div>;
 }
 
@@ -355,7 +355,7 @@ function LinkBubble({ link, host, shape, tone, quote, tail }: { link: LinkView; 
     {quote && <div className={`${PAD} pb-0`}>{quote}</div>}
     <a className="link-card flex flex-col text-inherit no-underline" href={link.url} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
       {imageId && !imageFailed && <img className="block w-full max-h-48 object-cover" src={`/api/attachments/${encodeURIComponent(imageId)}`} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setImageFailed(true)} />}
-      <span className="link-body flex flex-col gap-[.15rem] px-[.85rem] py-[.6rem] min-w-0 [overflow-wrap:anywhere]"><strong className="leading-[1.35]">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
+      <span className="link-body flex flex-col gap-0.5 px-3 py-2 min-w-0 [overflow-wrap:anywhere]"><strong className="leading-tight">{link.title || host}</strong>{link.summary && <span className="text-muted text-[.85em] line-clamp-3">{link.summary}</span>}<span className="text-muted text-[.78em]">{link.siteName && link.siteName !== host ? `${link.siteName} · ${host}` : host}</span></span>
     </a>
     {tail && <div className={`${PAD} pt-0`}>{tail}</div>}
   </div>;
@@ -368,16 +368,16 @@ function LinkBubble({ link, host, shape, tone, quote, tail }: { link: LinkView; 
  */
 function ReplyQuote({ reply, onGo }: { reply: ReplyView; onGo: (messageId: string) => void }) {
   return <button type="button" onClick={() => onGo(reply.messageId)}
-    className="reply-quote block w-full m-0 mb-[.35rem] last:mb-0 px-2 py-[.3rem] border-0 border-l-[3px] border-line rounded-none rounded-r-lg bg-soft text-muted text-[.85em] text-left whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-accent-soft"
+    className="reply-quote block w-full m-0 mb-1 last:mb-0 px-2 py-1 border-0 rounded-md bg-surface-2 text-muted text-[.85em] text-left whitespace-pre-wrap [overflow-wrap:anywhere] hover:bg-accent-soft"
     aria-label={`返信元へ移動: ${reply.sender ?? '自分'}`}>
-    <span className="block font-semibold text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}
+    <span className="block font-strong text-[.92em]">{reply.sender ?? '自分'}</span>{reply.text}{reply.trimmed && <span className="text-muted text-[.75em]">（省略）</span>}
   </button>;
 }
 
 function Reactions({ list }: { list: ReactionView[] }) {
-  return <ul className="reactions flex flex-wrap gap-[.3rem] list-none mt-[.1rem] mb-[.3rem] last:mb-0 p-0">{list.map(reaction => {
+  return <ul className="reactions flex flex-wrap gap-1 list-none mt-0.5 mb-1 last:mb-0 p-0">{list.map(reaction => {
     const who = [...reaction.senders, ...(reaction.fromMe ? ['自分'] : [])];
-    return <li key={`${reaction.kind}:${reaction.emoji}`} className="inline-flex items-center gap-[.15rem] px-[.4rem] py-[.1rem] border border-line rounded-full bg-surface text-[.85em]" title={who.length > 0 ? who.join('、') : reaction.kind}>
+    return <li key={`${reaction.kind}:${reaction.emoji}`} className="inline-flex items-center gap-0.5 px-2 py-0.5 border border-line rounded-full bg-surface text-[.85em]" title={who.length > 0 ? who.join('、') : reaction.kind}>
       <span aria-hidden="true">{reaction.emoji || '•'}</span>
       {reaction.count > 1 && <span className="text-muted text-[.85em]">{reaction.count}</span>}
       <span className="sr-only">{`${who.length > 0 ? `${who.join('、')}の` : ''}リアクション${reaction.count > 1 ? ` ${reaction.count}件` : ''}`}</span>
@@ -392,9 +392,9 @@ const MiB = 1024 * 1024;
 const sizeLabel = (bytes: number) => bytes >= MiB ? `${(bytes / MiB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const FILES_MAX = 10;
-const NOTICE_COLOUR = { ok: 'text-accent-strong', warn: 'text-warn', error: 'text-danger' } as const;
+const NOTICE_KIND = { ok: '', warn: 'k-note--warn', error: 'k-note--danger' } as const;
 /** The composer's two circular buttons, sized to sit level with the field beside them. */
-const ROUND = 'shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full';
+const ROUND = 'k-icon-btn';
 
 /** Something waiting to be sent: a file the owner picked, or a recording they just made here. */
 type Chosen = { file: File; voice?: true; seconds?: number };
@@ -415,17 +415,17 @@ function Thumbnail({ chosen, onRemove, disabled }: { chosen: Chosen; onRemove: (
     setUrl(created); setFailed(false);
     return () => { URL.revokeObjectURL(created); setUrl(null); };
   }, [file, playable]);
-  const shape = 'composer-thumb block w-16 h-16 rounded-xl border border-line object-cover bg-soft';
+  const shape = 'composer-thumb block w-16 h-16 rounded-lg border border-line object-cover bg-surface-2';
   const label = `${file.name}（${sizeLabel(file.size)}）`;
   const remove = <button type="button" aria-label={`${playable ? '録音' : file.name} を外す`} disabled={disabled}
-    className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full border border-line bg-surface text-muted enabled:hover:text-ink"
+    className="absolute -top-1.5 -right-1.5 grid place-items-center w-5 h-5 rounded-full border border-line bg-surface text-muted enabled:hover:text-fg"
     onClick={onRemove}><Dismiss12Regular /></button>;
   if (playable) {
     // Listened back to before it goes: a recording nobody can hear first is a message sent blind.
-    return <div className="composer-voice relative shrink-0 h-16 flex items-center px-3 rounded-xl border border-line bg-soft" title={label}>
+    return <div className="composer-voice relative shrink-0 h-16 flex items-center px-3 rounded-lg border border-line bg-surface-2" title={label}>
       {url && !failed
         ? <AudioPlayer src={url} onFail={() => setFailed(true)} compact />
-        : <span className="text-[.7rem] text-muted">音声</span>}
+        : <span className="text-micro text-muted">音声</span>}
       {remove}
     </div>;
   }
@@ -433,7 +433,7 @@ function Thumbnail({ chosen, onRemove, disabled }: { chosen: Chosen; onRemove: (
     {/* Nothing is uploaded to draw this; a format the browser cannot decode (HEIC) falls back to a word. */}
     {url && !failed
       ? <img className={shape} src={url} alt={label} onError={() => setFailed(true)} />
-      : <span className={`${shape} placeholder flex items-center justify-center text-center text-[.65rem] text-muted`}>{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>}
+      : <span className={`${shape} placeholder flex items-center justify-center text-center text-micro text-muted`}>{file.type.startsWith('image/') ? '画像' : 'ファイル'}</span>}
     {remove}
   </div>;
 }
@@ -450,11 +450,11 @@ function RecordingStrip({ since, level }: { since: number; level: number }) {
     return () => clearInterval(timer);
   }, []);
   const seconds = Math.max(0, (now - since) / 1000);
-  return <div className="recording grow min-w-0 h-11 flex items-center gap-3 px-4 rounded-[1.375rem] border border-field bg-surface" role="status" aria-label="録音中">
-    <span className="shrink-0 w-2.5 h-2.5 rounded-full bg-danger animate-pulse" aria-hidden="true" />
-    <span className="recording-time shrink-0 text-[.9rem] tabular-nums">{clock(seconds)}</span>
+  return <div className="recording grow min-w-0 h-11 flex items-center gap-3 px-4 rounded-composer border border-line-strong bg-input" role="status" aria-label="録音中">
+    <span className="k-dot k-dot--danger imsg-live" aria-hidden="true" />
+    <span className="recording-time shrink-0 text-small tabular-nums">{clock(seconds)}</span>
     <span className="grow min-w-0 h-1.5 rounded-full bg-accent-soft overflow-hidden" aria-hidden="true">
-      <span className="block h-full rounded-full bg-accent transition-[width] duration-100" style={{ width: `${Math.min(100, Math.round(level * 140))}%` }} />
+      <span className="block h-full rounded-full bg-accent transition-[width] duration-(--motion-fast)" style={{ width: `${Math.min(100, Math.round(level * 140))}%` }} />
     </span>
   </div>;
 }
@@ -564,21 +564,21 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
   // No confirmation step: the owner asked for sending to be immediate. Double submission is still
   // held off while one is in flight, and every outcome is reported honestly.
   const submit = () => { if (ready && !busy) void dispatch(); };
-  return <form className="composer shrink-0 flex flex-col gap-2 px-4 py-[.7rem] border-t border-line bg-surface" onSubmit={event => { event.preventDefault(); submit(); }}>
-    {mode === 'dry-run' && <p className="m-0 text-muted text-[.8rem]" role="status">テスト送信モードです。実際には送信されません。</p>}
+  return <form className="composer shrink-0 flex flex-col gap-2 px-4 py-3 border-t border-line bg-surface" onSubmit={event => { event.preventDefault(); submit(); }}>
+    {mode === 'dry-run' && <p className="m-0 text-muted text-note" role="status">テスト送信モードです。実際には送信されません。</p>}
     <input ref={picker} type="file" hidden multiple aria-label="添付ファイルを選ぶ" onChange={event => { const chosen = [...(event.target.files ?? [])]; event.target.value = ''; addFiles(chosen); }} />
     {files.length > 0 && <ul className="composer-files list-none m-0 p-0 flex flex-wrap gap-2">{files.map((chosen, index) =>
       <li key={`${chosen.file.name}:${index}`}><Thumbnail chosen={chosen} disabled={busy} onRemove={() => setFiles(rest => rest.filter((_, at) => at !== index))} /></li>)}</ul>}
-    {notice && <p className={`m-0 text-[.85rem] ${NOTICE_COLOUR[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
+    {notice && <p className={`k-note m-0 ${NOTICE_KIND[notice.kind]}`} role={notice.kind === 'error' ? 'alert' : 'status'}>{notice.text}</p>}
     <div className="flex items-end gap-2">
       {/* While recording the left button abandons it instead of opening the file picker: the two
           things one could mean there are keep it and drop it, and both are within reach. */}
-      <button type="button" className={`${ROUND} border border-line bg-soft ${listening ? 'text-danger' : 'text-accent-strong'} enabled:hover:bg-accent-soft`}
+      <button type="button" className={`${ROUND} border border-line bg-surface-2 ${listening ? 'text-danger' : 'text-accent-strong'} enabled:hover:bg-accent-soft`}
         onClick={() => (listening ? void finishRecording(false) : picker.current?.click())} disabled={busy}
-        aria-label={listening ? '録音をやめる' : '添付ファイルを追加'}>{listening ? <Dismiss12Regular /> : <Add24Regular />}</button>
+        aria-label={listening ? '録音をやめる' : '添付ファイルを追加'}>{listening ? <Dismiss24Regular /> : <Add24Regular />}</button>
       {listening
         ? <RecordingStrip since={recording.since} level={recording.level} />
-        : <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-[1.375rem] border border-field px-4 py-[.55rem] leading-6 bg-surface text-inherit"
+        : <textarea ref={field} className="grow min-w-0 resize-none h-11 min-h-11 max-h-48 overflow-y-auto rounded-composer border border-line-strong px-4 py-2 leading-normal bg-input text-inherit"
             value={text} onChange={event => setText(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); submit(); } }}
             placeholder={chat.service === 'iMessage' ? 'iMessage' : 'SMS'} rows={1} maxLength={8000} aria-label="メッセージを入力" disabled={busy} />}
@@ -587,10 +587,10 @@ function Composer({ chat, mode, send, upload, onSent, onAuthError }: { chat: Cha
       {/* Each is its own element rather than one button that changes its mind: reusing the node
           would carry a press made on one of them into whatever it became next. */}
       {listening
-        ? <button key="stop" type="button" className={`${ROUND} border-0 bg-danger text-white`} onClick={() => void finishRecording(true)} aria-label="録音を終える"><Stop24Filled /></button>
+        ? <button key="stop" type="button" className={`${ROUND} border-0 bg-danger-fill text-on-danger`} onClick={() => void finishRecording(true)} aria-label="録音を終える"><Stop24Filled /></button>
         : ready
-          ? <button key="send" type="submit" className={`${ROUND} border-0 bg-accent text-white enabled:hover:bg-accent-strong`} disabled={busy} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
-          : <button key="record" type="button" className={`${ROUND} border border-line bg-soft text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => void startRecording()} disabled={busy} aria-label="音声を録音"><Mic24Filled /></button>}
+          ? <button key="send" type="submit" className={`${ROUND} border-0 bg-fill text-on-fill enabled:hover:bg-fill-hover`} disabled={busy} aria-label={busy ? '送信中' : '送信'}><Send24Filled /></button>
+          : <button key="record" type="button" className={`${ROUND} border border-line bg-surface-2 text-accent-strong enabled:hover:bg-accent-soft`} onClick={() => void startRecording()} disabled={busy} aria-label="音声を録音"><Mic24Filled /></button>}
     </div>
   </form>;
 }
@@ -637,6 +637,9 @@ export function App() {
   /** A message asked for that had not been read yet; looked for again once more of them arrive. */
   const wanted = useRef<string | null>(null);
   const [jumpNote, setJumpNote] = useState('');
+  /** The last word said about a jump, kept for the snackbar to fade out with. */
+  const jumpWas = useRef('');
+  if (jumpNote) jumpWas.current = jumpNote;
   /** How far the conversation is dragged aside, and where the drag that is doing it began. */
   const [reveal, setReveal] = useState(0);
   /** The picture being looked at on its own, if any. */
@@ -1022,27 +1025,27 @@ export function App() {
     if (el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_EDGE) loadMoreChats();
   }
 
-  if (checking) return <main className={CENTRED}><p role="status">セッションを確認しています…</p></main>;
-  if (!session) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="login-title">
+  if (checking) return <main className={CENTRED}><p className="m-0 text-muted"><Busy text="セッションを確認しています…" /></p></main>;
+  if (!session) return <main className={CENTRED}><section className="login-card k-card w-[min(100%,430px)]" aria-labelledby="login-title">
     {recovering ? <Recovery onBack={() => setRecovering(false)} /> : <>
-    <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
-    <h1 id="login-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
+    <div className="text-accent font-bold tracking-[.04em]">imsg Web</div>
+    <h1 id="login-title" className="mt-3 mb-1 text-display leading-tight [overflow-wrap:anywhere]">メッセージを見る</h1>
     <form className="grid gap-3 mt-6" onSubmit={login}>
-      <label className="font-bold" htmlFor="owner-key">パスワード</label>
-      <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus />
-      <button className="btn" disabled={loginBusy}>{loginBusy ? '確認中…' : 'ログイン'}</button>
-      {loginError && <p className="m-0 mt-1 text-danger" role="alert">{loginError}</p>}
+      <label className="k-label m-0" htmlFor="owner-key">パスワード</label>
+      <input id="owner-key" className={FIELD} type="password" autoComplete="off" value={key} onChange={e => setKey(e.target.value)} required autoFocus aria-invalid={loginError !== '' || undefined} />
+      <button className="k-btn k-btn--primary" disabled={loginBusy} aria-busy={loginBusy}>{loginBusy ? '確認中…' : 'ログイン'}</button>
+      {loginError && <p className="k-help k-help--error m-0" role="alert">{loginError}</p>}
     </form>
-    <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-[.85rem] underline underline-offset-2 hover:text-accent" onClick={() => setRecovering(true)}>パスワードを忘れた場合</button>
+    <button type="button" className="mt-4 p-0 bg-transparent border-0 text-accent-strong text-label underline underline-offset-2 hover:text-accent" onClick={() => setRecovering(true)}>パスワードを忘れた場合</button>
     </>}
   </section></main>;
-  if (session.mustSetPassword) return <main className={CENTRED}><section className="login-card w-[min(100%,430px)] p-[1.35rem] pane:p-8 border border-line rounded-[18px] bg-surface shadow-[0_18px_45px_#13294a20]" aria-labelledby="choose-title">
+  if (session.mustSetPassword) return <main className={CENTRED}><section className="login-card k-card w-[min(100%,430px)]" aria-labelledby="choose-title">
     <ChoosePassword csrf={session.csrfToken} onDone={setSession} onLost={loseSession} />
   </section></main>;
 
   // Blue only when the conversation is known to be iMessage; green covers SMS and anything else,
   // the way Messages colours it. imsg reports the service per conversation, not per message.
-  const sentTone = selected?.service === 'iMessage' ? 'sent-imessage bg-sent-imessage' : 'sent-other bg-sent-other';
+  const sentTone = selected?.service === 'iMessage' ? 'sent-imessage bg-imsg-sent-imessage' : 'sent-other bg-imsg-sent-other';
   /**
    * Whether a line is drawn above the message at `index`, and whether it names a day. Asked of the
    * next message as well as this one, because a run has to know where it ends, not only where it
@@ -1063,14 +1066,14 @@ export function App() {
   // page and scrolls with it, and a conversation is pinned over it rather than replacing it. Side
   // by side, the app is pinned to the viewport and the page has nothing to scroll.
   return <div className={`app flex flex-col bg-surface ${paged ? 'min-h-dvh' : 'app-fixed fixed inset-x-0 top-0 h-dvh overflow-hidden'}`}>
-    {epochNotice && <div className="shrink-0 px-4 py-[.65rem] bg-notice text-notice-ink border-b border-notice-line" role="status">{epochNotice}</div>}
+    {epochNotice && <div className="shrink-0 px-4 py-3 bg-imsg-notice text-imsg-notice-ink border-b border-imsg-notice-line" role="status">{epochNotice}</div>}
     {viewing && <Lightbox item={viewing} onClose={() => setViewing(null)} />}
     <div className={`relative flex-1 ${paged ? 'overflow-x-clip' : 'min-h-0 overflow-hidden'} pane:grid pane:grid-cols-[minmax(280px,35%)_1fr]`}>
-      <aside className={paged ? `chat-pane flex flex-col ${selected ? 'invisible' : ''}` : `chat-pane ${PANE} pane:border-r pane:border-line pane:bg-soft ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
+      <aside className={paged ? `chat-pane flex flex-col ${selected ? 'invisible' : ''}` : `chat-pane ${PANE} pane:border-r pane:border-line pane:bg-surface-2 ${selected ? '-translate-x-full invisible' : 'translate-x-0'}`} aria-label="会話一覧">
         <div className={`${HEADING} ${paged ? 'sticky top-0 z-10 bg-surface' : ''}`}>
           <h1 className={`${PANE_TITLE} flex-1 min-w-0`}>メッセージ</h1>
           {notifier.status !== 'unsupported' && <button type="button" disabled={notifier.status === 'denied'}
-            className={`shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full border-0 bg-transparent ${notifier.status === 'on' ? 'text-accent' : 'text-muted'} enabled:hover:bg-accent-soft`}
+            className="k-icon-btn"
             onClick={() => notifier.toggle(chatsNow.current)}
             title={notifier.status === 'denied' ? 'ブラウザーの設定で通知がブロックされています' : undefined}
             aria-label={notifier.status === 'on' ? '通知オン' : notifier.status === 'denied' ? '通知はブロックされています' : '通知オフ'}
@@ -1080,33 +1083,37 @@ export function App() {
         </div>
         {chatError && <ErrorBar text={chatError} retry={loadChats} />}
         <div className={`chat-area flex flex-col ${paged ? '' : 'flex-1 min-h-0 overflow-auto'}`} ref={chatViewport} onScroll={onChatScroll}>
-          {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
+          {chatsBusy && chats.length === 0 ? <Empty text="会話を読み込んでいます…" busy /> : chats.length === 0 ? <Empty text="表示できる会話はありません" /> : <ul className="chat-list list-none m-0 p-0">{chats.map(chat =>
             <li key={chat.id} className="border-b border-line">
-              <button className={`flex w-full items-center gap-3 rounded-none px-4 py-[.9rem] text-inherit text-left hover:bg-accent-soft ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent'}`} onClick={() => choose(chat)}>
+              <button className={`flex w-full items-center gap-3 rounded-none px-4 py-4 text-inherit text-left ${selected?.id === chat.id ? 'bg-accent-soft' : 'bg-transparent hover:bg-hover'}`} onClick={() => choose(chat)}>
                 <Avatar name={chat.name} faces={chat.faces} />
                 <span className="min-w-0 grow">
                   <span className="flex justify-between items-start gap-3"><strong className="min-w-0 [overflow-wrap:anywhere]">{chat.name || '名前のない会話'}{chat.trimmed && <span className={TRIM}>（省略）</span>}</strong><time className={STAMP}>{dateLabel(chat.lastMessageAt)}</time></span>
-                  <span className="flex justify-between items-center gap-2 mt-[.35rem]">
-                    <span className="chat-preview min-w-0 truncate text-muted text-[.8rem]">{chat.preview ? `${chat.preview.fromMe ? '自分: ' : ''}${chat.preview.text}${chat.preview.trimmed ? '…' : ''}` : '\u00a0'}</span>
-                    {chat.unreadCount !== null && chat.unreadCount > 0 && <span className="shrink-0 min-w-5 px-1.5 rounded-full bg-accent text-white text-[.7rem] font-bold text-center" aria-label={`未読 ${chat.unreadCount}`}>{chat.unreadCount}</span>}
+                  <span className="flex justify-between items-center gap-2 mt-1">
+                    <span className="chat-preview min-w-0 truncate text-muted text-note">{chat.preview ? `${chat.preview.fromMe ? '自分: ' : ''}${chat.preview.text}${chat.preview.trimmed ? '…' : ''}` : '\u00a0'}</span>
+                    {chat.unreadCount !== null && chat.unreadCount > 0 && <span className="shrink-0 min-w-5 px-1.5 rounded-full bg-fill text-on-fill text-micro font-bold text-center" aria-label={`未読 ${chat.unreadCount}`}>{chat.unreadCount}</span>}
                   </span>
                 </span>
               </button>
             </li>)}</ul>}
-          {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE} role="status">読み込んでいます…</p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
+          {chats.length > 0 && (chatsPending ? <p className={LIST_NOTE}><Busy text="読み込んでいます…" /></p> : chatLimit >= MAX ? <p className={LIST_NOTE}>表示上限の{MAX}件です</p> : null)}
         </div>
       </aside>
       <main ref={detail} className={`detail-pane ${PANE} max-pane:fixed max-pane:bottom-auto max-pane:h-dvh max-pane:z-20 bg-surface ${selected ? 'translate-x-0' : 'translate-x-full invisible'}`}>{!selected ? <Empty text="会話を選択するとメッセージが表示されます" /> : <>
         <div className={HEADING}>
-          <button className="back shrink-0 grid place-items-center w-[42px] h-[42px] p-0 rounded-full text-accent-strong bg-accent-soft pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
+          <button className="back k-icon-btn text-accent-strong pane:hidden" onClick={() => { if (history.state?.chat) history.back(); else closeChat(); }} aria-label="会話一覧へ戻る"><ArrowLeft24Regular /></button>
           <h1 className={`${PANE_TITLE} min-w-0 flex-1`}>{selected.name || '名前のない会話'}</h1>
         </div>
         {historyError && <ErrorBar text={historyError} retry={loadHistory} />}
-        {jumpNote && <p className="jump-note shrink-0 m-0 px-4 py-[.55rem] bg-notice text-notice-ink text-[.85rem] text-center border-b border-notice-line" role="status">{jumpNote}</p>}
-        <div className="message-area flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-linear-145 from-thread-from to-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
+        {/* A word about a jump is kasane's snackbar, over the foot of the conversation. It stays in the page
+            (empty and hidden) so that it can fade out with the words it had, and so the live region is there
+            before anything is said in it. */}
+        <div className="relative flex-1 min-h-0 flex flex-col">
+        <p className={`k-snackbar absolute m-0 ${jumpNote ? 'jump-note' : ''}`} data-open={jumpNote ? '' : undefined} role="status">{jumpNote || jumpWas.current}</p>
+        <div className="message-area flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-linear-145 from-imsg-thread-from to-imsg-thread-to" ref={viewport} onScroll={onScroll} aria-live="polite">
           {messages.length > 0 && <Older pending={olderPending} more={hasOlder} ceiling={messageLimit >= MAX} onMore={loadOlder} />}
-          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
-            style={{ transform: `translateX(${-reveal}px)`, transition: dragging.current ? 'none' : 'transform .18s ease' }}
+          {historyBusy && messages.length === 0 ? <Empty text="メッセージを読み込んでいます…" busy /> : messages.length === 0 ? <Empty text="メッセージはありません" /> : <ol className="messages list-none m-0 p-4 touch-pan-y select-none pane:select-text"
+            style={{ transform: `translateX(${-reveal}px)`, transition: dragging.current ? 'none' : 'transform var(--motion-base) var(--ease-standard)' }}
             onPointerDown={onRevealDown} onPointerMove={onRevealMove} onPointerUp={endReveal} onPointerCancel={endReveal}>{messages.flatMap((message, index) => {
             // A run is one person still talking without a break in between: pulled close together,
             // named once at its start, and with a face at its foot. A line drawn across the
@@ -1133,10 +1140,10 @@ export function App() {
             <li key={message.id} ref={element => { if (element) rows.current.set(message.id, element); else rows.current.delete(message.id); }}
               className={`msg relative flex items-end gap-2 ${index === 0 || here.opens ? '' : runs ? 'mt-1' : 'mt-7'} ${message.isFromMe ? 'mine justify-end' : 'theirs'} ${marked === message.id ? 'marked' : ''}`}>
               {facing && (endsRun
-                ? <Avatar name={message.sender ?? ''} faces={[message.avatarId]} size="w-7 h-7 text-[.7rem]" />
+                ? <Avatar name={message.sender ?? ''} faces={[message.avatarId]} size="w-7 h-7 text-micro" />
                 : <span className="shrink-0 w-7" aria-hidden="true" />)}
               <div className="flex flex-col min-w-0 max-w-[min(88%,720px)] pane:max-w-[min(75%,720px)]">
-              {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-[.15rem] ml-[.85rem] text-muted text-[.8em] font-semibold [overflow-wrap:anywhere]">{message.sender}</span>}
+              {selected.isGroup === true && message.sender && !runs && <span className="sender block mb-0.5 ml-3 text-muted text-[.8em] font-strong [overflow-wrap:anywhere]">{message.sender}</span>}
               <div className={`flex flex-col gap-1 ${message.isFromMe ? 'items-end' : 'items-start'}`}>
                 {parts.map((part, at) => {
                   const shape = corners(message.isFromMe, runs || at > 0);
@@ -1154,10 +1161,11 @@ export function App() {
                 })}
               </div>
               </div>
-              <time className="msg-time absolute left-full top-1/2 -translate-y-1/2 ml-4 w-14 whitespace-nowrap text-muted text-[.7rem]"
+              <time className="msg-time absolute left-full top-1/2 -translate-y-1/2 ml-4 w-14 whitespace-nowrap text-muted text-micro"
                 {...(at ? { dateTime: at.toISOString() } : {})}>{at ? TIME.format(at) : '日時不明'}</time>
             </li>];
           })}</ol>}
+        </div>
         </div>
         {sendMode ? <Composer chat={selected} mode={sendMode} send={sendMessage} upload={uploadFile} onSent={() => void loadHistory()} onAuthError={loseSession} />
           : capability === null && capabilityError !== '' ? <ErrorBar text="送信できるか確認できていません。" retry={loadCapabilities} /> : null}
@@ -1184,11 +1192,11 @@ function Command({ title, command, effect }: { title: string; command: string; e
     catch { setState('failed'); }
   };
   return <div className="grid gap-1.5">
-    <strong className="text-ink">{title}</strong>
+    <strong className="text-fg">{title}</strong>
     <div className="relative">
-      <pre className="m-0 p-3 pr-12 rounded-lg bg-soft border border-line text-[.78em] whitespace-pre-wrap [overflow-wrap:anywhere] text-ink">{command}</pre>
+      <pre className="m-0 p-3 pr-12 rounded-lg bg-code-bg border border-line font-mono text-[.78em] whitespace-pre-wrap [overflow-wrap:anywhere] text-code-fg">{command}</pre>
       <button type="button" onClick={() => void copy()} aria-label={`${title}のコマンドをコピー`}
-        className="absolute right-2 top-1/2 -translate-y-1/2 grid place-items-center w-8 h-8 p-0 rounded-lg border-0 bg-transparent text-muted hover:text-accent-strong hover:bg-surface">
+        className="k-icon-btn absolute right-1 top-1/2 -translate-y-1/2">
         {state === 'copied' ? <Checkmark24Regular /> : <Copy24Regular />}
       </button>
       <span className="sr-only" role="status">{state === 'copied' ? 'コピーしました' : ''}</span>
@@ -1232,27 +1240,27 @@ function ChoosePassword({ csrf, onDone, onLost }: { csrf: string; onDone: (sessi
     } finally { setBusy(false); }
   }
   return <>
-    <div className="text-accent font-extrabold tracking-[.04em]">imsg Web</div>
-    <h1 id="choose-title" className="mt-3 mb-1 text-[1.75rem] leading-tight [overflow-wrap:anywhere]">パスワードを決める</h1>
-    <p className="m-0 mt-2 text-muted text-[.9rem]">仮のパスワードでログインしました。これから使うパスワードを決めてください。仮のパスワードは使えなくなります。</p>
+    <div className="text-accent font-bold tracking-[.04em]">imsg Web</div>
+    <h1 id="choose-title" className="mt-3 mb-1 text-display leading-tight [overflow-wrap:anywhere]">パスワードを決める</h1>
+    <p className="m-0 mt-2 text-muted text-small">仮のパスワードでログインしました。これから使うパスワードを決めてください。仮のパスワードは使えなくなります。</p>
     <form className="grid gap-3 mt-6" onSubmit={submit}>
-      <label className="font-bold" htmlFor="new-password">新しいパスワード</label>
-      <input id="new-password" className={FIELD} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} required autoFocus />
-      <label className="font-bold" htmlFor="new-password-again">もう一度</label>
-      <input id="new-password-again" className={FIELD} type="password" autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} required />
-      <p className="m-0 text-muted text-[.8rem]">{PASSWORD_RULE}</p>
-      <button className="btn" disabled={busy}>{busy ? '設定中…' : '決定'}</button>
-      {error && <p className="m-0 mt-1 text-danger" role="alert">{error}</p>}
+      <label className="k-label m-0" htmlFor="new-password">新しいパスワード</label>
+      <input id="new-password" className={FIELD} type="password" autoComplete="new-password" value={password} onChange={e => setPassword(e.target.value)} required autoFocus aria-invalid={error !== '' || undefined} />
+      <label className="k-label m-0" htmlFor="new-password-again">もう一度</label>
+      <input id="new-password-again" className={FIELD} type="password" autoComplete="new-password" value={again} onChange={e => setAgain(e.target.value)} required aria-invalid={error !== '' || undefined} />
+      <p className="k-help m-0">{PASSWORD_RULE}</p>
+      <button className="k-btn k-btn--primary" disabled={busy} aria-busy={busy}>{busy ? '設定中…' : '決定'}</button>
+      {error && <p className="k-help k-help--error m-0" role="alert">{error}</p>}
     </form>
   </>;
 }
 
 function Recovery({ onBack }: { onBack: () => void }) {
-  return <div className="grid gap-4 text-[.85rem] text-muted">
+  return <div className="grid gap-4 text-label text-muted">
     <div className="flex items-center gap-3">
       <button type="button" onClick={onBack} aria-label="ログイン画面へ戻る"
-        className="shrink-0 grid place-items-center w-11 h-11 p-0 rounded-full text-accent-strong bg-accent-soft"><ArrowLeft24Regular /></button>
-      <h1 className="m-0 text-[1.25rem] leading-tight text-ink">パスワードを忘れた場合</h1>
+        className="k-icon-btn text-accent-strong"><ArrowLeft24Regular /></button>
+      <h1 className="m-0 text-heading leading-tight text-fg">パスワードを忘れた場合</h1>
     </div>
     <p className="m-0">下のコマンドを、Mac本体のターミナルで実行してください（SSH経由では拒否されます）。実行すると全端末でログアウトされます。</p>
     <Command title="仮のキーを発行する" command={`${CLI} auth rotate`}
@@ -1280,7 +1288,7 @@ const CLUSTER: Record<number, readonly { size: number; x: number; y: number }[]>
  * member gets a place whether or not there is a picture for them, so the face says how many people
  * are in there; the ones it knows come first, and the rest are drawn as the strangers they are.
  */
-function Avatar({ name, faces, size = 'w-11 h-11 text-[.9rem]' }: { name: string; faces: (string | null)[]; size?: string }) {
+function Avatar({ name, faces, size = 'w-11 h-11 text-small' }: { name: string; faces: (string | null)[]; size?: string }) {
   const shape = `chat-avatar shrink-0 ${size} rounded-full object-cover`;
   if (faces.length < 2) return <Face id={faces[0] ?? null} name={name} className={shape} />;
   const places = CLUSTER[Math.min(faces.length, 4)]!;
@@ -1310,8 +1318,8 @@ function Face({ id, name: rawName, className, style, small }: { id: string | nul
     .slice(0, 2).map(word => [...word][0] ?? '').join('') || '…';
   let hash = 0;
   for (const code of name) hash = (hash * 31 + code.codePointAt(0)!) % 360;
-  return <span className={`${className} grid place-items-center font-bold text-white ${small ? 'text-[.6rem]' : ''}`}
-    style={{ ...style, backgroundColor: `oklch(0.55 0.11 ${hash})` }} aria-hidden="true">{initials}</span>;
+  return <span className={`${className} grid place-items-center font-bold text-on-accent ${small ? 'text-micro' : ''}`}
+    style={{ ...style, backgroundColor: `oklch(from var(--accent) l c ${hash})` }} aria-hidden="true">{initials}</span>;
 }
 
 /**
@@ -1319,14 +1327,21 @@ function Face({ id, name: rawName, className, style, small }: { id: string | nul
  * named only when it has changed: repeating 今日 down one afternoon says nothing the time does not.
  */
 function DayBreak({ at, day }: { at: Date; day: boolean }) {
-  return <li className="day-break my-7 text-center text-[.78rem] text-muted">
-    {day && <><strong className="text-ink">{dayLabel(at)}</strong> </>}
+  return <li className="day-break my-7 text-center text-caption text-muted">
+    {day && <><strong className="text-fg">{dayLabel(at)}</strong> </>}
     <time dateTime={at.toISOString()}>{TIME.format(at)}</time>
   </li>;
 }
 
-function Empty({ text }: { text: string }) { return <div className="empty flex-1 grid place-items-center min-h-[140px] p-8 text-center text-muted" role="status">{text}</div>; }
-function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-[.65rem] bg-danger-soft text-danger text-[.85rem]" role="alert"><span>{text}</span><button className="btn-secondary btn-compact" onClick={() => void retry()}>再試行</button></div>; }
+/** Nothing to show here, or nothing yet: kasane's empty state, with the loading ring while it is still coming. */
+function Empty({ text, busy }: { text: string; busy?: boolean }) {
+  return <div className="empty k-empty flex-1 content-center min-h-[140px]" role="status">{busy && <span className="k-spinner" aria-hidden="true" />}<span>{text}</span></div>;
+}
+/** A line that says something is on its way, with the loading ring in front of it. */
+function Busy({ text }: { text: string }) {
+  return <span className="inline-flex items-center gap-2" role="status"><span className="k-spinner" aria-hidden="true" />{text}</span>;
+}
+function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> }) { return <div className="error-bar flex items-center justify-between gap-3 px-4 py-3 bg-danger-soft text-danger text-label" role="alert"><span>{text}</span><button className="k-btn shrink-0 whitespace-nowrap" onClick={() => void retry()}>再試行</button></div>; }
 /**
  * Sits above the oldest message, so it is out of sight until the owner scrolls up to it —
  * by which point scrolling has usually already asked for the next page. The button is the
@@ -1334,8 +1349,8 @@ function ErrorBar({ text, retry }: { text: string; retry: () => Promise<void> })
  */
 function Older({ pending, more, ceiling, onMore }: { pending: boolean; more: boolean; ceiling: boolean; onMore: () => void }) {
   return <div className={LIST_NOTE}>{
-    pending ? <span role="status">以前のメッセージを読み込んでいます…</span>
+    pending ? <Busy text="以前のメッセージを読み込んでいます…" />
     : ceiling ? <span>表示上限の{MAX}件です</span>
-    : more ? <button className="btn-secondary btn-compact" onClick={onMore}>以前のメッセージを読み込む</button>
+    : more ? <button className="k-btn" onClick={onMore}>以前のメッセージを読み込む</button>
     : <span>これより前のメッセージはありません</span>}</div>;
 }

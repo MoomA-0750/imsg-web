@@ -1,0 +1,142 @@
+/* kasane 1.1.0  source a2c01d34550ec091  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
+/*
+ * Tailwind v4 で使うときの対応表。アプリの CSS で次の順に読む:
+ *   @import "tailwindcss";
+ *   @import "kasane/tokens.css";
+ *   @import "kasane/themes/personal.css";
+ *   @import "kasane/tailwind.css";
+ *   @import "kasane/components.css" layer(components);   （部品を使うとき）
+ * Tailwind の既定の色・字の大きさ・角丸・影は消し、ここにある名前だけを使えるようにする
+ * （`text-red-500` や `rounded-xl` を書いても何も出ない）。
+ * tokens.css は @layer に入れずに読むこと。Tailwind の theme の層に出る `--radius-sm: var(--radius-sm)` のような
+ * 自分を指す行より、tokens.css・テーマの値が勝つ前提で組んである（Shadow DOM の中では成り立たないので使わない）。
+ * 余白は Tailwind の `--spacing`（0.25rem）と tokens.css の `--space-*` が同じ刻みである前提。余白の段はテーマで変えない。
+ * 明るい・暗いの差は light-dark() で書き、`dark:` は使わない（下で data-scheme にも従うようにしてある）。見出しの字体は `font-headline`（`font-display` は字の大きさの名前とぶつかるため）。
+ */
+@theme inline {
+  --color-*: initial;
+  --text-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  /* 影は --shadow-* の3段だけ。drop-shadow・inset-shadow・text-shadow の既定も消す */
+  --drop-shadow-*: initial;
+  --inset-shadow-*: initial;
+  --text-shadow-*: initial;
+  --font-*: initial;
+  --leading-*: initial;
+  --ease-*: initial;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-raised: var(--raised);
+  --color-input: var(--input);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+  --color-fill: var(--fill);
+  --color-on-fill: var(--on-fill);
+  --color-fill-hover: var(--fill-hover);
+  --color-link: var(--link);
+  --color-focus: var(--focus);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-fill-hover: var(--danger-fill-hover);
+  --color-on-danger: var(--on-danger);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-code-bg: var(--code-bg);
+  --color-code-fg: var(--code-fg);
+  --color-backdrop: var(--backdrop);
+  --color-scrim: var(--scrim);
+  --color-on-media: var(--on-media);
+  --color-media-control: var(--media-control);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-weight-*: initial;
+  --font-weight-normal: var(--weight-normal);
+  --font-weight-medium: var(--weight-medium);
+  --font-weight-strong: var(--weight-strong);
+  --font-weight-bold: var(--weight-bold);
+
+  --font-sans: var(--family-sans);
+  --font-headline: var(--family-headline);
+  --font-mono: var(--family-mono);
+
+  --text-micro: var(--font-micro);
+  --text-caption: var(--font-caption);
+  --text-note: var(--font-note);
+  --text-label: var(--font-label);
+  --text-small: var(--font-small);
+  --text-body: var(--font-body);
+  --text-title: var(--font-title);
+  --text-heading: var(--font-heading);
+  --text-display: var(--font-display);
+
+  --leading-tight: var(--leading-tight);
+  --leading-normal: var(--leading-normal);
+  --leading-relaxed: var(--leading-relaxed);
+
+  --spacing: 0.25rem;
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius-lg);
+  --radius-full: var(--radius-full);
+  /* 部品ごとの角丸（テーマで丸さを変える所）。rounded-control（ボタン）・rounded-field（入力欄）・rounded-card（カード。中の余白は p-4）・rounded-row（一覧の行） */
+  /* data-theme の無い所では、theme の層の自分を指す行が循環して値が無効になる。そのときは予備の値（tokens.css と同じ式）を使う */
+  --radius-control: var(--radius-control, var(--radius));
+  --radius-field: var(--radius-field, var(--radius));
+  --radius-card: var(--radius-card, calc(var(--radius) + var(--space-4)));
+  --radius-row: var(--radius-row, calc(var(--radius) + var(--space-4)));
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+
+  --ease-out: var(--ease-out);
+  --ease-in: var(--ease-in);
+  --ease-standard: var(--ease-standard);
+}
+
+/* dark: を書いてしまったときも、data-scheme の固定と端末の設定の両方に従わせる */
+@custom-variant dark {
+  &:where([data-scheme="dark"], [data-scheme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-scheme="light"], [data-scheme="light"] *)) {
+      @slot;
+    }
+  }
+}
+
+/* 角丸を同心にする（components.css の .k-inner と同じ）。入れ物に [--nest-radius:…] [--nest-pad:…] を書き、中に rounded-inner */
+@utility rounded-inner {
+  border-radius: max(var(--radius-min), calc(var(--nest-radius) - var(--nest-pad)));
+}
+
+/* 角の形（--corner-shape）を Tailwind の角丸にも付ける。ピル・丸（rounded-full）は円弧のまま */
+@layer utilities {
+  :where(.rounded-sm, .rounded-md, .rounded-lg, .rounded-inner, .rounded-control, .rounded-field, .rounded-card, .rounded-row) { corner-shape: var(--corner-shape); }
+}

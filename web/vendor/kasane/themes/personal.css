@@ -1,0 +1,80 @@
+/* kasane 1.1.0  source 999b3d482d8984af  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
+/*
+ * personal — 自分用のアプリで共有する見た目（v0.2）。
+ *
+ * 色は「種の色」1つから決まりで導く（Material You の考え方）。アプリは <html> か :root に
+ *   --seed: #b5562d;
+ * を書くだけで、地・面・字・線・影がその色みを帯び、主の色（--accent）もその色相になる。書かなければ青（#1d72c6）。
+ * 地の色相だけを変えたいとき（橙の主の色に、生成りの紙の地など）は --seed-neutral にその色相の鮮やかな色を書く。
+ * 地の色みの強さは種の鮮やかさに比例するので、淡い色（#f6f2ea など）を書くとほぼ無彩色になる。
+ * どんな色を選んでも読めるよう、明るさ（oklch の L）はこのファイルが決め、種の色からは色相と鮮やかさだけを取る:
+ *   - 灰色に近い種（鮮やかさ 0.04 未満）は、色相を青灰（250°）に寄せ、鮮やかさを 0.03 まで足す（灰・白・黒を選んでも少し色みが付く）
+ *   - 地・面・字・線・影: 種の色相に、弱い色み（地・面は種の鮮やかさの 2〜14%、字と線は 22〜50%）。
+ *     暗い表示では、黄〜緑の色相の色みを弱める（暗い黄は濁ったオリーブに見える）。青に近いほど元の強さ
+ *   - 主の色: 種の色相と鮮やかさ（0.16 まで）。明るさは明るい表示で 0.42〜0.54、暗い表示で 0.70〜0.82 に収める
+ *   - 危険・注意・成功: 赤・橙・青緑の色相を保ち、種の色相の方へ少しだけ寄せる（Material の harmonize。差の半分、
+ *     危険は 6°、注意は 10°、成功は 15° まで。種が灰色に近いほど寄せない）。意味が分からなくなるほどは動かさない
+ * 明るさの段は scripts/contrast.mjs が色相を一周させて確かめている（文字 4.5、縁とフォーカス 3）。
+ * 淡い色（*-soft）は基本の色から color-mix で作るので、基本の色に付いてくる。
+ * 対応: oklch の相対色（Chrome 119・Safari 18・Firefox 128 から）。
+ */
+[data-theme="personal"] {
+  --_seed: var(--seed, #1d72c6);
+  --_neutral: var(--seed-neutral, var(--_seed));
+
+  /* 地と面。明るい表示は紙のように地を少し沈め、面（カード）を白に近くする */
+  --bg: light-dark(oklch(from var(--_neutral) 0.968 calc(min(max(c, 0.03), 0.16) * 0.09) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.205 calc(min(max(c, 0.03), 0.16) * 0.1 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --surface: light-dark(oklch(from var(--_neutral) 0.995 calc(min(max(c, 0.03), 0.16) * 0.03) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.24 calc(min(max(c, 0.03), 0.16) * 0.1 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --surface-2: light-dark(oklch(from var(--_neutral) 0.945 calc(min(max(c, 0.03), 0.16) * 0.14) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.27 calc(min(max(c, 0.03), 0.16) * 0.14 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --raised: light-dark(oklch(from var(--_neutral) 0.997 calc(min(max(c, 0.03), 0.16) * 0.02) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.29 calc(min(max(c, 0.03), 0.16) * 0.1 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --input: light-dark(oklch(from var(--_neutral) 0.997 calc(min(max(c, 0.03), 0.16) * 0.02) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.22 calc(min(max(c, 0.03), 0.16) * 0.1 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+
+  --fg: light-dark(oklch(from var(--_neutral) 0.29 calc(min(max(c, 0.03), 0.16) * 0.22) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.93 calc(min(max(c, 0.03), 0.16) * 0.1 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --muted: light-dark(oklch(from var(--_neutral) 0.47 calc(min(max(c, 0.03), 0.16) * 0.3) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.76 calc(min(max(c, 0.03), 0.16) * 0.18 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --faint: light-dark(oklch(from var(--_neutral) 0.64 calc(min(max(c, 0.03), 0.16) * 0.3) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_neutral) 0.58 calc(min(max(c, 0.03), 0.16) * 0.18 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+
+  /* 線と、指した・押したときの重ね。透ける色にして、どの面の上でも同じ見え方にする */
+  --line: light-dark(oklch(from var(--_neutral) 0.35 calc(min(max(c, 0.03), 0.16) * 0.5) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.13), oklch(from var(--_neutral) 0.95 calc(min(max(c, 0.03), 0.16) * 0.25 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.1));
+  /* 入力欄の縁として地と 3:1（WCAG 1.4.11）。ボタンの縁も同じ */
+  --line-strong: light-dark(oklch(from var(--_neutral) 0.3 calc(min(max(c, 0.03), 0.16) * 0.5) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.56), oklch(from var(--_neutral) 0.95 calc(min(max(c, 0.03), 0.16) * 0.25 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.36));
+  --hover: light-dark(oklch(from var(--_neutral) 0.35 calc(min(max(c, 0.03), 0.16) * 0.5) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.06), oklch(from var(--_neutral) 0.95 calc(min(max(c, 0.03), 0.16) * 0.25 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.06));
+  --active: light-dark(oklch(from var(--_neutral) 0.35 calc(min(max(c, 0.03), 0.16) * 0.5) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.1), oklch(from var(--_neutral) 0.95 calc(min(max(c, 0.03), 0.16) * 0.25 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.1));
+
+  --accent: light-dark(oklch(from var(--_seed) clamp(0.42, l, calc(0.485 + min(max(c, 0.03), 0.16) / 0.16 * (0.025 - 0.035 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 180) * 1deg)))) min(max(c, 0.03), 0.16) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_seed) clamp(0.7, l, 0.82) min(max(c, 0.03), 0.14) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --accent-strong: light-dark(oklch(from var(--_seed) calc(clamp(0.42, l, calc(0.485 + min(max(c, 0.03), 0.16) / 0.16 * (0.025 - 0.035 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 180) * 1deg)))) - 0.07) min(max(c, 0.03), 0.16) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))), oklch(from var(--_seed) calc(clamp(0.7, l, 0.82) + 0.07) min(max(c, 0.03), 0.14) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --on-accent: light-dark(#ffffff, oklch(from var(--_seed) 0.2 calc(min(max(c, 0.03), 0.16) * 0.25) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04))));
+  --link: var(--accent);
+  --focus: var(--accent);
+
+  --danger: light-dark(oklch(from var(--_seed) 0.54 0.19 calc(25 + clamp(-6, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 25 + 540, 360) - 180) * 0.5, 6) * min(max(c, 0.03), 0.1) / 0.1)), oklch(from var(--_seed) 0.73 0.17 calc(25 + clamp(-6, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 25 + 540, 360) - 180) * 0.5, 6) * min(max(c, 0.03), 0.1) / 0.1)));
+  --danger-soft: color-mix(in srgb, var(--danger) 10%, transparent);
+  --on-danger: light-dark(#ffffff, #2b0b09);
+  --warn: light-dark(oklch(from var(--_seed) 0.52 0.13 calc(62 + clamp(-10, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 62 + 540, 360) - 180) * 0.5, 10) * min(max(c, 0.03), 0.1) / 0.1)), oklch(from var(--_seed) 0.8 0.15 calc(65 + clamp(-10, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 65 + 540, 360) - 180) * 0.5, 10) * min(max(c, 0.03), 0.1) / 0.1)));
+  --warn-soft: color-mix(in srgb, var(--warn) 12%, transparent);
+  --success: light-dark(oklch(from var(--_seed) 0.5 0.1 calc(178 + clamp(-15, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 178 + 540, 360) - 180) * 0.5, 15) * min(max(c, 0.03), 0.1) / 0.1)), oklch(from var(--_seed) 0.68 0.11 calc(175 + clamp(-15, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 175 + 540, 360) - 180) * 0.5, 15) * min(max(c, 0.03), 0.1) / 0.1)));
+  --success-soft: color-mix(in srgb, var(--success) 12%, transparent);
+
+  --code-bg: light-dark(oklch(from var(--_neutral) 0.6 calc(min(max(c, 0.03), 0.16) * 0.3) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.14), oklch(from var(--_neutral) 0.6 calc(min(max(c, 0.03), 0.16) * 0.3 * (0.55 + 0.45 * cos(((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 250) * 1deg))) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.2));
+  --code-fg: light-dark(oklch(from var(--_seed) 0.52 0.17 calc(27 + clamp(-6, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 27 + 540, 360) - 180) * 0.5, 6) * min(max(c, 0.03), 0.1) / 0.1)), oklch(from var(--_seed) 0.73 0.17 calc(25 + clamp(-6, (mod((h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) - 25 + 540, 360) - 180) * 0.5, 6) * min(max(c, 0.03), 0.1) / 0.1)));
+  --backdrop: light-dark(oklch(from var(--_neutral) 0.15 calc(min(max(c, 0.03), 0.16) * 0.2) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.4), rgb(0 0 0 / 0.6));
+
+  --corner-shape: squircle;
+
+  /* 影も種の色相を帯びる（紙の上の影のように）。--shadow は地から浮いたカード・一覧に使う */
+  --_shade-1: light-dark(oklch(from var(--_neutral) 0.25 calc(min(max(c, 0.03), 0.16) * 0.25) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.07), rgb(0 0 0 / 0.3));
+  --_shade-2: light-dark(oklch(from var(--_neutral) 0.25 calc(min(max(c, 0.03), 0.16) * 0.25) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.08), rgb(0 0 0 / 0.38));
+  --_shade-3: light-dark(oklch(from var(--_neutral) 0.25 calc(min(max(c, 0.03), 0.16) * 0.25) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.18), rgb(0 0 0 / 0.5));
+  --_ring: light-dark(oklch(from var(--_neutral) 0.25 calc(min(max(c, 0.03), 0.16) * 0.25) calc(h * min(c, 0.04) / 0.04 + 250 * (1 - min(c, 0.04) / 0.04)) / 0.05), rgb(255 255 255 / 0.06));
+  --shadow-sm: 0 1px 2px var(--_shade-1);
+  --shadow: 0 0 0 1px var(--_ring), 0 1px 2px var(--_shade-1), 0 4px 14px var(--_shade-2);
+  --shadow-lg: 0 0 0 1px var(--_ring), 0 3px 6px var(--_shade-1), 0 9px 24px var(--_shade-3);
+
+  /* グラフの系列の色: 種の色相から回した6色。明るさと鮮やかさは揃え（明るい 0.56・暗い 0.74、0.13）、隣り合う系列ほど色相を離す */
+  --chart-1: light-dark(oklch(from var(--_seed) 0.56 0.13 calc(h + 0)), oklch(from var(--_seed) 0.74 0.13 calc(h + 0)));
+  --chart-2: light-dark(oklch(from var(--_seed) 0.56 0.13 calc(h + 150)), oklch(from var(--_seed) 0.74 0.13 calc(h + 150)));
+  --chart-3: light-dark(oklch(from var(--_seed) 0.56 0.13 calc(h + 60)), oklch(from var(--_seed) 0.74 0.13 calc(h + 60)));
+  --chart-4: light-dark(oklch(from var(--_seed) 0.56 0.13 calc(h + 270)), oklch(from var(--_seed) 0.74 0.13 calc(h + 270)));
+  --chart-5: light-dark(oklch(from var(--_seed) 0.56 0.13 calc(h + 30)), oklch(from var(--_seed) 0.74 0.13 calc(h + 30)));
+  --chart-6: light-dark(oklch(from var(--_seed) 0.56 0.13 calc(h + 210)), oklch(from var(--_seed) 0.74 0.13 calc(h + 210)));
+}
