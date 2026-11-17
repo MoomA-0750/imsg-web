@@ -1,13 +1,14 @@
 @import "tailwindcss";
 /*
- * 色・字・余白・角丸は kasane の personal テーマ（../../kasane、DESIGN.md）から取る。ここに色や数値を書かない。
+ * 色・字・余白・角丸は kasane の personal テーマ（DESIGN.md）から取る。ここに色や数値を書かない。
+ * kasane の CSS は ../vendor/kasane/ に写してある（根の kasane-native.json。手で直さず、kasane の scripts/kasane-sync.mjs で写し直す）。
  * kasane の tailwind.css が Tailwind の既定の色・字の大きさ・角丸・影を消し、bg-surface・text-muted・text-caption・
  * rounded-md のように kasane の名前で書けるようにしている。明るい・暗いは kasane の light-dark() が持つ。
  */
-@import "kasane/tokens.css";
-@import "kasane/themes/personal.css";
-@import "kasane/tailwind.css";
-@import "kasane/components.css" layer(components);
+@import "../vendor/kasane/tokens.css";
+@import "../vendor/kasane/themes/personal.css";
+@import "../vendor/kasane/tailwind.css";
+@import "../vendor/kasane/components.css" layer(components);
 
 /* imsg-web にしかない意味の色と形。kasane の名前から作る */
 :root {
