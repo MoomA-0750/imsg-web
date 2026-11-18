@@ -23,3 +23,16 @@ Decisions and findings worth keeping, newest first. Current state is in
 - A `tests/p0c-boundary.test.ts` case failed once while other builds ran in
   parallel; it also uses a fixture child with short timing and is likely the
   same kind of problem. Not reproduced.
+
+## 2026-11-19 — Favicon and apple-touch-icon
+
+- Asked for by the owner: the sign-in page had no icon and the browser logged a
+  404. The icon is kasane personal's seed colour (`--seed: #1f5fa8`, which
+  kasane says should match the app icon) with a white speech bubble.
+- `web/public/` holds `favicon.svg` and `apple-touch-icon.png` (180×180, square:
+  iOS rounds the corners itself). The server serves those two names from the
+  build, as a fixed list, the same way it lists `assets/` rather than mapping
+  URL paths to files. No `favicon.ico`: every browser the owner uses takes the
+  SVG once the page links it, and so does not probe for `.ico`.
+- The PNG is drawn from `scripts/icons/apple-touch-icon.svg` with Playwright's
+  Chromium (`scripts/icons/render.mjs`), which the tests already need.
