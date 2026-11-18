@@ -1,0 +1,25 @@
+# Decisions
+
+Decisions and findings worth keeping, newest first. Current state is in
+`docs/HANDOFF.md` and `STATUS.md`.
+
+## 2026-11-16 — rpc subprocess tests: timeouts must outlast child startup
+
+- **What happened.** Three cases in `tests/rpc.test.ts` ("an active timeout
+  closes the child…", "detaches inherited pipes on failed shutdown…", "does not
+  redispatch after a late subscribe response") failed on the Linux PC.
+- **Cause: the tests, not the product.** They used 50–100 ms timeouts, but Node
+  takes about 110 ms to start the fake imsg there (about 36 ms on the Mac with
+  Node 24.20.0). The timeout fired before the child had read the request. The
+  rpc client, the fixture and the tests had not changed since 2026-09-12, so no
+  commit introduced it; on the Mac the 50 ms case had little margin too.
+  Production uses 10 s per request and 2 s shutdown grace and is not affected.
+- **Decision (owner chose "lengthen the waits" over "Mac-only" or "leave
+  it").** Timeouts raised to 400–800 ms, the late-subscribe fixture delay to
+  800 ms (`5c9a215`). The inherited-pipe case cannot go much above 400 ms: the
+  fixture's helper lives 1.8 s, and close() needs about 1.1 s after the timeout
+  to report `SHUTDOWN_FAILED` while the helper still holds the pipes. At 1000 ms
+  it failed again: the helper had exited first, so close() resolved.
+- A `tests/p0c-boundary.test.ts` case failed once while other builds ran in
+  parallel; it also uses a fixture child with short timing and is likely the
+  same kind of problem. Not reproduced.
