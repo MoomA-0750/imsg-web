@@ -1,4 +1,4 @@
-# Handoff — 2026-11-18
+# Handoff — 2026-11-19
 
 The current state, overwritten at each stopping point. Not a diary: history and
 decisions go to `docs/decisions.md`, open threads about the running service to
@@ -8,6 +8,18 @@ decisions go to `docs/decisions.md`, open threads about the running service to
 
 A single-owner, self-hosted iMessage Web UI (read first, sending off by
 default). See `README.md` and `AGENTS.md`.
+
+## In progress (2026-11-19)
+
+Favicon and apple-touch-icon (`f087169`), asked for by the owner, with approval
+to deploy to the M1 and push `main`. **Before the deploy the M1 runs `7fc799f`;
+that is the rollback.** The install sets its plist aside as
+`<base>/local.imsg-web.plist.7fc799f`, and `prune` then keeps `7fc799f` as the
+one step back and removes `cc50f00`. To roll back on the Mac:
+`launchctl bootout gui/$(id -u)/local.imsg-web`, move
+`<base>/local.imsg-web.plist.7fc799f` to
+`~/Library/LaunchAgents/local.imsg-web.plist`, then
+`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.imsg-web.plist`.
 
 ## Where things are
 
