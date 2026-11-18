@@ -7,9 +7,8 @@ patched `imsg` 0.15.4 and real data. Reading, sending (text, files, recordings),
 contact pictures, replies and tapbacks all work against the owner's own messages.
 Live sending is enabled there.
 
-Since 2026-11-16 the M1 runs `cc50f00` (rollback: `8ac2fe9`). The kasane UI
-merged into `main` at `02c89ea` is not deployed and has not been built on a Mac
-yet; see `docs/HANDOFF.md`.
+Since 2026-11-18 the M1 runs `7fc799f`, the kasane UI (rollback: `cc50f00`),
+installed with `setup.sh` from a fresh copy of `main`; see `docs/HANDOFF.md`.
 
 **The iMac (Intel) has not been set up.**
 

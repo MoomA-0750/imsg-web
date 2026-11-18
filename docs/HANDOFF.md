@@ -11,40 +11,47 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Where things are
 
-- **`main` = `origin/main` at `02c89ea`** (plus this handoff commit, local only
-  until the owner asks for a push). It contains:
-  - `cc50f00` body `min-height: 100dvh`.
-  - `5c9a215` rpc subprocess tests given time for the fixture child to start
-    (see `docs/decisions.md`). With it, `npm test -- --maxWorkers=1` passes
-    250/250 on the Linux PC.
-  - `02c89ea` the kasane-trial merge: the web UI moved to kasane (personal theme,
-    `k-*` components). kasane's CSS is copied into `web/vendor/kasane/` and the
-    kasane package dependency was dropped, so `setup.sh` can build on a Mac that
-    has no kasane checkout.
-- **The M1 runs `cc50f00`** (installed 2026-11-16 with `setup.sh`; the previous
-  release `8ac2fe9` is kept as the rollback). The kasane UI is **not** deployed.
+- **`main` = `origin/main`** (pushed 2026-11-18 with the owner's approval). It
+  contains the kasane-trial merge `02c89ea`: the web UI moved to kasane
+  (personal theme, `k-*` components), with kasane's CSS copied into
+  `web/vendor/kasane/` and no kasane package dependency.
+- **The M1 runs `7fc799f`** (the kasane UI), installed 2026-11-18 by
+  `scripts/setup.sh --origin <tailnet name>` from a fresh copy of `main` (sent
+  as a git bundle; the Mac had no checkout left). Before that, the same
+  build steps were run alone on the Mac: `npm ci --ignore-scripts`, typecheck,
+  build and the patched imsg all passed. After the install the server listened
+  within about 5 s, the error log had nothing new, and the sign-in page came up
+  over the tailnet styled by kasane. Signing in and reading real chats were not
+  checked by the agent (no owner password); the owner should look on the
+  iPhone.
+- **Rollback: `cc50f00`.** Its release and its plist (set aside in the base as
+  `local.imsg-web.plist.cc50f00`) are kept; `prune` removed `8ac2fe9`. To roll
+  back on the Mac:
+  `launchctl bootout gui/$(id -u)/local.imsg-web`, move
+  `<base>/local.imsg-web.plist.cc50f00` to
+  `~/Library/LaunchAgents/local.imsg-web.plist`, then
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.imsg-web.plist`.
+  Same Node runtime, so Full Disk Access is unaffected.
 - The `kasane-trial` branch is fully merged into `main`; it has no upstream and
   can be deleted when convenient.
 
 ## Left to do
 
-1. Confirm `main` (with `web/vendor/kasane/`) builds and runs on the Mac through
-   `setup.sh`, then deploy it — only with the owner's approval.
-2. Push the local handoff commit when the owner asks.
-3. One-off: `tests/image-convert.test.ts` "converts to JPEG for a browser that
+1. Owner: sign in on the iPhone and use the kasane UI for a while; roll back
+   (above) if something is wrong.
+2. One-off: `tests/image-convert.test.ts` "converts to JPEG for a browser that
    cannot draw HEIC…" failed once in a full `--maxWorkers=1` run on the Linux PC
-   and then passed 5 times alone and twice in full runs. The error was not
-   captured. If it fails again, keep the output and look at it.
+   and then passed 5 times alone and twice in full runs. If it fails again, keep
+   the output and look at it.
+3. Small, optional: the sign-in page has no favicon (404 in the console).
 
 ## First thing for the next session
 
-After checking out `main`: `git pull` and `npm ci --ignore-scripts` (the
-dependencies changed in `02c89ea`). Then read `STATUS.md`.
+`git pull`, `npm ci --ignore-scripts`, then read `STATUS.md`.
 
 ## Waiting on the owner
 
-- Whether and when to deploy the kasane UI (`main` after `02c89ea`) to the M1.
-- Push of the local handoff commit.
+- How the kasane UI feels in daily use on the M1.
 
 ## Careful
 
@@ -52,9 +59,11 @@ dependencies changed in `02c89ea`). Then read `STATUS.md`.
   bridge system, lock files or broad `imsg` kills; no push, production start or
   Serve change without the owner's approval.
 - `npm run doctor` may launch or repair Messages.app; it is not a harmless check.
-- This Linux PC has Node 22, not the required 24.20.0. Node starts in about
-  110 ms here versus about 36 ms on the Mac, so tests with tight subprocess
-  timing are the first to break here.
+- The Mac keeps no checkout: the deploy copy lived in a temp directory. The
+  next deploy needs a fresh copy (`git clone` from GitHub now works, since
+  `main` is pushed) and builds imsg from scratch (a few minutes).
+- This Linux PC has Node 22, not the required 24.20.0; tests with tight
+  subprocess timing are the first to break here.
 
 ## Where to read more
 
