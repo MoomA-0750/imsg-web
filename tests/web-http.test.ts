@@ -599,3 +599,34 @@ describe('B09 attachment upload (synthetic, binary route)', () => {
     expect((await put({ cookie, 'x-csrf-token': csrf }, 'x')).statusCode).toBe(415);
   });
 });
+
+describe('the built page', () => {
+  it('serves the icons from web/public without a session, and nothing else from the web folder', async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'iw-web-'));
+    try {
+      await mkdir(join(dir, 'assets'));
+      await writeFile(join(dir, 'index.html'), '<!doctype html>');
+      await writeFile(join(dir, 'assets', 'index-abc.js'), '');
+      await writeFile(join(dir, 'favicon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+      await writeFile(join(dir, 'apple-touch-icon.png'), PNG);
+      await writeFile(join(dir, 'other.txt'), 'x');
+      const app = await createApp({ origins: [ORIGIN], auth: new Auth(hashKey(KEY)), source: {} as never, webDir: dir });
+      apps.push(app);
+      const get = (url: string) => app.inject({ method: 'GET', url, headers: { host: HOST } });
+      const svg = await get('/favicon.svg');
+      expect(svg.statusCode).toBe(200);
+      expect(svg.headers['content-type']).toMatch(/^image\/svg\+xml/);
+      const png = await get('/apple-touch-icon.png');
+      expect(png.statusCode).toBe(200);
+      expect(png.headers['content-type']).toBe('image/png');
+      expect(png.rawPayload.equals(PNG)).toBe(true);
+      expect((await get('/other.txt')).statusCode).toBe(404);
+      expect((await get('/favicon.ico')).statusCode).toBe(404);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});

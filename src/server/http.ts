@@ -308,6 +308,11 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
     // Enumerate generated assets, never map arbitrary URL paths to the filesystem.
     const index = await readFile(join(options.webDir, 'index.html'));
     app.get('/', (_request, reply) => reply.type('text/html; charset=utf-8').send(index));
+    // The icons Vite copies from web/public: a fixed list, served only if the build made them.
+    for (const [name, type] of [['favicon.svg', 'image/svg+xml'], ['apple-touch-icon.png', 'image/png']] as const) {
+      const data = await readFile(join(options.webDir, name)).catch(() => undefined);
+      if (data) app.get(`/${name}`, (_request, reply) => reply.type(type).send(data));
+    }
     const assetsDir = join(options.webDir, 'assets');
     for (const entry of await readdir(assetsDir, { withFileTypes: true })) {
       if (!entry.isFile() || !/^[A-Za-z0-9_-]+\.(?:js|css)$/.test(entry.name)) continue;

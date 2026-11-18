@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- kasane personal の種の色（web/src/style.css の --seed）。アイコンの色が画面の主の色の元になる -->
+  <rect width="64" height="64" rx="14" fill="#1f5fa8"/>
+  <path fill="#fff" d="M32 13c-11.6 0-21 7.4-21 16.5 0 5.3 3.2 10 8.2 13-.4 2.8-1.8 5.4-3.8 7.4 4.4-.2 8.2-1.8 11-4.2 1.8.4 3.7.6 5.6.6 11.6 0 21-7.4 21-16.5S43.6 13 32 13z"/>
+</svg>
