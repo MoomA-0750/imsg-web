@@ -1,4 +1,4 @@
-/* kasane 1.1.0  source 73755083381ca666  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
+/* kasane 1.3.1  source 272e34959d386eef  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
 /*
  * kasane — テーマに依らない段（字の大きさ・余白・角丸・動き・重なり）と、表示の切り替え。
  * 色はここに置かない。色は themes/*.css が [data-theme="名前"] に入れる。
@@ -70,6 +70,28 @@
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* 形の曲線（v1.3）。strong は強い減速（メニュー・ポップオーバー）、sheet は下から出るシート（Vaul・iOS 風） */
+  --ease-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  /*
+   * ばね（v1.3）。SwiftUI と同じ指定（知覚の長さ 0.5 秒、弾み spring 0.15・bounce 0.3）を、収まるまでの長さで標本化した linear()。
+   * 曲線と長さは組: --ease-spring には --motion-spring、--ease-bounce には --motion-bounce を当てる（片方だけ変えない）。
+   * 時間の形だけなので、途中で目標が変わっても速度は引き継げない。指で動かした後の戻りは JS の物理ばねにする。
+   * 計算は motion/engine.js の Spring（0.7 秒・0.82 秒を 28 等分）
+   */
+  --ease-spring: linear(0, 0.043, 0.141, 0.264, 0.392, 0.513, 0.621, 0.713, 0.788, 0.848, 0.895, 0.93, 0.956, 0.975, 0.987, 0.996, 1.001, 1.004, 1.005, 1.006, 1.006, 1.005, 1.004, 1.004, 1.003, 1.002, 1.002, 1.001, 1);
+  --ease-bounce: linear(0, 0.058, 0.196, 0.359, 0.523, 0.67, 0.796, 0.89, 0.957, 1.003, 1.029, 1.042, 1.045, 1.042, 1.036, 1.028, 1.021, 1.014, 1.009, 1.005, 1.002, 1, 0.999, 0.998, 0.998, 0.998, 0.998, 0.999, 1);
+  --motion-spring: 700ms;
+  --motion-bounce: 820ms;
+  /* 場面の長さで、ほかの名前から作らないもの（v1.3）。page は画面の切り替え、sheet はシート・ドロワーの出、stagger は順に出す1件ずつのずれ */
+  --motion-page: 300ms;
+  --motion-sheet: 500ms;
+  --motion-stagger: 40ms;
+  /* 押したときの縮み（v1.3）。動きを減らす設定では 1（大きさの変化も動き。押した印は components.css が色で返す。docs/decisions.md） */
+  --press-scale: 0.97;
+
+  /* 音の組（v1.3）。glass・wood・soft・digital・keys・retro。鳴らすのは sound.js の playSound（音は既定で切） */
+  --sound-set: soft;
 
   /* home-dashboard と同じ順と値（メニュー < 操作帯 < 知らせ < 小窓） */
   --z-popover: 10;
@@ -94,6 +116,16 @@
     --motion-base: 0ms;
     --motion-slow: 0ms;
     --motion-loop: 0ms;
+    --motion-press: 0ms;
+    --motion-enter: 0ms;
+    --motion-exit: 0ms;
+    --motion-dialog: 0ms;
+    --motion-page: 0ms;
+    --motion-sheet: 0ms;
+    --motion-spring: 0ms;
+    --motion-bounce: 0ms;
+    --motion-stagger: 0ms;
+    --press-scale: 1;
   }
 }
 
@@ -127,6 +159,21 @@
   --chart-4: var(--danger);
   --chart-5: var(--link);
   --chart-6: var(--muted);
+
+  /*
+   * 場面ごとの動き（v1.3）。同じ語の --motion-<場面> と --ease-<場面> を組で使う。
+   * press 押した反応／enter 小さな物（メニュー・ポップオーバー・知らせ）が出る／exit enter・dialog で出した物が消える
+   * （シートの閉じと画面の切り替えは含まない）／dialog 小窓が出る／page 画面の切り替え（上の :root）
+   */
+  --motion-press: var(--motion-fast);
+  --ease-press: var(--ease-out);
+  --motion-enter: var(--motion-base);
+  --ease-enter: var(--ease-strong);
+  --motion-exit: var(--motion-fast);
+  --ease-exit: var(--ease-in);
+  --motion-dialog: var(--motion-slow);
+  --ease-dialog: var(--ease-out);
+  --ease-page: var(--ease-standard);
 
   --fill: var(--accent);
   --on-fill: var(--on-accent);

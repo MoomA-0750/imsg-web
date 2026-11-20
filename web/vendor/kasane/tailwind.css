@@ -1,4 +1,4 @@
-/* kasane 1.1.0  source a2c01d34550ec091  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
+/* kasane 1.3.1  source d564ef1c1772530a  写したもの。直すのは kasane（scripts/kasane-sync.mjs） */
 /*
  * Tailwind v4 で使うときの対応表。アプリの CSS で次の順に読む:
  *   @import "tailwindcss";
@@ -117,6 +117,11 @@
   --ease-out: var(--ease-out);
   --ease-in: var(--ease-in);
   --ease-standard: var(--ease-standard);
+  /* v1.3: 形の曲線だけ出す（ease-strong・ease-sheet・ease-spring・ease-bounce）。場面の曲線と時間は ease-(--ease-enter)・duration-(--motion-enter) と書く */
+  --ease-strong: var(--ease-strong);
+  --ease-sheet: var(--ease-sheet);
+  --ease-spring: var(--ease-spring);
+  --ease-bounce: var(--ease-bounce);
 }
 
 /* dark: を書いてしまったときも、data-scheme の固定と端末の設定の両方に従わせる */
