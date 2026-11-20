@@ -11,14 +11,16 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Where things are
 
-- **`main` is one commit ahead of `origin/main`, not pushed:** `03f14c5`
-  caches and compresses the built page (`src/server/static-files.ts`; see
-  `docs/decisions.md` 2026-11-20). Hashed `/assets/*` are `immutable` for a
-  year, the page and icons `no-cache` + ETag (304), text ≥1 KB goes out as br
-  or gzip; the API stays `no-store`. Measured in Chromium: a reload went from
-  about 307 KB to 1.2 KB, a first load to 82 KB. Typecheck, 252 unit and 40
-  browser tests pass. **Not on the M1** — push and deploy wait for the owner.
-- **The M1 runs `b177df0`** since 2026-11-19: the kasane UI plus a favicon and
+- **`main` = `origin/main`** (pushed 2026-11-20 with the owner's approval).
+- **The M1 runs `370c603`** since 2026-11-20: static files cached and
+  compressed (`03f14c5`, `src/server/static-files.ts`; `docs/decisions.md`
+  2026-11-20). Checked over the tailnet: hashed JS/CSS answer `immutable` and
+  `content-encoding: br` (JS 252 KB → 70 KB, CSS 52 KB → 8.6 KB), `/` is
+  `no-cache` with an ETag and answers 304 to it, `/api/session` stays
+  `no-store`, the CSP is unchanged. The error log has nothing new.
+- **Rollback: `b177df0`** (release and `<base>/local.imsg-web.plist.b177df0`
+  kept; `7fc799f` pruned). Same steps as below with that name.
+- Before that the M1 ran `b177df0` (2026-11-19): the kasane UI plus a favicon and
   apple-touch-icon (`f087169`; the seed colour `#1f5fa8` with a white speech
   bubble). Installed by `scripts/setup.sh --origin <tailnet name>` from a fresh
   copy of `main` sent as a git bundle into a temp directory on the Mac (removed
@@ -27,10 +29,8 @@ default). See `README.md` and `AGENTS.md`.
   both, a browser loads the icon and no 404 is left in the console (the one
   401 is the signed-out session probe). The error log has nothing new.
   Signing in was not checked by the agent (no owner password).
-- **Rollback: `7fc799f`.** Its release and plist
-  (`<base>/local.imsg-web.plist.7fc799f`) are kept; `prune` removed `cc50f00`.
-  To roll back on the Mac: `launchctl bootout gui/$(id -u)/local.imsg-web`,
-  move `<base>/local.imsg-web.plist.7fc799f` to
+- To roll back on the Mac: `launchctl bootout gui/$(id -u)/local.imsg-web`,
+  move `<base>/local.imsg-web.plist.<rollback>` to
   `~/Library/LaunchAgents/local.imsg-web.plist`, then
   `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.imsg-web.plist`.
   Same Node runtime, so Full Disk Access is unaffected.
@@ -42,10 +42,6 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Left to do
 
-0. With the owner's approval: push `03f14c5`, deploy to the M1 the usual way
-   (fresh copy of `main`, `scripts/setup.sh --origin <tailnet name>`, rollback
-   `b177df0`, prune per the release rule), then check over the tailnet that
-   `/assets/*.js` answers `content-encoding: br` and a reload of `/` is 304.
 1. Owner: sign in on the iPhone and use the kasane UI for a while; roll back
    (above) if something is wrong.
 2. One-off: `tests/image-convert.test.ts` "converts to JPEG for a browser that
@@ -59,7 +55,7 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Waiting on the owner
 
-- Whether to push `03f14c5` and put it on the M1.
+- Whether reloads feel faster on the iPhone.
 - How the kasane UI feels in daily use on the M1, and whether the new icon
   (tab and "Add to Home Screen") looks right.
 
