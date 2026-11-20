@@ -1,4 +1,4 @@
-# Handoff — 2026-11-19
+# Handoff — 2026-11-20
 
 The current state, overwritten at each stopping point. Not a diary: history and
 decisions go to `docs/decisions.md`, open threads about the running service to
@@ -11,7 +11,13 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Where things are
 
-- **`main` = `origin/main`** (pushed 2026-11-19 with the owner's approval).
+- **`main` is one commit ahead of `origin/main`, not pushed:** `03f14c5`
+  caches and compresses the built page (`src/server/static-files.ts`; see
+  `docs/decisions.md` 2026-11-20). Hashed `/assets/*` are `immutable` for a
+  year, the page and icons `no-cache` + ETag (304), text ≥1 KB goes out as br
+  or gzip; the API stays `no-store`. Measured in Chromium: a reload went from
+  about 307 KB to 1.2 KB, a first load to 82 KB. Typecheck, 252 unit and 40
+  browser tests pass. **Not on the M1** — push and deploy wait for the owner.
 - **The M1 runs `b177df0`** since 2026-11-19: the kasane UI plus a favicon and
   apple-touch-icon (`f087169`; the seed colour `#1f5fa8` with a white speech
   bubble). Installed by `scripts/setup.sh --origin <tailnet name>` from a fresh
@@ -36,6 +42,10 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Left to do
 
+0. With the owner's approval: push `03f14c5`, deploy to the M1 the usual way
+   (fresh copy of `main`, `scripts/setup.sh --origin <tailnet name>`, rollback
+   `b177df0`, prune per the release rule), then check over the tailnet that
+   `/assets/*.js` answers `content-encoding: br` and a reload of `/` is 304.
 1. Owner: sign in on the iPhone and use the kasane UI for a while; roll back
    (above) if something is wrong.
 2. One-off: `tests/image-convert.test.ts` "converts to JPEG for a browser that
@@ -49,6 +59,7 @@ default). See `README.md` and `AGENTS.md`.
 
 ## Waiting on the owner
 
+- Whether to push `03f14c5` and put it on the M1.
 - How the kasane UI feels in daily use on the M1, and whether the new icon
   (tab and "Add to Home Screen") looks right.
 
