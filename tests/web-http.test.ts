@@ -629,4 +629,73 @@ describe('the built page', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('caches hashed assets for good, revalidates the rest, and compresses text', async () => {
+    const { mkdtemp, mkdir, writeFile, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { gunzipSync, brotliDecompressSync } = await import('node:zlib');
+    const dir = await mkdtemp(join(tmpdir(), 'iw-web-'));
+    try {
+      const script = `console.log(${JSON.stringify('x'.repeat(4000))});`;
+      await mkdir(join(dir, 'assets'));
+      await writeFile(join(dir, 'index.html'), `<!doctype html><title>t</title>${'<p>synthetic</p>'.repeat(100)}`);
+      await writeFile(join(dir, 'assets', 'index-DYWT1V6x.js'), script);
+      await writeFile(join(dir, 'assets', 'index-BhJzySK4.css'), 'a{}');
+      await writeFile(join(dir, 'assets', 'plain.js'), script);
+      await writeFile(join(dir, 'apple-touch-icon.png'), PNG);
+      const app = await createApp({ origins: [ORIGIN], auth: new Auth(hashKey(KEY)), source: {} as never, webDir: dir });
+      apps.push(app);
+      const get = (url: string, headers: Record<string, string> = {}) => app.inject({ method: 'GET', url, headers: { host: HOST, ...headers } });
+
+      const js = await get('/assets/index-DYWT1V6x.js', { 'accept-encoding': 'gzip, deflate, br' });
+      expect(js.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+      expect(js.headers['content-encoding']).toBe('br');
+      expect(js.headers.vary).toBe('Accept-Encoding');
+      expect(brotliDecompressSync(js.rawPayload).toString()).toBe(script);
+      // Security headers are untouched by caching.
+      expect(js.headers['content-security-policy']).toContain("default-src 'self'");
+      expect(js.headers['x-content-type-options']).toBe('nosniff');
+      const gz = await get('/assets/index-DYWT1V6x.js', { 'accept-encoding': 'gzip' });
+      expect(gz.headers['content-encoding']).toBe('gzip');
+      expect(gunzipSync(gz.rawPayload).toString()).toBe(script);
+      const refused = await get('/assets/index-DYWT1V6x.js', { 'accept-encoding': 'br;q=0, gzip;q=0' });
+      expect(refused.headers['content-encoding']).toBeUndefined();
+      expect(refused.payload).toBe(script);
+      expect((await get('/assets/index-DYWT1V6x.js')).payload).toBe(script);
+
+      // Too small to be worth compressing.
+      const css = await get('/assets/index-BhJzySK4.css', { 'accept-encoding': 'gzip, br' });
+      expect(css.headers['content-encoding']).toBeUndefined();
+      expect(css.headers.vary).toBeUndefined();
+      expect(css.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+
+      // No hash in the name, so it may change under it: asked about each time.
+      expect((await get('/assets/plain.js')).headers['cache-control']).toBe('no-cache');
+
+      const page = await get('/', { 'accept-encoding': 'gzip, br' });
+      expect(page.headers['cache-control']).toBe('no-cache');
+      expect(page.headers['content-encoding']).toBe('br');
+      expect(page.headers['content-type']).toBe('text/html; charset=utf-8');
+      const etag = page.headers.etag as string;
+      expect(etag).toMatch(/^W\/"[A-Za-z0-9_-]+"$/);
+      const again = await get('/', { 'accept-encoding': 'gzip, br', 'if-none-match': etag });
+      expect(again.statusCode).toBe(304);
+      expect(again.rawPayload.length).toBe(0);
+      expect(again.headers.etag).toBe(etag);
+      expect(again.headers['cache-control']).toBe('no-cache');
+      expect(again.headers['content-security-policy']).toContain("frame-ancestors 'none'");
+      expect((await get('/', { 'if-none-match': '"something-else"' })).statusCode).toBe(200);
+
+      const png = await get('/apple-touch-icon.png', { 'accept-encoding': 'gzip, br' });
+      expect(png.headers['cache-control']).toBe('no-cache');
+      expect(png.headers['content-encoding']).toBeUndefined();
+      expect((await get('/apple-touch-icon.png', { 'if-none-match': png.headers.etag as string })).statusCode).toBe(304);
+
+      // The API keeps no-store whatever the static files do.
+      expect((await get('/api/session')).headers['cache-control']).toBe('no-store');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

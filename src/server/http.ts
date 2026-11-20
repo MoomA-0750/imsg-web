@@ -11,11 +11,13 @@ import type { AttachmentSource } from './attachments.js';
 import type { Sender } from './send-service.js';
 import type { Upload } from './uploads.js';
 import { sendCapability } from './capabilities.js';
+import { chooseEncoding, hashedName, notModified, staticFile, type StaticFile } from './static-files.js';
 
 /** What the HTTP layer needs of the upload store. */
 export interface UploadSink { accept(body: Readable, name: string | undefined, voice?: boolean): Promise<Upload>; readonly maxBytes: number }
 
 const COOKIE = '__Host-imsg_session';
+const ASSET_TYPES = { js: 'text/javascript', css: 'text/css', svg: 'image/svg+xml', woff2: 'font/woff2' } as const;
 // `blob:` in img-src and media-src is only for playing back an attachment or a recording the owner
 // just made: a blob URL can only be minted by this page for its own data, so it admits no
 // third-party content. Everything else stays 'self'.
@@ -305,19 +307,29 @@ export async function createApp(options: { origins: string[]; lanOrigin?: string
     }
   }
   if (options.webDir) {
-    // Enumerate generated assets, never map arbitrary URL paths to the filesystem.
-    const index = await readFile(join(options.webDir, 'index.html'));
-    app.get('/', (_request, reply) => reply.type('text/html; charset=utf-8').send(index));
+    // Enumerate generated assets, never map arbitrary URL paths to the filesystem. Each is read and
+    // compressed once here; a request only picks the encoding and answers 304 when it can.
+    const serve = (path: string, file: StaticFile) => app.get(path, (request, reply) => {
+      reply.header('cache-control', file.cacheControl).header('etag', file.etag);
+      const compressible = file.bodies.br !== undefined || file.bodies.gzip !== undefined;
+      if (compressible) reply.header('vary', 'Accept-Encoding');
+      if (notModified(request.headers['if-none-match'], file.etag)) return reply.code(304).send();
+      const encoding = chooseEncoding(request.headers['accept-encoding'], file);
+      if (encoding !== 'identity') reply.header('content-encoding', encoding);
+      return reply.type(file.type).send(file.bodies[encoding]);
+    });
+    serve('/', await staticFile(await readFile(join(options.webDir, 'index.html')), 'text/html; charset=utf-8', false));
     // The icons Vite copies from web/public: a fixed list, served only if the build made them.
     for (const [name, type] of [['favicon.svg', 'image/svg+xml'], ['apple-touch-icon.png', 'image/png']] as const) {
       const data = await readFile(join(options.webDir, name)).catch(() => undefined);
-      if (data) app.get(`/${name}`, (_request, reply) => reply.type(type).send(data));
+      if (data) serve(`/${name}`, await staticFile(data, type, false));
     }
     const assetsDir = join(options.webDir, 'assets');
     for (const entry of await readdir(assetsDir, { withFileTypes: true })) {
-      if (!entry.isFile() || !/^[A-Za-z0-9_-]+\.(?:js|css)$/.test(entry.name)) continue;
+      const match = /^[A-Za-z0-9_-]+\.(js|css|svg|woff2)$/.exec(entry.name);
+      if (!entry.isFile() || !match) continue;
       const data = await readFile(join(assetsDir, entry.name));
-      app.get(`/assets/${entry.name}`, (_request, reply) => reply.type(entry.name.endsWith('.js') ? 'text/javascript' : 'text/css').send(data));
+      serve(`/assets/${entry.name}`, await staticFile(data, ASSET_TYPES[match[1] as keyof typeof ASSET_TYPES], hashedName(entry.name)));
     }
   }
   return app;

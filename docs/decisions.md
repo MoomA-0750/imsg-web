@@ -36,3 +36,26 @@ Decisions and findings worth keeping, newest first. Current state is in
   SVG once the page links it, and so does not probe for `.ico`.
 - The PNG is drawn from `scripts/icons/apple-touch-icon.svg` with Playwright's
   Chromium (`scripts/icons/render.mjs`), which the tests already need.
+
+## 2026-11-20 — Caching and compression of the built page
+
+- Asked for by the owner: a reload was slow for what it loads. Every static
+  file went out `no-store` and uncompressed, so each reload fetched about
+  307 KB again (JS 252 KB, CSS 53 KB). Tailscale Serve does not compress.
+- `src/server/static-files.ts`: each built file is read once at start, given a
+  weak ETag (sha256 of the bytes; weak because it goes out in up to three
+  encodings) and, if it is text of 1 KB or more, compressed with brotli (q11)
+  and gzip (9). A request picks br, then gzip, else the bytes as they are, by
+  `Accept-Encoding`, and gets 304 when `If-None-Match` matches.
+- `/assets/*` with Vite's 8-character hash in the name: `public,
+  max-age=31536000, immutable`. The page, the icons and any asset without a
+  hash: `no-cache` + ETag. The API and everything else keep `no-store`; the
+  security headers are set before any of this and are unchanged, 304 included.
+- Measured with the browser-test fixture in Chromium, with its certificate
+  trusted (a certificate error stops Chromium caching at all): first load
+  307 KB → 82 KB (JS 70 KB, CSS 9 KB as br); a later reload 307 KB → 1.2 KB
+  (two 304s; JS and CSS not requested).
+- Cost: about 1 s more at start on the Linux PC for brotli q11. Not moved to
+  build time, since start is once and the files are few.
+- `assets/` now also lists `.svg` and `.woff2`, which Vite emits when CSS
+  refers to them; none are built today.
