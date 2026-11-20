@@ -54,7 +54,13 @@ Decisions and findings worth keeping, newest first. Current state is in
 - Measured with the browser-test fixture in Chromium, with its certificate
   trusted (a certificate error stops Chromium caching at all): first load
   307 KB → 82 KB (JS 70 KB, CSS 9 KB as br); a later reload 307 KB → 1.2 KB
-  (two 304s; JS and CSS not requested).
+  (two 304s; JS and CSS not requested). To trust the fixture's certificate
+  for one run: launch Chromium with `--ignore-certificate-errors-spki-list=`
+  the base64 sha256 of its public key (from `openssl s_client`), not
+  `ignoreHTTPSErrors`; read sizes from CDP `Network.loadingFinished`. Wait on
+  `load`, not `networkidle` (the page keeps polling).
+- Deployed 2026-11-20 as `370c603`; `setup.sh` pruned the old rollback
+  (`7fc799f`) by itself, so no separate prune step was needed.
 - Cost: about 1 s more at start on the Linux PC for brotli q11. Not moved to
   build time, since start is once and the files are few.
 - `assets/` now also lists `.svg` and `.woff2`, which Vite emits when CSS

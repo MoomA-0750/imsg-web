@@ -58,6 +58,8 @@ default). See `README.md` and `AGENTS.md`.
 - Whether reloads feel faster on the iPhone.
 - How the kasane UI feels in daily use on the M1, and whether the new icon
   (tab and "Add to Home Screen") looks right.
+- Whether reloads feel faster on the iPhone since `370c603` (recorded in the
+  owner's check list).
 
 ## Careful
 
